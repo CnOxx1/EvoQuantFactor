@@ -1,0 +1,48 @@
+# 业务默认配置（可用环境变量覆盖同名项）
+
+app:
+  name: factor-agent
+  host: 0.0.0.0
+  port: 8080
+
+pipeline:
+  max_round: 3
+  parallel_roles: 6
+  save:
+    mean_min: 80
+    median_min: 75
+    require_no_veto: true
+  revise:
+    only_low_score_factors: true
+    rescore_only_changed_ids: true
+    anti_noop_drop: true
+
+models:
+  # 实际以环境变量 LLM_MODEL_STEP1 / LLM_MODEL_REVIEW 为准
+  step1: gpt-4o
+  review: gpt-4o-mini
+  # step3 计分为代码节点，不调用模型
+
+llm:
+  api_key_env: LLM_API_KEY
+  base_url_env: LLM_BASE_URL
+
+mcp:
+  enabled: false
+  market_url: http://market-mcp:8100/sse
+  tools:
+    - get_kline
+    - get_volume
+    - get_turnover
+    - get_quote
+    - get_financials
+    - get_index
+
+prompts:
+  dir: prompts
+  index: prompts/index.json
+  append_shared_mcp: true
+
+storage:
+  saved_factors_dir: data/saved
+  runs_dir: data/runs

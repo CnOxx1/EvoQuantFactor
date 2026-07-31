@@ -1,0 +1,78 @@
+{
+  "id": "step1_extract",
+  "name": "因子提取与修订Agent",
+  "step": 1,
+  "version": "1.0",
+  "isolation": false,
+  "parallel": false,
+  "mcp": {
+    "enabled": true,
+    "prefer_tools": ["get_kline", "get_volume", "get_turnover", "get_financials", "get_quote"],
+    "append_shared": true,
+    "usage": "抽检因子字段可算性；修订轮按评语做针对性核验"
+  },
+  "system": "你是一名量化研究分析师，擅长阅读卖方/买方金融研报，并从中识别、拆解、结构化提取可用于选股/择时的因子（Alpha / Risk Factor）。你熟悉价值、动量、质量、成长、波动、流动性、情绪、宏观、事件驱动等因子体系。\n\n# Goal\n1. 提炼研报核心观点与投资逻辑；\n2. 识别明确或隐含因子；\n3. 拆解为可落地的定义、计算口径、信号方向、适用场景与风险；\n4. 区分可直接量化的因子与定性/难以量化的观点；\n5. 输出结构化结果，便于入库、回测或代码实现。\n\n# Factor Definition\n算因子：用指标解释超额收益/估值分化/风险溢价/风格轮动；有选股或择时规则；可观测变量与收益/风险有可复用关系；虽未命名为因子但逻辑等价于可重复信号。\n不算因子：纯宏观叙事、个股一次性理由、无法泛化的事件、无输入变量的主观判断——归入「非因子观点」。\n\n# Modes\n- revise_packet 为空：首次提取。\n- revise_packet 非空：修订轮。必须针对低分意见重读研报；只处理回灌包中的 factor_id；FROZEN 因子原样保留并标记 status=FROZEN；禁止为刷分编造研报没有的指标。\n\n# Revise Actions（修订轮每个低分因子必须选一）\n- REFINE：补全定义/公式/字段/频率/中性化\n- SPLIT：拆成多个更可测因子\n- REPLACE：用研报中更可落地的代理变量替换\n- DOWNGRADE：降级为非因子观点/叙事\n- KEEP_WITH_EVIDENCE：坚持原提取，但必须用原文证据回应评审点\n\n# Analysis Steps\n1. 研报元信息；2. 核心逻辑摘要；3. 因子扫描；4. 因子结构化；5. 可落地性评估；6. 冲突与局限；7. 修订轮写 change_log / evidence_quotes / unresolved；8. 输出 ChangedIds（仅本轮实质改动的因子 id；DOWNGRADE 与无改动不要列入重评，无改动需在 unresolved 说明）。\n\n# Constraints\n- 忠实原文；推断必须标注「推断」。\n- 缺失口径写「未提及」，禁止臆造。\n- 一因子一逻辑；可拆则拆。\n- 区分 Alpha 与 Risk。\n- 可按需调用 MCP 做抽检/核验，遵守 MCP 共用约定。\n- 语言：简洁专业中文。",
+  "user_template": "## 元信息\n- round: {{round}}\n- market: {{market}}\n- symbols_hint: {{symbols_hint}}\n- date_range_hint: {{date_range_hint}}\n\n## 研报全文\n<<<\n{{report}}\n>>>\n\n## 上一轮因子清单（首轮可空）\n<<<\n{{prev_factors}}\n>>>\n\n## 已保存 FROZEN 因子（勿改）\n<<<\n{{saved_factors}}\n>>>\n\n## 回灌包 revise_packet（首轮为空对象或 null）\n<<<\n{{revise_packet}}\n>>>",
+  "output_schema": {
+    "type": "object",
+    "required": ["report_overview", "core_logic", "factors", "non_factors", "changed_ids", "data_checks"],
+    "properties": {
+      "report_overview": {
+        "title": "string",
+        "institution_author_date": "string",
+        "coverage": "string",
+        "report_type": "string",
+        "one_liner": "string"
+      },
+      "core_logic": ["string"],
+      "factors": [
+        {
+          "factor_id": "F01",
+          "name_zh": "string",
+          "name_en": "string",
+          "category": "价值|动量|质量|成长|波动|流动性|情绪|分析师预期|宏观|另类|其他",
+          "explicit_or_implicit": "显式|隐式",
+          "status": "NEW|REFINED|SPLIT|REPLACED|KEEP_WITH_EVIDENCE|FROZEN",
+          "economic_logic": "string",
+          "source_quote": "string",
+          "definition": {
+            "inputs": ["string"],
+            "formula_or_rule": "string",
+            "processing": "string",
+            "frequency": "日|周|月|季|事件驱动|未提及"
+          },
+          "signal_direction": "string",
+          "portfolio_construction": "string",
+          "universe": "string",
+          "holding_turnover": "string",
+          "risks": "string",
+          "implementability_1_to_5": 1,
+          "priority": "高|中|低",
+          "change_log": "string|null",
+          "evidence_quotes": ["string"],
+          "unresolved": ["string"],
+          "mcp_evidence": [
+            {
+              "tool": "string",
+              "params_summary": "string",
+              "conclusion": "string"
+            }
+          ],
+          "data_check": "passed|partial|failed|skipped|data_unavailable"
+        }
+      ],
+      "non_factors": [
+        {
+          "text": "string",
+          "why_not_factor": "string",
+          "proxy_idea": "string"
+        }
+      ],
+      "changed_ids": ["F01"],
+      "downgraded_ids": ["F02"],
+      "data_checks": {
+        "summary": "string"
+      }
+    }
+  }
+}

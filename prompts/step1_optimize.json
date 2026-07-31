@@ -1,0 +1,78 @@
+{
+  "id": "step1_optimize",
+  "name": "因子优化修订Agent",
+  "step": 1,
+  "version": "1.0",
+  "isolation": false,
+  "parallel": false,
+  "mcp": {
+    "enabled": true,
+    "prefer_tools": ["get_kline", "get_volume", "get_turnover", "get_financials", "get_quote"],
+    "append_shared": true,
+    "usage": "核验优化后公式可算性；按评语补全口径与实现细节"
+  },
+  "system": "你是一名量化研究分析师，擅长对**已有公式化因子**做工程化优化与口径补全。输入通常来自因子库（如 Alpha101）或历史任务产出，**不是卖方研报原文提取场景**。\n\n# Goal\n1. 根据六角色评语与门禁回灌包，改进因子的可实现性、稳健性与可交易性；\n2. 补全/澄清：inputs、formula_or_rule、processing（中性化）、frequency、信号方向、风险；\n3. 在保持原因子经济直觉的前提下，输出可直接编码回测的定义；\n4. 仅处理 revise_packet 中的 factor_id；FROZEN 因子原样保留并标记 status=FROZEN。\n\n# Context Rules\n- 「评估上下文」是因子清单说明或 stub，**不是研报**；禁止伪造「研报原文引用」「机构研报页码」。\n- source_quote / evidence_quotes：可写公式出处（如 Alpha101 / 任务产出），或写「因子库种子；按评语优化」。\n- 允许合理工程化推断（窗口、截面排序、行业市值中性化等），推断须标注「推断」。\n- 禁止为刷分编造回测业绩或虚假数据结论。\n\n# Optimize Actions（每个回灌因子必须选一）\n- REFINE：补全/改写公式与口径（窗口、归一化、缺失处理、中性化），提升可算性；\n- REPLACE：用更可落地的代理变量/等价变换替换难实现部分，保留核心逻辑；\n- SPLIT：拆成多个更可测子因子（仅当原公式混杂多个独立逻辑）；\n- KEEP_WITH_EVIDENCE：坚持原定义，但必须用可复核的实现细节回应评审点（非研报摘句）；\n- DOWNGRADE：确认为不可落地则降级说明，并写入 unresolved（一般不要列入 changed_ids 重评）。\n\n# Analysis Steps\n1. 阅读回灌评语与 veto 原因；2. 对照当前 definition.formula_or_rule；3. 选择 Optimize Action；4. 改写结构化字段；5. 写 change_log（改了什么、为何改）；6. 输出 changed_ids（仅本轮实质改动的 id）。\n\n# Constraints\n- 一因子一逻辑；公式尽量可解析、可实现。\n- 缺失仍不清楚的口径写「未提及」或「推断：…」，禁止空话。\n- 区分 Alpha 与 Risk（若适用）。\n- 可按需调用 MCP 做字段/可算性抽检。\n- 语言：简洁专业中文。\n- 输出必须与提取任务相同的 JSON 结构，便于入库与重评。",
+  "user_template": "## 元信息\n- mode: evaluate_optimize\n- round: {{round}}\n- market: {{market}}\n- symbols_hint: {{symbols_hint}}\n- date_range_hint: {{date_range_hint}}\n\n## 评估上下文（因子库清单/说明，非研报原文）\n<<<\n{{report}}\n>>>\n\n## 上一轮因子清单\n<<<\n{{prev_factors}}\n>>>\n\n## 已保存 FROZEN 因子（勿改）\n<<<\n{{saved_factors}}\n>>>\n\n## 回灌包 revise_packet（按评语优化）\n<<<\n{{revise_packet}}\n>>>",
+  "output_schema": {
+    "type": "object",
+    "required": ["report_overview", "core_logic", "factors", "non_factors", "changed_ids", "data_checks"],
+    "properties": {
+      "report_overview": {
+        "title": "string",
+        "institution_author_date": "string",
+        "coverage": "string",
+        "report_type": "factor_library_optimize",
+        "one_liner": "string"
+      },
+      "core_logic": ["string"],
+      "factors": [
+        {
+          "factor_id": "A001",
+          "name_zh": "string",
+          "name_en": "string",
+          "category": "价值|动量|质量|成长|波动|流动性|情绪|分析师预期|宏观|另类|Alpha101|优化因子|其他",
+          "explicit_or_implicit": "显式|隐式",
+          "status": "NEW|REFINED|SPLIT|REPLACED|KEEP_WITH_EVIDENCE|FROZEN",
+          "economic_logic": "string",
+          "source_quote": "string",
+          "definition": {
+            "inputs": ["string"],
+            "formula_or_rule": "string",
+            "processing": "string",
+            "frequency": "日|周|月|季|事件驱动|未提及"
+          },
+          "signal_direction": "string",
+          "portfolio_construction": "string",
+          "universe": "string",
+          "holding_turnover": "string",
+          "risks": "string",
+          "implementability_1_to_5": 1,
+          "priority": "高|中|低",
+          "change_log": "string|null",
+          "evidence_quotes": ["string"],
+          "unresolved": ["string"],
+          "mcp_evidence": [
+            {
+              "tool": "string",
+              "params_summary": "string",
+              "conclusion": "string"
+            }
+          ],
+          "data_check": "passed|partial|failed|skipped|data_unavailable"
+        }
+      ],
+      "non_factors": [
+        {
+          "text": "string",
+          "why_not_factor": "string",
+          "proxy_idea": "string"
+        }
+      ],
+      "changed_ids": ["A001"],
+      "downgraded_ids": ["A002"],
+      "data_checks": {
+        "summary": "string"
+      }
+    }
+  }
+}

@@ -1,0 +1,51 @@
+# secrets & local env
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+credentials.json
+
+# python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+dist/
+build/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# runtime data (keep library + placeholders)
+data/factor.db
+data/*.db
+data/jobs/
+data/reports/
+data/runs/
+data/saved/
+!data/.gitkeep
+!data/factor_library/
+!data/factor_library/**
+
+# frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.vite/
+frontend/*.tsbuildinfo
+*.tsbuildinfo
+*.local
+
+# editors / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
+*.tar.gz
+*.log

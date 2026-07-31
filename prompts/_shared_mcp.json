@@ -1,0 +1,43 @@
+{
+  "id": "shared_mcp",
+  "name": "MCP按需调用共用约定",
+  "version": "1.0",
+  "description": "拼接到启用 MCP 的 Agent system 提示词末尾；工具由外部 MCP 提供，按需调用。",
+  "system_append": "你还可以按需调用外部 MCP 工具获取行情与相关数据（如 K线、成交量、换手、估值、指数等）。\n规则：\n1. 先基于研报形成假设/问题，再决定是否调用；无必要不拉全市场长历史。\n2. 调用前写清：标的、字段、时间范围、用途。\n3. 只用返回结果做验证、举例或证伪；不得用 MCP 数据发明研报没有的因子定义。\n4. 在输出中记录 mcp_evidence：工具名、参数摘要、结论（2–4句）；不要粘贴全量原始序列。\n5. 工具不可用或失败时标记 data_unavailable，降低可落地性相关评分，禁止编造数值。\n6. 若处于多角色并行评审中：不得假设其他角色看到了何种行情，不得引用未在本会话中调用的数据。",
+  "planned_tools": [
+    {
+      "name": "get_kline",
+      "purpose": "K线/复权行情",
+      "params": ["symbol", "start", "end", "freq", "adjust"]
+    },
+    {
+      "name": "get_volume",
+      "purpose": "成交量/成交额",
+      "params": ["symbol", "start", "end", "freq"]
+    },
+    {
+      "name": "get_turnover",
+      "purpose": "换手率",
+      "params": ["symbol", "start", "end"]
+    },
+    {
+      "name": "get_quote",
+      "purpose": "行情快照",
+      "params": ["symbol", "date"]
+    },
+    {
+      "name": "get_financials",
+      "purpose": "财务/估值字段",
+      "params": ["symbol", "fields", "period"]
+    },
+    {
+      "name": "get_index",
+      "purpose": "指数/行业序列",
+      "params": ["index_code", "start", "end"]
+    }
+  ],
+  "usage_notes": [
+    "MCP 未接通时：跳过实际调用，输出 data_unavailable",
+    "编排层可将本文件 system_append 自动注入各 Agent"
+  ]
+}

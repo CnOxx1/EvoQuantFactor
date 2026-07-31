@@ -1,0 +1,64 @@
+services:
+  factor-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: factor-api:latest
+    container_name: factor-api
+    restart: unless-stopped
+    ports:
+      - "${APP_PORT:-8080}:8080"
+    env_file:
+      - .env
+    environment:
+      APP_HOST: 0.0.0.0
+      APP_PORT: 8080
+      PROMPTS_DIR: /app/prompts
+      CONFIG_PATH: /app/config/default.yaml
+      MCP_MARKET_URL: ${MCP_MARKET_URL:-http://market-mcp:8100/sse}
+      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+    volumes:
+      - ./prompts:/app/prompts:ro
+      - ./config:/app/config:ro
+      - ./data:/app/data
+      - ./backend:/app/backend:ro
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+    networks:
+      - factor-net
+
+  # 可选：行情 MCP 占位服务（外部实现后替换镜像即可）
+  market-mcp:
+    profiles: ["full"]
+    image: ${MARKET_MCP_IMAGE:-ghcr.io/example/market-mcp:placeholder}
+    container_name: market-mcp
+    restart: unless-stopped
+    ports:
+      - "8100:8100"
+    env_file:
+      - .env
+    networks:
+      - factor-net
+
+  redis:
+    profiles: ["full"]
+    image: redis:7-alpine
+    container_name: factor-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - factor-net
+
+networks:
+  factor-net:
+    driver: bridge
+
+volumes:
+  redis-data:

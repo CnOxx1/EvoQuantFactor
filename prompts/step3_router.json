@@ -1,0 +1,100 @@
+{
+  "id": "step3_router",
+  "name": "Step3 路由裁决Agent",
+  "step": 3,
+  "version": "1.0",
+  "isolation": false,
+  "parallel": false,
+  "mcp": {
+    "enabled": false,
+    "prefer_tools": [],
+    "append_shared": false,
+    "usage": "默认不调用；仅当六角色证据严重冲突且编排层显式允许时可选核验"
+  },
+  "decision_rules": {
+    "save_when": {
+      "mean_gte": 80,
+      "median_gte": 75,
+      "veto_must_be": false
+    },
+    "mean": "arithmetic_mean_of_six_total_scores",
+    "median": "median_of_six_total_scores",
+    "revise_when": "not_save AND round < max_round",
+    "drop_when": "not_save AND round >= max_round",
+    "frozen_policy": "SAVE后标记FROZEN，不再修改/重评",
+    "revise_scope": "仅未过线因子进入 step1_revise_packet",
+    "rescore_scope": "Step2仅重评ChangedIds",
+    "anti_noop": "修订后ChangedIds为空则对应因子强制DROP或人工"
+  },
+  "system": "你是因子评审路由控制器（Router），不扮演业务投研角色。\n你只做：汇总分数、按门槛判定、决定 SAVE / REVISE / DROP，并生成回灌包。\n\n# 输入\n1) Step1 因子清单\n2) 六角色独立评分卡（可含增量合并后的分数）\n3) round、max_round\n\n# 计分\n对每个非终态因子：\n- scores = [R1..R6].total_score\n- final_score = round(mean(scores), 1)\n- median_score = median(scores)\n- veto = 任一只 veto==true\n\n# 决策（逐因子）\n- SAVE：final_score≥80 且 median_score≥75 且 veto==false → 入库，status=FROZEN\n- 否则若 round < max_round → REVISE（进入回灌包）\n- 否则 → DROP\n\n# 回灌包\n仅含 REVISE 因子；附带六角色分数、评语、suggestions、veto 原因、mcp_evidence 摘要；写明 revise_goals。\n\n# 约束\n- 不得篡改各角色原始分数与评语。\n- 不得自行改权重；六分等权平均。\n- 一般不调用 MCP。\n- 输出严格 JSON。",
+  "user_template": "## 轮次\n- round: {{round}}\n- max_round: {{max_round}}\n\n## Step1 因子清单\n<<<\n{{factors}}\n>>>\n\n## 六角色评分卡（已按增量策略合并）\n<<<\n{{scorecards}}\n>>>\n\n## 上一轮已 SAVE 的 FROZEN（仅供参考）\n<<<\n{{saved_factors}}\n>>>",
+  "output_schema": {
+    "type": "object",
+    "required": ["round", "max_round", "factors", "batch", "step1_revise_packet"],
+    "properties": {
+      "round": 1,
+      "max_round": 3,
+      "factors": [
+        {
+          "factor_id": "F01",
+          "name": "string",
+          "scores": {
+            "R1": 0,
+            "R2": 0,
+            "R3": 0,
+            "R4": 0,
+            "R5": 0,
+            "R6": 0
+          },
+          "final_score": 0.0,
+          "median_score": 0.0,
+          "veto": false,
+          "veto_reasons": ["string"],
+          "action": "SAVE|REVISE|DROP",
+          "save_payload": {
+            "factor_id": "F01",
+            "name": "string",
+            "definition": {},
+            "final_score": 0.0,
+            "median_score": 0.0,
+            "round": 1
+          },
+          "drop_reason": "string|null"
+        }
+      ],
+      "batch": {
+        "save_ids": ["F01"],
+        "revise_ids": ["F02"],
+        "drop_ids": ["F03"]
+      },
+      "step1_revise_packet": {
+        "needed": true,
+        "instruction": "只修订下列低分因子；FROZEN勿改；可按需MCP核验；输出ChangedIds",
+        "items": [
+          {
+            "factor_id": "F02",
+            "final_score": 72.5,
+            "median_score": 71.0,
+            "main_gaps": ["string"],
+            "role_feedback": [
+              {
+                "role": "R1",
+                "score": 70,
+                "comment": "string",
+                "suggestions": ["string"],
+                "veto": false,
+                "mcp_evidence_summary": ["string"]
+              }
+            ],
+            "revise_goals": [
+              "回到研报原文定位对应段落",
+              "补全计算公式与字段",
+              "区分推断与原文",
+              "给出可回测定义或降级为叙事"
+            ]
+          }
+        ]
+      }
+    }
+  }
+}

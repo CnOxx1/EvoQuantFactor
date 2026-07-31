@@ -1,0 +1,1926 @@
+{
+  "name": "WorldQuant Alpha101",
+  "version": "1.0",
+  "paper": "https://arxiv.org/abs/1601.00991",
+  "count": 101,
+  "factors": [
+    {
+      "factor_id": "A001",
+      "name_zh": "Alpha101 #1",
+      "name_en": "Alpha#1",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "(rank(Ts_ArgMax(SignedPower(((returns < 0) ? stddev(returns, 20) : close), 2.), 5)) -0.5)",
+      "inputs": [
+        "returns",
+        "close"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A002",
+      "name_zh": "Alpha101 #2",
+      "name_en": "Alpha#2",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "(-1 * correlation(rank(delta(log(volume), 2)), rank(((close - open) / open)), 6))",
+      "inputs": [
+        "close",
+        "open",
+        "volume"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A003",
+      "name_zh": "Alpha101 #3",
+      "name_en": "Alpha#3",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "(-1 * correlation(rank(open), rank(volume), 10))",
+      "inputs": [
+        "open",
+        "volume"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A004",
+      "name_zh": "Alpha101 #4",
+      "name_en": "Alpha#4",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "(-1 * Ts_Rank(rank(low), 9))",
+      "inputs": [
+        "low"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A005",
+      "name_zh": "Alpha101 #5",
+      "name_en": "Alpha#5",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "(rank((open - (sum(vwap, 10) / 10))) * (-1 * abs(rank((close - vwap)))))",
+      "inputs": [
+        "close",
+        "open",
+        "vwap"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A006",
+      "name_zh": "Alpha101 #6",
+      "name_en": "Alpha#6",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "(-1 * correlation(open, volume, 10))",
+      "inputs": [
+        "open",
+        "volume"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A007",
+      "name_zh": "Alpha101 #7",
+      "name_en": "Alpha#7",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "((adv20 < volume) ? ((-1 * ts_rank(abs(delta(close, 7)), 60)) * sign(delta(close, 7))) : (-1 * 1))",
+      "inputs": [
+        "close",
+        "volume",
+        "adv20"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A008",
+      "name_zh": "Alpha101 #8",
+      "name_en": "Alpha#8",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "(-1 * rank(((sum(open, 5) * sum(returns, 5)) - delay((sum(open, 5) * sum(returns, 5)), 10))))",
+      "inputs": [
+        "returns",
+        "open"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A009",
+      "name_zh": "Alpha101 #9",
+      "name_en": "Alpha#9",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "((0 < ts_min(delta(close, 1), 5)) ? delta(close, 1) : ((ts_max(delta(close, 1), 5) < 0) ? delta(close, 1) : (-1 * delta(close, 1))))",
+      "inputs": [
+        "close"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A010",
+      "name_zh": "Alpha101 #10",
+      "name_en": "Alpha#10",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "rank(((0 < ts_min(delta(close, 1), 4)) ? delta(close, 1) : ((ts_max(delta(close, 1), 4) < 0) ? delta(close, 1) : (-1 * delta(close, 1)))))",
+      "inputs": [
+        "close"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A011",
+      "name_zh": "Alpha101 #11",
+      "name_en": "Alpha#11",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "((rank(ts_max((vwap - close), 3)) + rank(ts_min((vwap - close), 3))) * rank(delta(volume, 3)))",
+      "inputs": [
+        "close",
+        "volume",
+        "vwap"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A012",
+      "name_zh": "Alpha101 #12",
+      "name_en": "Alpha#12",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "(sign(delta(volume, 1)) * (-1 * delta(close, 1)))",
+      "inputs": [
+        "close",
+        "volume"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A013",
+      "name_zh": "Alpha101 #13",
+      "name_en": "Alpha#13",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "(-1 * rank(covariance(rank(close), rank(volume), 5)))",
+      "inputs": [
+        "close",
+        "volume"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A014",
+      "name_zh": "Alpha101 #14",
+      "name_en": "Alpha#14",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "((-1 * rank(delta(returns, 3))) * correlation(open, volume, 10))",
+      "inputs": [
+        "returns",
+        "open",
+        "volume"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A015",
+      "name_zh": "Alpha101 #15",
+      "name_en": "Alpha#15",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "(-1 * sum(rank(correlation(rank(high), rank(volume), 3)), 3))",
+      "inputs": [
+        "high",
+        "volume"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A016",
+      "name_zh": "Alpha101 #16",
+      "name_en": "Alpha#16",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "(-1 * rank(covariance(rank(high), rank(volume), 5)))",
+      "inputs": [
+        "high",
+        "volume"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A017",
+      "name_zh": "Alpha101 #17",
+      "name_en": "Alpha#17",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "(((-1 * rank(ts_rank(close, 10))) * rank(delta(delta(close, 1), 1))) * rank(ts_rank((volume / adv20), 5)))",
+      "inputs": [
+        "close",
+        "volume",
+        "adv20"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A018",
+      "name_zh": "Alpha101 #18",
+      "name_en": "Alpha#18",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "(-1 * rank(((stddev(abs((close - open)), 5) + (close - open)) + correlation(close, open, 10))))",
+      "inputs": [
+        "close",
+        "open"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A019",
+      "name_zh": "Alpha101 #19",
+      "name_en": "Alpha#19",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "((-1 * sign(((close - delay(close, 7)) + delta(close, 7)))) * (1 + rank((1 + sum(returns, 250)))))",
+      "inputs": [
+        "returns",
+        "close"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A020",
+      "name_zh": "Alpha101 #20",
+      "name_en": "Alpha#20",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "(((-1 * rank((open - delay(high, 1)))) * rank((open - delay(close, 1)))) * rank((open - delay(low, 1))))",
+      "inputs": [
+        "close",
+        "open",
+        "high",
+        "low"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A021",
+      "name_zh": "Alpha101 #21",
+      "name_en": "Alpha#21",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "((((sum(close, 8) / 8) + stddev(close, 8)) < (sum(close, 2) / 2)) ? (-1 * 1) : (((sum(close, 2) / 2) < ((sum(close, 8) / 8) - stddev(close, 8))) ? 1 : (((1 < (volume / adv20)) || ((volume / adv20) == 1)) ? 1 : (-1 * 1))))",
+      "inputs": [
+        "close",
+        "volume",
+        "adv20"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A022",
+      "name_zh": "Alpha101 #22",
+      "name_en": "Alpha#22",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "(-1 * (delta(correlation(high, volume, 5), 5) * rank(stddev(close, 20))))",
+      "inputs": [
+        "close",
+        "high",
+        "volume"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A023",
+      "name_zh": "Alpha101 #23",
+      "name_en": "Alpha#23",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "(((sum(high, 20) / 20) < high) ? (-1 * delta(high, 2)) : 0)",
+      "inputs": [
+        "high"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A024",
+      "name_zh": "Alpha101 #24",
+      "name_en": "Alpha#24",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "((((delta((sum(close, 100) / 100), 100) / delay(close, 100)) < 0.05) || ((delta((sum(close, 100) / 100), 100) / delay(close, 100)) == 0.05)) ? (-1 * (close - ts_min(close, 100))) : (-1 * delta(close, 3)))",
+      "inputs": [
+        "close"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A025",
+      "name_zh": "Alpha101 #25",
+      "name_en": "Alpha#25",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "rank(((((-1 * returns) * adv20) * vwap) * (high - close)))",
+      "inputs": [
+        "returns",
+        "close",
+        "high",
+        "vwap",
+        "adv20"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A026",
+      "name_zh": "Alpha101 #26",
+      "name_en": "Alpha#26",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "(-1 * ts_max(correlation(ts_rank(volume, 5), ts_rank(high, 5), 5), 3))",
+      "inputs": [
+        "high",
+        "volume"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A027",
+      "name_zh": "Alpha101 #27",
+      "name_en": "Alpha#27",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "((0.5 < rank((sum(correlation(rank(volume), rank(vwap), 6), 2) / 2.0))) ? (-1 * 1) : 1)",
+      "inputs": [
+        "volume",
+        "vwap"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A028",
+      "name_zh": "Alpha101 #28",
+      "name_en": "Alpha#28",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "scale(((correlation(adv20, low, 5) + ((high + low) / 2)) - close))",
+      "inputs": [
+        "close",
+        "high",
+        "low",
+        "adv20"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A029",
+      "name_zh": "Alpha101 #29",
+      "name_en": "Alpha#29",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "(min(product(rank(rank(scale(log(sum(ts_min(rank(rank((-1 * rank(delta((close - 1), 5))))), 2), 1))))), 1), 5) + ts_rank(delay((-1 * returns), 6), 5))",
+      "inputs": [
+        "returns",
+        "close"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A030",
+      "name_zh": "Alpha101 #30",
+      "name_en": "Alpha#30",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "(((1.0 - rank(((sign((close - delay(close, 1))) + sign((delay(close, 1) - delay(close, 2)))) + sign((delay(close, 2) - delay(close, 3)))))) * sum(volume, 5)) / sum(volume, 20))",
+      "inputs": [
+        "close",
+        "volume"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A031",
+      "name_zh": "Alpha101 #31",
+      "name_en": "Alpha#31",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "((rank(rank(rank(decay_linear((-1 * rank(rank(delta(close, 10)))), 10)))) + rank((-1 * delta(close, 3)))) + sign(scale(correlation(adv20, low, 12))))",
+      "inputs": [
+        "close",
+        "low",
+        "adv20"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A032",
+      "name_zh": "Alpha101 #32",
+      "name_en": "Alpha#32",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "(scale(((sum(close, 7) / 7) - close)) + (20 * scale(correlation(vwap, delay(close, 5), 230))))",
+      "inputs": [
+        "close",
+        "vwap"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A033",
+      "name_zh": "Alpha101 #33",
+      "name_en": "Alpha#33",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "rank((-1 * ((1 - (open / close))^1)))",
+      "inputs": [
+        "close",
+        "open"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A034",
+      "name_zh": "Alpha101 #34",
+      "name_en": "Alpha#34",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "rank(((1 - rank((stddev(returns, 2) / stddev(returns, 5)))) + (1 - rank(delta(close, 1)))))",
+      "inputs": [
+        "returns",
+        "close"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A035",
+      "name_zh": "Alpha101 #35",
+      "name_en": "Alpha#35",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "((Ts_Rank(volume, 32) * (1 - Ts_Rank(((close + high) - low), 16))) * (1 -Ts_Rank(returns, 32)))",
+      "inputs": [
+        "returns",
+        "close",
+        "high",
+        "low",
+        "volume"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A036",
+      "name_zh": "Alpha101 #36",
+      "name_en": "Alpha#36",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "(((((2.21 * rank(correlation((close - open), delay(volume, 1), 15))) + (0.7 * rank((open - close)))) + (0.73 * rank(Ts_Rank(delay((-1 * returns), 6), 5)))) + rank(abs(correlation(vwap, adv20, 6)))) + (0.6 * rank((((sum(close, 200) / 200) - open) * (close - open)))))",
+      "inputs": [
+        "returns",
+        "close",
+        "open",
+        "volume",
+        "vwap",
+        "adv20"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A037",
+      "name_zh": "Alpha101 #37",
+      "name_en": "Alpha#37",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "(rank(correlation(delay((open - close), 1), close, 200)) + rank((open - close)))",
+      "inputs": [
+        "close",
+        "open"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A038",
+      "name_zh": "Alpha101 #38",
+      "name_en": "Alpha#38",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "((-1 * rank(Ts_Rank(close, 10))) * rank((close / open)))",
+      "inputs": [
+        "close",
+        "open"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A039",
+      "name_zh": "Alpha101 #39",
+      "name_en": "Alpha#39",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "((-1 * rank((delta(close, 7) * (1 - rank(decay_linear((volume / adv20), 9)))))) * (1 + rank(sum(returns, 250))))",
+      "inputs": [
+        "returns",
+        "close",
+        "volume",
+        "adv20"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A040",
+      "name_zh": "Alpha101 #40",
+      "name_en": "Alpha#40",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "((-1 * rank(stddev(high, 10))) * correlation(high, volume, 10))",
+      "inputs": [
+        "high",
+        "volume"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A041",
+      "name_zh": "Alpha101 #41",
+      "name_en": "Alpha#41",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "(((high * low)^0.5) - vwap)",
+      "inputs": [
+        "high",
+        "low",
+        "vwap"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A042",
+      "name_zh": "Alpha101 #42",
+      "name_en": "Alpha#42",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "(rank((vwap - close)) / rank((vwap + close)))",
+      "inputs": [
+        "close",
+        "vwap"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A043",
+      "name_zh": "Alpha101 #43",
+      "name_en": "Alpha#43",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "(ts_rank((volume / adv20), 20) * ts_rank((-1 * delta(close, 7)), 8))",
+      "inputs": [
+        "close",
+        "volume",
+        "adv20"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A044",
+      "name_zh": "Alpha101 #44",
+      "name_en": "Alpha#44",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "(-1 * correlation(high, rank(volume), 5))",
+      "inputs": [
+        "high",
+        "volume"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A045",
+      "name_zh": "Alpha101 #45",
+      "name_en": "Alpha#45",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "(-1 * ((rank((sum(delay(close, 5), 20) / 20)) * correlation(close, volume, 2)) * rank(correlation(sum(close, 5), sum(close, 20), 2))))",
+      "inputs": [
+        "close",
+        "volume"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A046",
+      "name_zh": "Alpha101 #46",
+      "name_en": "Alpha#46",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "((0.25 < (((delay(close, 20) - delay(close, 10)) / 10) - ((delay(close, 10) - close) / 10))) ? (-1 * 1) : (((((delay(close, 20) - delay(close, 10)) / 10) - ((delay(close, 10) - close) / 10)) < 0) ? 1 : ((-1 * 1) * (close - delay(close, 1)))))",
+      "inputs": [
+        "close"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A047",
+      "name_zh": "Alpha101 #47",
+      "name_en": "Alpha#47",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "((((rank((1 / close)) * volume) / adv20) * ((high * rank((high - close))) / (sum(high, 5) / 5))) - rank((vwap - delay(vwap, 5))))",
+      "inputs": [
+        "close",
+        "high",
+        "volume",
+        "vwap",
+        "adv20"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A048",
+      "name_zh": "Alpha101 #48",
+      "name_en": "Alpha#48",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "(indneutralize(((correlation(delta(close, 1), delta(delay(close, 1), 1), 250) * delta(close, 1)) / close), IndClass.subindustry) / sum(((delta(close, 1) / delay(close, 1))^2), 250))",
+      "inputs": [
+        "close"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A049",
+      "name_zh": "Alpha101 #49",
+      "name_en": "Alpha#49",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "(((((delay(close, 20) - delay(close, 10)) / 10) - ((delay(close, 10) - close) / 10)) < (-1 * 0.1)) ? 1 : ((-1 * 1) * (close - delay(close, 1))))",
+      "inputs": [
+        "close"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A050",
+      "name_zh": "Alpha101 #50",
+      "name_en": "Alpha#50",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "(-1 * ts_max(rank(correlation(rank(volume), rank(vwap), 5)), 5))",
+      "inputs": [
+        "volume",
+        "vwap"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A051",
+      "name_zh": "Alpha101 #51",
+      "name_en": "Alpha#51",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "(((((delay(close, 20) - delay(close, 10)) / 10) - ((delay(close, 10) - close) / 10)) < (-1 * 0.05)) ? 1 : ((-1 * 1) * (close - delay(close, 1))))",
+      "inputs": [
+        "close"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A052",
+      "name_zh": "Alpha101 #52",
+      "name_en": "Alpha#52",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "((((-1 * ts_min(low, 5)) + delay(ts_min(low, 5), 5)) * rank(((sum(returns, 240) - sum(returns, 20)) / 220))) * ts_rank(volume, 5))",
+      "inputs": [
+        "returns",
+        "low",
+        "volume"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A053",
+      "name_zh": "Alpha101 #53",
+      "name_en": "Alpha#53",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "(-1 * delta((((close - low) - (high - close)) / (close - low)), 9))",
+      "inputs": [
+        "close",
+        "high",
+        "low"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A054",
+      "name_zh": "Alpha101 #54",
+      "name_en": "Alpha#54",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "((-1 * ((low - close) * (open^5))) / ((low - high) * (close^5)))",
+      "inputs": [
+        "close",
+        "open",
+        "high",
+        "low"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A055",
+      "name_zh": "Alpha101 #55",
+      "name_en": "Alpha#55",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "(-1 * correlation(rank(((close - ts_min(low, 12)) / (ts_max(high, 12) - ts_min(low, 12)))), rank(volume), 6))",
+      "inputs": [
+        "close",
+        "high",
+        "low",
+        "volume"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A056",
+      "name_zh": "Alpha101 #56",
+      "name_en": "Alpha#56",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "(0 - (1 * (rank((sum(returns, 10) / sum(sum(returns, 2), 3))) * rank((returns * cap)))))",
+      "inputs": [
+        "returns",
+        "cap"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A057",
+      "name_zh": "Alpha101 #57",
+      "name_en": "Alpha#57",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "(0 - (1 * ((close - vwap) / decay_linear(rank(ts_argmax(close, 30)), 2))))",
+      "inputs": [
+        "close",
+        "vwap"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A058",
+      "name_zh": "Alpha101 #58",
+      "name_en": "Alpha#58",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "(-1 * Ts_Rank(decay_linear(correlation(IndNeutralize(vwap, IndClass.sector), volume, 3.92795), 7.89291), 5.50322))",
+      "inputs": [
+        "volume",
+        "vwap"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A059",
+      "name_zh": "Alpha101 #59",
+      "name_en": "Alpha#59",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "(-1 * Ts_Rank(decay_linear(correlation(IndNeutralize(((vwap * 0.728317) + (vwap * (1 - 0.728317))), IndClass.industry), volume, 4.25197), 16.2289), 8.19648))",
+      "inputs": [
+        "volume",
+        "vwap"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A060",
+      "name_zh": "Alpha101 #60",
+      "name_en": "Alpha#60",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "(0 - (1 * ((2 * scale(rank(((((close - low) - (high - close)) / (high - low)) * volume)))) - scale(rank(ts_argmax(close, 10))))))",
+      "inputs": [
+        "close",
+        "high",
+        "low",
+        "volume"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A061",
+      "name_zh": "Alpha101 #61",
+      "name_en": "Alpha#61",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "(rank((vwap - ts_min(vwap, 16.1219))) < rank(correlation(vwap, adv180, 17.9282)))",
+      "inputs": [
+        "vwap",
+        "adv180"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A062",
+      "name_zh": "Alpha101 #62",
+      "name_en": "Alpha#62",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "((rank(correlation(vwap, sum(adv20, 22.4101), 9.91009)) < rank(((rank(open) + rank(open)) < (rank(((high + low) / 2)) + rank(high))))) * -1)",
+      "inputs": [
+        "open",
+        "high",
+        "low",
+        "vwap",
+        "adv20"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A063",
+      "name_zh": "Alpha101 #63",
+      "name_en": "Alpha#63",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "((rank(decay_linear(delta(IndNeutralize(close, IndClass.industry), 2.25164), 8.22237)) - rank(decay_linear(correlation(((vwap * 0.318108) + (open * (1 - 0.318108))), sum(adv180, 37.2467), 13.557), 12.2883))) * -1)",
+      "inputs": [
+        "close",
+        "open",
+        "vwap",
+        "adv180"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A064",
+      "name_zh": "Alpha101 #64",
+      "name_en": "Alpha#64",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "((rank(correlation(sum(((open * 0.178404) + (low * (1 - 0.178404))), 12.7054), sum(adv120, 12.7054), 16.6208)) < rank(delta(((((high + low) / 2) * 0.178404) + (vwap * (1 -0.178404))), 3.69741))) * -1)",
+      "inputs": [
+        "open",
+        "high",
+        "low",
+        "vwap",
+        "adv120"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A065",
+      "name_zh": "Alpha101 #65",
+      "name_en": "Alpha#65",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "((rank(correlation(((open * 0.00817205) + (vwap * (1 - 0.00817205))), sum(adv60, 8.6911), 6.40374)) < rank((open - ts_min(open, 13.635)))) * -1)",
+      "inputs": [
+        "open",
+        "vwap",
+        "adv60"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A066",
+      "name_zh": "Alpha101 #66",
+      "name_en": "Alpha#66",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "((rank(decay_linear(delta(vwap, 3.51013), 7.23052)) + Ts_Rank(decay_linear(((((low * 0.96633) + (low * (1 - 0.96633))) - vwap) / (open - ((high + low) / 2))), 11.4157), 6.72611)) * -1)",
+      "inputs": [
+        "open",
+        "high",
+        "low",
+        "vwap"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A067",
+      "name_zh": "Alpha101 #67",
+      "name_en": "Alpha#67",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "((rank((high - ts_min(high, 2.14593)))^rank(correlation(IndNeutralize(vwap, IndClass.sector), IndNeutralize(adv20, IndClass.subindustry), 6.02936))) * -1)",
+      "inputs": [
+        "high",
+        "vwap",
+        "adv20"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A068",
+      "name_zh": "Alpha101 #68",
+      "name_en": "Alpha#68",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "((Ts_Rank(correlation(rank(high), rank(adv15), 8.91644), 13.9333) < rank(delta(((close * 0.518371) + (low * (1 - 0.518371))), 1.06157))) * -1)",
+      "inputs": [
+        "close",
+        "high",
+        "low",
+        "adv15"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A069",
+      "name_zh": "Alpha101 #69",
+      "name_en": "Alpha#69",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "((rank(ts_max(delta(IndNeutralize(vwap, IndClass.industry), 2.72412), 4.79344))^Ts_Rank(correlation(((close * 0.490655) + (vwap * (1 - 0.490655))), adv20, 4.92416), 9.0615)) * -1)",
+      "inputs": [
+        "close",
+        "vwap",
+        "adv20"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A070",
+      "name_zh": "Alpha101 #70",
+      "name_en": "Alpha#70",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "((rank(delta(vwap, 1.29456))^Ts_Rank(correlation(IndNeutralize(close, IndClass.industry), adv50, 17.8256), 17.9171)) * -1)",
+      "inputs": [
+        "close",
+        "vwap",
+        "adv50"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A071",
+      "name_zh": "Alpha101 #71",
+      "name_en": "Alpha#71",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "max(Ts_Rank(decay_linear(correlation(Ts_Rank(close, 3.43976), Ts_Rank(adv180, 12.0647), 18.0175), 4.20501), 15.6948), Ts_Rank(decay_linear((rank(((low + open) - (vwap + vwap)))^2), 16.4662), 4.4388))",
+      "inputs": [
+        "close",
+        "open",
+        "low",
+        "vwap",
+        "adv180"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A072",
+      "name_zh": "Alpha101 #72",
+      "name_en": "Alpha#72",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "(rank(decay_linear(correlation(((high + low) / 2), adv40, 8.93345), 10.1519)) / rank(decay_linear(correlation(Ts_Rank(vwap, 3.72469), Ts_Rank(volume, 18.5188), 6.86671), 2.95011)))",
+      "inputs": [
+        "high",
+        "low",
+        "volume",
+        "vwap",
+        "adv40"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A073",
+      "name_zh": "Alpha101 #73",
+      "name_en": "Alpha#73",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "(max(rank(decay_linear(delta(vwap, 4.72775), 2.91864)), Ts_Rank(decay_linear(((delta(((open * 0.147155) + (low * (1 - 0.147155))), 2.03608) / ((open * 0.147155) + (low * (1 - 0.147155)))) * -1), 3.33829), 16.7411)) * -1)",
+      "inputs": [
+        "open",
+        "low",
+        "vwap"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A074",
+      "name_zh": "Alpha101 #74",
+      "name_en": "Alpha#74",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "((rank(correlation(close, sum(adv30, 37.4843), 15.1365)) < rank(correlation(rank(((high * 0.0261661) + (vwap * (1 - 0.0261661)))), rank(volume), 11.4791))) * -1)",
+      "inputs": [
+        "close",
+        "high",
+        "volume",
+        "vwap",
+        "adv30"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A075",
+      "name_zh": "Alpha101 #75",
+      "name_en": "Alpha#75",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "(rank(correlation(vwap, volume, 4.24304)) < rank(correlation(rank(low), rank(adv50), 12.4413)))",
+      "inputs": [
+        "low",
+        "volume",
+        "vwap",
+        "adv50"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A076",
+      "name_zh": "Alpha101 #76",
+      "name_en": "Alpha#76",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "(max(rank(decay_linear(delta(vwap, 1.24383), 11.8259)), Ts_Rank(decay_linear(Ts_Rank(correlation(IndNeutralize(low, IndClass.sector), adv81, 8.14941), 19.569), 17.1543), 19.383)) * -1)",
+      "inputs": [
+        "low",
+        "vwap",
+        "adv81"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A077",
+      "name_zh": "Alpha101 #77",
+      "name_en": "Alpha#77",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "min(rank(decay_linear(((((high + low) / 2) + high) - (vwap + high)), 20.0451)), rank(decay_linear(correlation(((high + low) / 2), adv40, 3.1614), 5.64125)))",
+      "inputs": [
+        "high",
+        "low",
+        "vwap",
+        "adv40"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A078",
+      "name_zh": "Alpha101 #78",
+      "name_en": "Alpha#78",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "(rank(correlation(sum(((low * 0.352233) + (vwap * (1 - 0.352233))), 19.7428), sum(adv40, 19.7428), 6.83313))^rank(correlation(rank(vwap), rank(volume), 5.77492)))",
+      "inputs": [
+        "low",
+        "volume",
+        "vwap",
+        "adv40"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A079",
+      "name_zh": "Alpha101 #79",
+      "name_en": "Alpha#79",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "(rank(delta(IndNeutralize(((close * 0.60733) + (open * (1 - 0.60733))), IndClass.sector), 1.23438)) < rank(correlation(Ts_Rank(vwap, 3.60973), Ts_Rank(adv150, 9.18637), 14.6644)))",
+      "inputs": [
+        "close",
+        "open",
+        "vwap",
+        "adv150"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A080",
+      "name_zh": "Alpha101 #80",
+      "name_en": "Alpha#80",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "((rank(Sign(delta(IndNeutralize(((open * 0.868128) + (high * (1 - 0.868128))), IndClass.industry), 4.04545)))^Ts_Rank(correlation(high, adv10, 5.11456), 5.53756)) * -1)",
+      "inputs": [
+        "open",
+        "high",
+        "adv10"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A081",
+      "name_zh": "Alpha101 #81",
+      "name_en": "Alpha#81",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "((rank(Log(product(rank((rank(correlation(vwap, sum(adv10, 49.6054), 8.47743))^4)), 14.9655))) < rank(correlation(rank(vwap), rank(volume), 5.07914))) * -1)",
+      "inputs": [
+        "volume",
+        "vwap",
+        "adv10"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A082",
+      "name_zh": "Alpha101 #82",
+      "name_en": "Alpha#82",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "(min(rank(decay_linear(delta(open, 1.46063), 14.8717)), Ts_Rank(decay_linear(correlation(IndNeutralize(volume, IndClass.sector), ((open * 0.634196) + (open * (1 - 0.634196))), 17.4842), 6.92131), 13.4283)) * -1)",
+      "inputs": [
+        "open",
+        "volume"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A083",
+      "name_zh": "Alpha101 #83",
+      "name_en": "Alpha#83",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "((rank(delay(((high - low) / (sum(close, 5) / 5)), 2)) * rank(rank(volume))) / (((high - low) / (sum(close, 5) / 5)) / (vwap - close)))",
+      "inputs": [
+        "close",
+        "high",
+        "low",
+        "volume",
+        "vwap"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A084",
+      "name_zh": "Alpha101 #84",
+      "name_en": "Alpha#84",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "SignedPower(Ts_Rank((vwap - ts_max(vwap, 15.3217)), 20.7127), delta(close, 4.96796))",
+      "inputs": [
+        "close",
+        "vwap"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A085",
+      "name_zh": "Alpha101 #85",
+      "name_en": "Alpha#85",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "(rank(correlation(((high * 0.876703) + (close * (1 - 0.876703))), adv30, 9.61331))^rank(correlation(Ts_Rank(((high + low) / 2), 3.70596), Ts_Rank(volume, 10.1595), 7.11408)))",
+      "inputs": [
+        "close",
+        "high",
+        "low",
+        "volume",
+        "adv30"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A086",
+      "name_zh": "Alpha101 #86",
+      "name_en": "Alpha#86",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "((Ts_Rank(correlation(close, sum(adv20, 14.7444), 6.00049), 20.4195) < rank(((open + close) - (vwap + open)))) * -1)",
+      "inputs": [
+        "close",
+        "open",
+        "vwap",
+        "adv20"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A087",
+      "name_zh": "Alpha101 #87",
+      "name_en": "Alpha#87",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "(max(rank(decay_linear(delta(((close * 0.369701) + (vwap * (1 - 0.369701))), 1.91233), 2.65461)), Ts_Rank(decay_linear(abs(correlation(IndNeutralize(adv81, IndClass.industry), close, 13.4132)), 4.89768), 14.4535)) * -1)",
+      "inputs": [
+        "close",
+        "vwap",
+        "adv81"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A088",
+      "name_zh": "Alpha101 #88",
+      "name_en": "Alpha#88",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "min(rank(decay_linear(((rank(open) + rank(low)) - (rank(high) + rank(close))), 8.06882)), Ts_Rank(decay_linear(correlation(Ts_Rank(close, 8.44728), Ts_Rank(adv60, 20.6966), 8.01266), 6.65053), 2.61957))",
+      "inputs": [
+        "close",
+        "open",
+        "high",
+        "low",
+        "adv60"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A089",
+      "name_zh": "Alpha101 #89",
+      "name_en": "Alpha#89",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "(Ts_Rank(decay_linear(correlation(((low * 0.967285) + (low * (1 - 0.967285))), adv10, 6.94279), 5.51607), 3.79744) - Ts_Rank(decay_linear(delta(IndNeutralize(vwap, IndClass.industry), 3.48158), 10.1466), 15.3012))",
+      "inputs": [
+        "low",
+        "vwap",
+        "adv10"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A090",
+      "name_zh": "Alpha101 #90",
+      "name_en": "Alpha#90",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "((rank((close - ts_max(close, 4.66719)))^Ts_Rank(correlation(IndNeutralize(adv40, IndClass.subindustry), low, 5.38375), 3.21856)) * -1)",
+      "inputs": [
+        "close",
+        "low",
+        "adv40"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A091",
+      "name_zh": "Alpha101 #91",
+      "name_en": "Alpha#91",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "((Ts_Rank(decay_linear(decay_linear(correlation(IndNeutralize(close, IndClass.industry), volume, 9.74928), 16.398), 3.83219), 4.8667) - rank(decay_linear(correlation(vwap, adv30, 4.01303), 2.6809))) * -1)",
+      "inputs": [
+        "close",
+        "volume",
+        "vwap",
+        "adv30"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A092",
+      "name_zh": "Alpha101 #92",
+      "name_en": "Alpha#92",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "min(Ts_Rank(decay_linear(((((high + low) / 2) + close) < (low + open)), 14.7221), 18.8683), Ts_Rank(decay_linear(correlation(rank(low), rank(adv30), 7.58555), 6.94024), 6.80584))",
+      "inputs": [
+        "close",
+        "open",
+        "high",
+        "low",
+        "adv30"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A093",
+      "name_zh": "Alpha101 #93",
+      "name_en": "Alpha#93",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "(Ts_Rank(decay_linear(correlation(IndNeutralize(vwap, IndClass.industry), adv81, 17.4193), 19.848), 7.54455) / rank(decay_linear(delta(((close * 0.524434) + (vwap * (1 -0.524434))), 2.77377), 16.2664)))",
+      "inputs": [
+        "close",
+        "vwap",
+        "adv81"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A094",
+      "name_zh": "Alpha101 #94",
+      "name_en": "Alpha#94",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "((rank((vwap - ts_min(vwap, 11.5783)))^Ts_Rank(correlation(Ts_Rank(vwap, 19.6462), Ts_Rank(adv60, 4.02992), 18.0926), 2.70756)) * -1)",
+      "inputs": [
+        "vwap",
+        "adv60"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A095",
+      "name_zh": "Alpha101 #95",
+      "name_en": "Alpha#95",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "(rank((open - ts_min(open, 12.4105))) < Ts_Rank((rank(correlation(sum(((high + low) / 2), 19.1351), sum(adv40, 19.1351), 12.8742))^5), 11.7584))",
+      "inputs": [
+        "open",
+        "high",
+        "low",
+        "adv40"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A096",
+      "name_zh": "Alpha101 #96",
+      "name_en": "Alpha#96",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "(max(Ts_Rank(decay_linear(correlation(rank(vwap), rank(volume), 3.83878), 4.16783), 8.38151), Ts_Rank(decay_linear(Ts_ArgMax(correlation(Ts_Rank(close, 7.45404), Ts_Rank(adv60, 4.13242), 3.65459), 12.6556), 14.0365), 13.4143)) * -1)",
+      "inputs": [
+        "close",
+        "volume",
+        "vwap",
+        "adv60"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A097",
+      "name_zh": "Alpha101 #97",
+      "name_en": "Alpha#97",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "((rank(decay_linear(delta(IndNeutralize(((low * 0.721001) + (vwap * (1 - 0.721001))), IndClass.industry), 3.3705), 20.4523)) - Ts_Rank(decay_linear(Ts_Rank(correlation(Ts_Rank(low, 7.87871), Ts_Rank(adv60, 17.255), 4.97547), 18.5925), 15.7152), 6.71659)) * -1)",
+      "inputs": [
+        "low",
+        "vwap",
+        "adv60"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A098",
+      "name_zh": "Alpha101 #98",
+      "name_en": "Alpha#98",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "(rank(decay_linear(correlation(vwap, sum(adv5, 26.4719), 4.58418), 7.18088)) - rank(decay_linear(Ts_Rank(Ts_ArgMin(correlation(rank(open), rank(adv15), 20.8187), 8.62571), 6.95668), 8.07206)))",
+      "inputs": [
+        "open",
+        "vwap",
+        "adv5",
+        "adv15"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A099",
+      "name_zh": "Alpha101 #99",
+      "name_en": "Alpha#99",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "((rank(correlation(sum(((high + low) / 2), 19.8975), sum(adv60, 19.8975), 8.8136)) < rank(correlation(low, volume, 6.28259))) * -1)",
+      "inputs": [
+        "high",
+        "low",
+        "volume",
+        "adv60"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A100",
+      "name_zh": "Alpha101 #100",
+      "name_en": "Alpha#100",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "(0 - (1 * (((1.5 * scale(indneutralize(indneutralize(rank(((((close - low) - (high - close)) / (high - low)) * volume)), IndClass.subindustry), IndClass.subindustry))) - scale(indneutralize((correlation(close, rank(adv20), 5) - rank(ts_argmin(close, 30))), IndClass.subindustry))) * (volume / adv20))))",
+      "inputs": [
+        "close",
+        "high",
+        "low",
+        "volume",
+        "adv20"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    },
+    {
+      "factor_id": "A101",
+      "name_zh": "Alpha101 #101",
+      "name_en": "Alpha#101",
+      "category": "Alpha101",
+      "source": "Kakushadze, 101 Formulaic Alphas (2016)",
+      "formula_or_rule": "((close - open) / ((high - low) + .001))",
+      "inputs": [
+        "close",
+        "open",
+        "high",
+        "low"
+      ],
+      "status": "LIBRARY",
+      "tags": [
+        "worldquant",
+        "alpha101",
+        "formulaic"
+      ]
+    }
+  ]
+}

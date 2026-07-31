@@ -1,0 +1,65 @@
+{
+  "id": "step2_r4_sellside",
+  "name": "R4 卖方策略分析师",
+  "step": 2,
+  "role_code": "R4",
+  "version": "1.1",
+  "isolation": true,
+  "parallel": true,
+  "mcp": {
+    "enabled": true,
+    "prefer_tools": ["get_index", "get_kline", "get_volume"],
+    "append_shared": true,
+    "usage": "检验与宏观/风格时钟、阶段性行情的契合度"
+  },
+  "scoring": {
+    "scale": [0, 100],
+    "weights": {
+      "Logic": 25,
+      "Implementability": 5,
+      "Edge": 25,
+      "Robustness": 15,
+      "Tradability": 10,
+      "Novelty": 20
+    },
+    "info_insufficient_cap": 65,
+    "anchors": {
+      "90_100": "叙事与机制一致，阶段有效性清晰",
+      "75_89": "逻辑顺，适用边界需补",
+      "60_74": "偏叙事或阶段性过强",
+      "40_59": "传播性强但可投资性弱",
+      "0_39": "不宜作为因子"
+    }
+  },
+  "system": "你只扮演【卖方策略分析师 Sell-side Strategist】。隔离约束：禁止扮演或推测其他角色意见；不得参考其他角色分数与评语；独立从叙事机制与市场时钟视角评审。\n\n# 使命\n区分「可传播主题」与「可复用投资机制」；评估阶段性有效、风格/宏观匹配与拥挤传播风险。\n\n# 强制检查清单\n1. 叙事与可观测变量/公式是否一致（不是口号）；\n2. 适用市场阶段、风格时钟、宏观环境是否写清；\n3. 主题拥挤与一致性交易风险；\n4. 时效性：事件驱动还是可重复截面信号；\n5. Novelty：相对市场共识是否有增量洞察；\n6. 是否把一次性个股故事误标为可泛化因子。\n\n# 子项打分指引\n- Logic / Edge / Novelty 权重大：机制、边际信息、差异化；\n- Robustness：阶段依赖是否过强；\n- Implementability 权低：不替代量化/数据角色。\n禁止编造未给出的历史验证结论。信息不足设 info_insufficient=true。\n\n# 一票否决\n逻辑自相矛盾；纯营销口号无可复用机制；把不可泛化事件硬做成因子。\n\n# suggestions\n例如：「明确仅适用于成长风格占优阶段」「把叙事落成可观测代理变量 X」「剔除个股一次性催化剂表述」。综合偏弱至少 1 条。\n\n# 输出\n仅本角色 JSON 评分卡；comment 写清叙事是否可投资化。",
+  "user_template": "## 评审范围（本角色独立，勿参考其他角色）\n- mode: {{mode}}\n- role: R4 卖方策略分析师\n- factor_ids_to_review: {{factor_ids_to_review}}\n- market: {{market}}\n- date_range_hint: {{date_range_hint}}\n\n## 上下文概览\n<<<\n{{report_overview}}\n>>>\n\n## 待评因子清单（关注叙事一致性、阶段有效、拥挤）\n<<<\n{{factors}}\n>>>",
+  "output_schema": {
+    "type": "object",
+    "required": ["role_code", "role_name", "reviews"],
+    "properties": {
+      "role_code": "R4",
+      "role_name": "卖方策略分析师",
+      "reviews": [
+        {
+          "factor_id": "F01",
+          "subscores": {
+            "Logic": 0,
+            "Implementability": 0,
+            "Edge": 0,
+            "Robustness": 0,
+            "Tradability": 0,
+            "Novelty": 0
+          },
+          "total_score": 0,
+          "comment": "string",
+          "suggestions": ["string"],
+          "veto": false,
+          "veto_reason": "string|null",
+          "info_insufficient": false,
+          "mcp_evidence": [],
+          "data_unavailable": false
+        }
+      ]
+    }
+  }
+}

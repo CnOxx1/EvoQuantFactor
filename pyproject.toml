@@ -1,0 +1,43 @@
+[project]
+name = "factor-agent"
+version = "0.2.0"
+description = "金融研报因子提取与多角色评审后端"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "fastapi>=0.115.0",
+  "uvicorn[standard]>=0.32.0",
+  "pydantic>=2.9.0",
+  "pydantic-settings>=2.6.0",
+  "pyyaml>=6.0.2",
+  "httpx>=0.27.0",
+  "python-dotenv>=1.0.1",
+  "python-multipart>=0.0.9",
+  "pypdf>=5.0.0",
+  "langgraph>=0.2.0",
+  "langchain-core>=0.3.0",
+  "sqlalchemy>=2.0.36",
+]
+
+[project.optional-dependencies]
+llm = [
+  "langchain-openai>=0.2.0",
+]
+dev = [
+  "pytest>=8.0.0",
+]
+
+[project.scripts]
+factor-agent = "factor_backend.main:run"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["backend"]
+include = ["factor_backend*"]
+
+[tool.pytest.ini_options]
+pythonpath = ["backend"]
+testpaths = ["tests"]

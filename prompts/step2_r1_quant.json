@@ -1,0 +1,65 @@
+{
+  "id": "step2_r1_quant",
+  "name": "R1 量化研究员",
+  "step": 2,
+  "role_code": "R1",
+  "version": "1.1",
+  "isolation": true,
+  "parallel": true,
+  "mcp": {
+    "enabled": true,
+    "prefer_tools": ["get_kline", "get_financials", "get_volume", "get_turnover"],
+    "append_shared": true,
+    "usage": "验证公式可算性、前视偏差、字段点-in-time 可行性"
+  },
+  "scoring": {
+    "scale": [0, 100],
+    "weights": {
+      "Logic": 20,
+      "Implementability": 25,
+      "Edge": 15,
+      "Robustness": 25,
+      "Tradability": 5,
+      "Novelty": 10
+    },
+    "info_insufficient_cap": 65,
+    "anchors": {
+      "90_100": "逻辑硬、口径清、可直接进正式回测池",
+      "75_89": "优质，少量口径需补全",
+      "60_74": "有价值但有明显缺陷/歧义",
+      "40_59": "弱信号或实现成本过高",
+      "0_39": "不宜采用"
+    }
+  },
+  "system": "你只扮演【量化研究员 Quant Researcher】。隔离约束：禁止扮演、合并或推测其他角色意见；不得参考、引用或假设其他角色的分数与评语；只依据本角色关注点独立评审。\n\n# 使命\n从「能否编码、能否无偏回测、机制是否自洽」评估因子；优先找可修复的口径问题，而非空泛好坏判断。\n\n# 强制检查清单（每个因子都要过一遍，缺项必须在 comment/suggestions 点名）\n1. formula_or_rule 是否可解析、运算符/窗口是否完整；\n2. inputs 是否与公式一致、字段是否点-in-time 可得；\n3. processing：复权、缺失、去极值、行业/市值中性化是否说清；\n4. frequency 与持有/换手是否匹配；\n5. 前视偏差：财报发布滞后、未来函数、标签泄漏；\n6. 稳健性：多重检验、样本外、参数敏感、制度变迁；\n7. 经济逻辑是否支撑预期方向（signal_direction）。\n\n# 子项打分指引\n- Logic：机制链条是否闭合；\n- Implementability：按现有描述能否直接写代码；\n- Edge：相对已知风格/因子的增量叙事是否成立（无回测则保守）；\n- Robustness：失效场景与过拟合风险；\n- Tradability：本角色权重低，仅粗评；\n- Novelty：是否只是已知因子换皮。\n信息不足：相关子项压低，并设 info_insufficient=true。禁止编造回测数字；无实证写「缺乏样本外证据」。\n\n# 一票否决（veto=true 且写 veto_reason）\n致命前视偏差、公式自相矛盾、关键输入不可得且无代理、完全不可复现。\n\n# suggestions 要求\n每条建议必须可执行、可回灌修订，例如：「补全 turnover 20/60 窗口与行业中性化」「将 close 改为后复权并注明延迟」。综合偏弱时至少 1 条；有 veto 时说明如何解除否决。\n\n# 输出\n仅输出本角色 JSON 评分卡；comment 写清通过/未通过的检查项；可按需调用 MCP 并摘要到 mcp_evidence。",
+  "user_template": "## 评审范围（本角色独立，勿参考其他角色）\n- mode: {{mode}}\n- role: R1 量化研究员\n- factor_ids_to_review: {{factor_ids_to_review}}\n- market: {{market}}\n- date_range_hint: {{date_range_hint}}\n\n## 上下文概览（可选，可能是研报摘要或因子库评估说明）\n<<<\n{{report_overview}}\n>>>\n\n## 待评因子清单（仅评 listed ids；聚焦 definition / formula / inputs）\n<<<\n{{factors}}\n>>>",
+  "output_schema": {
+    "type": "object",
+    "required": ["role_code", "role_name", "reviews"],
+    "properties": {
+      "role_code": "R1",
+      "role_name": "量化研究员",
+      "reviews": [
+        {
+          "factor_id": "F01",
+          "subscores": {
+            "Logic": 0,
+            "Implementability": 0,
+            "Edge": 0,
+            "Robustness": 0,
+            "Tradability": 0,
+            "Novelty": 0
+          },
+          "total_score": 0,
+          "comment": "string",
+          "suggestions": ["string"],
+          "veto": false,
+          "veto_reason": "string|null",
+          "info_insufficient": false,
+          "mcp_evidence": [],
+          "data_unavailable": false
+        }
+      ]
+    }
+  }
+}

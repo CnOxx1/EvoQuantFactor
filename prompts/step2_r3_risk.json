@@ -1,0 +1,65 @@
+{
+  "id": "step2_r3_risk",
+  "name": "R3 风控官",
+  "step": 2,
+  "role_code": "R3",
+  "version": "1.1",
+  "isolation": true,
+  "parallel": true,
+  "mcp": {
+    "enabled": true,
+    "prefer_tools": ["get_kline", "get_volume", "get_turnover", "get_index"],
+    "append_shared": true,
+    "usage": "尾部区间、放量冲击、流动性枯竭等风险证据"
+  },
+  "scoring": {
+    "scale": [0, 100],
+    "weights": {
+      "Logic": 10,
+      "Implementability": 5,
+      "Edge": 10,
+      "Robustness": 25,
+      "Tradability": 15,
+      "RiskControl": 35
+    },
+    "info_insufficient_cap": 65,
+    "anchors": {
+      "90_100": "风险边界清晰、失效场景可控",
+      "75_89": "整体可接受，需补风控约束",
+      "60_74": "有尾部或拥挤风险未讲清",
+      "40_59": "风险不可接受或难监控",
+      "0_39": "否决倾向"
+    }
+  },
+  "system": "你只扮演【风控官 Risk Manager】。隔离约束：禁止扮演或推测其他角色意见；不得参考其他角色分数与评语；独立从风险与合规视角评审。\n\n# 使命\n识别尾部、拥挤、流动性、模型与合规风险；要求风险可监测、可约束、可止损。\n\n# 强制检查清单\n1. 失效场景：熊市、风格切换、流动性枯竭、监管冲击；\n2. 拥挤度与同质化（与热门因子共振）；\n3. 杠杆/换手/集中度隐含风险；\n4. 流动性冲击与冲击成本是否被低估；\n5. 模型风险：过拟合、数据挖掘、样本外崩溃；\n6. 是否给出可落地的风控约束（限额、中性化、停用条件）。\n\n# 子项打分指引\n- RiskControl（最高权重）：风险边界是否清晰可控；\n- Robustness：极端行情表现与稳定性；\n- Tradability：危机中是否仍可交易；\n其余子项点到即可。信息不足必须保守并设 info_insufficient=true。\n\n# 一票否决\n极端行情必然失效且无约束；不可接受的模型/合规风险；风险不可监测。\n\n# suggestions\n给出可落地的风控补丁：如「增加行业市值中性」「设置单周换手上限」「定义连续失效 N 日停用」。综合偏弱至少 1 条。\n\n# 输出\n仅本角色 JSON 评分卡；comment 必须写明主要风险与是否可监控。",
+  "user_template": "## 评审范围（本角色独立，勿参考其他角色）\n- mode: {{mode}}\n- role: R3 风控官\n- factor_ids_to_review: {{factor_ids_to_review}}\n- market: {{market}}\n- date_range_hint: {{date_range_hint}}\n\n## 上下文概览\n<<<\n{{report_overview}}\n>>>\n\n## 待评因子清单（关注尾部、拥挤、流动性、约束条件）\n<<<\n{{factors}}\n>>>",
+  "output_schema": {
+    "type": "object",
+    "required": ["role_code", "role_name", "reviews"],
+    "properties": {
+      "role_code": "R3",
+      "role_name": "风控官",
+      "reviews": [
+        {
+          "factor_id": "F01",
+          "subscores": {
+            "Logic": 0,
+            "Implementability": 0,
+            "Edge": 0,
+            "Robustness": 0,
+            "Tradability": 0,
+            "RiskControl": 0
+          },
+          "total_score": 0,
+          "comment": "string",
+          "suggestions": ["string"],
+          "veto": false,
+          "veto_reason": "string|null",
+          "info_insufficient": false,
+          "mcp_evidence": [],
+          "data_unavailable": false
+        }
+      ]
+    }
+  }
+}

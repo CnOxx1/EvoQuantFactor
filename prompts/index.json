@@ -1,0 +1,70 @@
+{
+  "name": "因子提取多角色评审提示词包",
+  "version": "1.0",
+  "design_doc": "docs/因子提取评审流程设计.md",
+  "decision_rules": {
+    "save": "mean>=80 AND median>=75 AND veto==false",
+    "revise_scope": "only low-score factors",
+    "rescore_scope": "only ChangedIds",
+    "max_round_default": 3
+  },
+  "agents": [
+    {
+      "file": "_shared_mcp.json",
+      "id": "shared_mcp",
+      "step": null
+    },
+    {
+      "file": "step1_extract.json",
+      "id": "step1_extract",
+      "step": 1
+    },
+    {
+      "file": "step1_optimize.json",
+      "id": "step1_optimize",
+      "step": 1,
+      "usage": "因子库优化任务的修订轮专用提示词"
+    },
+    {
+      "file": "step2_r1_quant.json",
+      "id": "step2_r1_quant",
+      "step": 2,
+      "parallel_group": "role_review"
+    },
+    {
+      "file": "step2_r2_pm.json",
+      "id": "step2_r2_pm",
+      "step": 2,
+      "parallel_group": "role_review"
+    },
+    {
+      "file": "step2_r3_risk.json",
+      "id": "step2_r3_risk",
+      "step": 2,
+      "parallel_group": "role_review"
+    },
+    {
+      "file": "step2_r4_sellside.json",
+      "id": "step2_r4_sellside",
+      "step": 2,
+      "parallel_group": "role_review"
+    },
+    {
+      "file": "step2_r5_data.json",
+      "id": "step2_r5_data",
+      "step": 2,
+      "parallel_group": "role_review"
+    },
+    {
+      "file": "step2_r6_head.json",
+      "id": "step2_r6_head",
+      "step": 2,
+      "parallel_group": "role_review"
+    },
+    {
+      "file": "step3_router.json",
+      "id": "step3_router",
+      "step": 3
+    }
+  ]
+}
