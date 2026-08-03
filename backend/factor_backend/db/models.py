@@ -106,7 +106,7 @@ class LlmConfigRow(Base):
     api_key: Mapped[str] = mapped_column(Text, default="")
     model_step1: Mapped[str] = mapped_column(String(128), default="gpt-4o")
     model_review: Mapped[str] = mapped_column(String(128), default="gpt-4o-mini")
-    timeout_sec: Mapped[float] = mapped_column(Float, default=120.0)
+    timeout_sec: Mapped[float] = mapped_column(Float, default=300.0)
     max_retries: Mapped[int] = mapped_column(Integer, default=2)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 

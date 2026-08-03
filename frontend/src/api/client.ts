@@ -218,6 +218,8 @@ export type SummarizeStatus = {
   retry_total?: number
   running?: number
   workers?: number
+  workers_configured?: number
+  workers_cap?: number
   last_error?: string | null
 }
 

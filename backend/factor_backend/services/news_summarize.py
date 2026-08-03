@@ -44,14 +44,24 @@ STATUS_FAILED = "failed"
 STATUS_SKIPPED = "skipped"
 
 
+def _desired_worker_count(settings=None) -> int:
+    settings = settings or get_settings()
+    cap = max(1, int(getattr(settings, "news_summarize_workers_cap", 32) or 32))
+    return max(1, min(cap, int(settings.news_summarize_workers or 1)))
+
+
 def get_summarize_status() -> dict[str, Any]:
+    settings = get_settings()
     with _stats_lock:
         st = dict(_stats)
     st["queue_depth"] = _queue.qsize()
     with _pending_lock:
         st["pending_unique"] = len(_pending_ids)
-    st["enabled"] = bool(get_settings().news_summarize_enabled)
-    st["workers"] = len([t for t in _threads if t.is_alive()])
+    st["enabled"] = bool(settings.news_summarize_enabled)
+    alive = len([t for t in _threads if t.is_alive()])
+    st["workers"] = alive
+    st["workers_configured"] = _desired_worker_count(settings)
+    st["workers_cap"] = max(1, int(getattr(settings, "news_summarize_workers_cap", 32) or 32))
     return st
 
 
@@ -271,21 +281,46 @@ def _worker_loop(worker_id: int) -> None:
 
 
 def ensure_news_summarize_workers() -> None:
+    """按配置启动摘要 worker；已启动时可向上扩容（缩容需重启）。"""
     global _started
     with _start_lock:
-        if _started:
-            return
-        _stop.clear()
         settings = get_settings()
-        n = max(1, min(4, int(settings.news_summarize_workers)))
+        desired = _desired_worker_count(settings)
         with _stats_lock:
             _stats["queue_max"] = max(10, int(settings.news_summarize_queue_max))
-        for i in range(n):
-            t = threading.Thread(target=_worker_loop, args=(i + 1,), name=f"news-summarize-{i + 1}", daemon=True)
+
+        alive = [t for t in _threads if t.is_alive()]
+        if len(alive) != len(_threads):
+            _threads[:] = alive
+
+        if not _started:
+            _stop.clear()
+            for i in range(desired):
+                wid = i + 1
+                t = threading.Thread(
+                    target=_worker_loop, args=(wid,), name=f"news-summarize-{wid}", daemon=True
+                )
+                t.start()
+                _threads.append(t)
+            _started = True
+            logger.info(
+                "news summarize workers started n=%s (cap=%s)",
+                desired,
+                getattr(settings, "news_summarize_workers_cap", 32),
+            )
+            return
+
+        current = len(_threads)
+        if desired <= current:
+            return
+        for i in range(current, desired):
+            wid = i + 1
+            t = threading.Thread(
+                target=_worker_loop, args=(wid,), name=f"news-summarize-{wid}", daemon=True
+            )
             t.start()
             _threads.append(t)
-        _started = True
-        logger.info("news summarize workers started n=%s", n)
+        logger.info("news summarize workers scaled %s -> %s", current, desired)
 
 
 def start_news_summarize_workers() -> None:

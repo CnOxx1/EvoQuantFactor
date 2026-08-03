@@ -100,7 +100,7 @@ const form = reactive<any>({
   api_key_masked: '',
   model_step1: '',
   model_review: '',
-  timeout_sec: 120,
+  timeout_sec: 300,
 })
 
 const baseUrlPlaceholder = computed(() => {

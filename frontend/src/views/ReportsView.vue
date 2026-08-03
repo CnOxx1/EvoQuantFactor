@@ -147,14 +147,12 @@ import type { DataTableColumns, PaginationProps } from 'naive-ui'
 import {
   backfillReportTitles,
   collectReportsRun,
-  collectReportsStatus,
   createJobFromReport,
   getReportContent,
   listReports,
   refetchReportPdf,
   summarizeReport,
   summarizeReportsBackfill,
-  type CollectStatus,
   type ReportContent,
   type ReportItem,
 } from '@/api/client'
@@ -189,7 +187,6 @@ const pageSize = ref(20)
 const query = ref('')
 const source = ref<string | null>(null)
 const suitability = ref<string | null>(null)
-const status = ref<CollectStatus | null>(null)
 
 const drawerShow = ref(false)
 const contentLoading = ref(false)
@@ -391,16 +388,6 @@ const columns: DataTableColumns<ReportItem> = [
   },
 ]
 
-async function loadStatus() {
-  try {
-    const { data } = await collectReportsStatus()
-    status.value = data
-    notifyCollectorStatus(data)
-  } catch {
-    status.value = null
-  }
-}
-
 async function load() {
   loading.value = true
   try {
@@ -413,7 +400,6 @@ async function load() {
     })
     rows.value = data.items
     total.value = data.total
-    await loadStatus()
   } catch (e: any) {
     notify.error(e?.response?.data?.detail || e.message || '加载失败')
   } finally {
@@ -467,7 +453,6 @@ async function onSync() {
   syncing.value = true
   try {
     const { data } = await collectReportsRun()
-    status.value = data
     notifyCollectorStatus(data, { forcePopup: true })
     await load()
   } catch (e: any) {

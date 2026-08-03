@@ -54,7 +54,7 @@ def get_llm_config() -> LlmRuntimeConfig:
                 api_key=settings.llm_api_key,
                 model_step1=settings.llm_model_step1,
                 model_review=settings.llm_model_review,
-                timeout_sec=120.0,
+                timeout_sec=300.0,
                 max_retries=2,
             )
         return LlmRuntimeConfig(
@@ -65,7 +65,7 @@ def get_llm_config() -> LlmRuntimeConfig:
             api_key=row.api_key or "",
             model_step1=row.model_step1 or settings.llm_model_step1,
             model_review=row.model_review or settings.llm_model_review,
-            timeout_sec=float(row.timeout_sec or 120),
+            timeout_sec=float(row.timeout_sec or 300),
             max_retries=int(row.max_retries or 2),
         )
 

@@ -67,12 +67,13 @@ class Settings(BaseSettings):
     luobo_collect_feeds: bool = True
     luobo_collect_reports: bool = True
 
-    # 资讯入库后自动 LLM 摘要（非因子流水线）
+    # 资讯入库后自动 LLM 摘要（非因子流水线；多 worker = 多路并行 LLM/Cursor agent）
     news_summarize_enabled: bool = True
     news_summarize_max_chars: int = 24000
-    news_summarize_workers: int = 2
-    news_summarize_queue_max: int = 200
+    news_summarize_workers: int = 8
+    news_summarize_queue_max: int = 500
     news_summarize_max_retries: int = 2
+    news_summarize_workers_cap: int = 32  # 安全上限，防止误配过大
 
     # 采集优化：每轮自动重抓 incomplete PDF 条数；跨源指纹去重
     report_collector_pdf_refetch_limit: int = 5
