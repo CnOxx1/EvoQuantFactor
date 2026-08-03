@@ -30,7 +30,11 @@
         <n-data-table :columns="factorCols" :data="factors" size="small" :bordered="true">
           <template #empty>
             <div class="empty-tip">
-              {{ job.status === 'succeeded' ? '暂无已保存因子' : '任务完成后展示最终因子公式' }}
+              {{
+                job.status === 'succeeded'
+                  ? '暂无因子（未提取到公式，或结果尚未回写）'
+                  : '任务完成后展示最终/候选因子公式'
+              }}
             </div>
           </template>
         </n-data-table>
@@ -70,6 +74,12 @@ const factorCols: DataTableColumns<FactorFormula> = [
   { title: 'ID', key: 'factor_id', width: 70 },
   { title: '名称', key: 'name_zh' },
   { title: '类别', key: 'category', width: 100 },
+  {
+    title: '状态',
+    key: 'status',
+    width: 100,
+    render: (row) => (row.status === 'SAVE' ? 'SAVE' : row.status === 'DROP' || row.status === 'CANDIDATE' ? '淘汰' : row.status),
+  },
   { title: '因子公式', key: 'formula_or_rule', ellipsis: { tooltip: true } },
   { title: '评分', key: 'final_score', width: 70 },
   { title: '中位分', key: 'median_score', width: 70 },

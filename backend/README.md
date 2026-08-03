@@ -24,14 +24,20 @@
 | GET | `/api/v1/meta` | 门槛、角色、提示词等元信息 |
 | POST | `/api/v1/reports` | 上传研报（文件或纯文本） |
 | GET | `/api/v1/reports/{report_id}` | 研报元信息 |
+| GET | `/api/v1/reports/{report_id}/content` | 原文 + 资讯摘要 |
+| POST | `/api/v1/reports/collect/run` | 手动触发多源采集 |
+| GET | `/api/v1/reports/collect/status` | 采集状态 |
 | POST | `/api/v1/jobs` | 基于 report_id / 文本创建分析任务 |
 | POST | `/api/v1/jobs/from-upload` | 上传并创建任务 |
 | GET | `/api/v1/jobs` | 任务列表 |
 | GET | `/api/v1/jobs/{job_id}` | 任务状态与摘要 |
-| GET | `/api/v1/jobs/{job_id}/factors` | **最终因子公式**（SAVE） |
+| GET | `/api/v1/jobs/{job_id}/factors` | 因子公式（SAVE + 淘汰，默认含 candidates） |
 | GET | `/api/v1/jobs/{job_id}/steps` | **逐步记录列表** |
 | GET | `/api/v1/jobs/{job_id}/steps/{step_id}` | 单步详情 |
 | GET | `/api/v1/jobs/{job_id}/result` | 完整结果包（因子+步骤摘要+落选） |
+| POST | `/api/v1/jobs/{job_id}/rerun` | 再次分析 |
+| GET | `/api/v1/factor-library/packs` | 因子库包：alpha101 / workspace / dropped |
+| GET | `/api/v1/factor-library/{pack_id}/factors` | 因子库分页搜索 |
 
 ## 任务状态
 
@@ -72,3 +78,9 @@ uvicorn factor_backend.main:app --reload --port 8080
 ```
 
 （`factor_backend` 包位于 `backend/factor_backend`。）
+
+## 资讯采集
+
+后端启动时若 `REPORT_COLLECTOR_ENABLED=true`，会按 `REPORT_COLLECTOR_INTERVAL_SEC`（默认 600s）定时拉取多源资讯；也可 `POST /api/v1/reports/collect/run`。入库后自动资讯摘要，不自动跑因子图。
+
+详见仓库 [docs/资讯分析与采集.md](../docs/资讯分析与采集.md)。

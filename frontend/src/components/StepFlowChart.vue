@@ -163,14 +163,33 @@ function groupByRound(list: StepSummary[]) {
     let r = Number(s.round || 0)
     if (s.step_type === 'ingest') r = 0
     if (s.step_type === 'persist') r = 99
+    if (s.step_type === 'error') r = 0
     if (!map.has(r)) map.set(r, [])
     map.get(r)!.push(s)
   }
   return [...map.entries()].sort((a, b) => a[0] - b[0])
 }
 
+/** 按「自动重试」切开多次尝试，避免不同尝试的相同 round 叠在同一泳道 */
+function splitAttempts(list: StepSummary[]): StepSummary[][] {
+  const sorted = [...list].sort((a, b) => a.seq - b.seq)
+  if (!sorted.length) return []
+  const attempts: StepSummary[][] = [[]]
+  for (const s of sorted) {
+    const isRetry =
+      s.step_type === 'error' && (s.status === 'retry' || /重试/.test(s.title || '') || /重试/.test(s.summary || ''))
+    if (isRetry && attempts[attempts.length - 1].length > 0) {
+      attempts.push([s])
+      continue
+    }
+    attempts[attempts.length - 1].push(s)
+  }
+  return attempts.filter((a) => a.length > 0)
+}
+
 type RoundLane = {
   round: number
+  attempt: number
   title: string
   nodes: FlowNode[]
   edges: FlowEdge[]
@@ -179,151 +198,177 @@ type RoundLane = {
   y0: number
 }
 
+const showAllAttempts = ref(false)
+
 const layout = computed(() => {
   const sorted = [...(props.steps || [])].sort((a, b) => a.seq - b.seq)
+  const attempts = splitAttempts(sorted)
+  const attemptCount = attempts.length
+  const visibleAttempts = showAllAttempts.value || attemptCount <= 1 ? attempts : [attempts[attemptCount - 1]]
+  const attemptOffset = showAllAttempts.value || attemptCount <= 1 ? 0 : attemptCount - 1
+
   const lanes: RoundLane[] = []
   let yCursor = PAD_Y
   let contentMaxW = 0
 
-  for (const [round, steps] of groupByRound(sorted)) {
-    const title = round === 0 ? '准备' : round === 99 ? '落盘' : `第 ${round} 轮`
+  visibleAttempts.forEach((attemptSteps, visibleIdx) => {
+    const attemptNo = attemptOffset + visibleIdx + 1
+    for (const [round, steps] of groupByRound(attemptSteps)) {
+      const baseTitle = round === 0 ? '准备' : round === 99 ? '落盘' : `第 ${round} 轮`
+      const title =
+        attemptCount > 1
+          ? showAllAttempts.value
+            ? `尝试 ${attemptNo} · ${baseTitle}`
+            : `${baseTitle}`
+          : baseTitle
 
-    type Stage =
-      | { kind: 'one'; step: StepSummary }
-      | { kind: 'roles'; steps: StepSummary[] }
-    const stages: Stage[] = []
-    for (let i = 0; i < steps.length; ) {
-      if (steps[i].step_type === 'step2_review') {
-        const g: StepSummary[] = []
-        while (i < steps.length && steps[i].step_type === 'step2_review') {
-          g.push(steps[i])
+      type Stage =
+        | { kind: 'one'; step: StepSummary }
+        | { kind: 'roles'; steps: StepSummary[] }
+      const stages: Stage[] = []
+      for (let i = 0; i < steps.length; ) {
+        if (steps[i].step_type === 'step2_review') {
+          const g: StepSummary[] = []
+          while (i < steps.length && steps[i].step_type === 'step2_review') {
+            g.push(steps[i])
+            i += 1
+          }
+          stages.push({ kind: 'roles', steps: g })
+        } else {
+          stages.push({ kind: 'one', step: steps[i] })
           i += 1
         }
-        stages.push({ kind: 'roles', steps: g })
-      } else {
-        stages.push({ kind: 'one', step: steps[i] })
-        i += 1
       }
-    }
 
-    let naturalW = PAD_X
-    for (const st of stages) {
-      if (st.kind === 'one') naturalW += MAIN_W + GAP_X
-      else naturalW += st.steps.length * ROLE_W + Math.max(0, st.steps.length - 1) * 8 + GAP_X
-    }
-    naturalW = naturalW - GAP_X + PAD_X
-    contentMaxW = Math.max(contentMaxW, naturalW)
+      let naturalW = PAD_X
+      for (const st of stages) {
+        if (st.kind === 'one') naturalW += MAIN_W + GAP_X
+        else naturalW += st.steps.length * ROLE_W + Math.max(0, st.steps.length - 1) * 8 + GAP_X
+      }
+      naturalW = naturalW - GAP_X + PAD_X
+      contentMaxW = Math.max(contentMaxW, naturalW)
 
-    const nodes: FlowNode[] = []
-    const edges: FlowEdge[] = []
-    const stageIds: string[][] = []
-    const contentY = yCursor + LABEL_H
-    let x = PAD_X
-    const roleInnerGap = 8
+      const nodes: FlowNode[] = []
+      const edges: FlowEdge[] = []
+      const stageIds: string[][] = []
+      const contentY = yCursor + LABEL_H
+      let x = PAD_X
+      const roleInnerGap = 8
 
-    for (const st of stages) {
-      if (st.kind === 'one') {
-        const s = st.step
-        const id = stepId(s)
-        nodes.push({
-          id,
-          label: typeLabel(s),
-          badge: nodeBadge(s),
-          hint: nodeHint(s),
-          status: s.status,
-          stepType: s.step_type,
-          seq: s.seq,
-          round,
-          x,
-          y: contentY,
-          w: MAIN_W,
-          h: MAIN_H,
-          kind: 'main',
-          factorIds: factorIdsOf(s),
-        })
-        stageIds.push([id])
-        x += MAIN_W + GAP_X
-      } else {
-        const ids: string[] = []
-        let rx = x
-        for (const s of st.steps) {
+      for (const st of stages) {
+        if (st.kind === 'one') {
+          const s = st.step
           const id = stepId(s)
-          const code = s.role_code || 'R?'
           nodes.push({
             id,
-            label: code,
-            badge: roleShort(s),
+            label: typeLabel(s),
+            badge: nodeBadge(s),
             hint: nodeHint(s),
             status: s.status,
             stepType: s.step_type,
             seq: s.seq,
             round,
-            x: rx,
-            y: contentY + (MAIN_H - ROLE_H) / 2,
-            w: ROLE_W,
-            h: ROLE_H,
-            kind: 'role',
+            x,
+            y: contentY,
+            w: MAIN_W,
+            h: MAIN_H,
+            kind: 'main',
             factorIds: factorIdsOf(s),
           })
-          ids.push(id)
-          rx += ROLE_W + roleInnerGap
+          stageIds.push([id])
+          x += MAIN_W + GAP_X
+        } else {
+          const ids: string[] = []
+          let rx = x
+          for (const s of st.steps) {
+            const id = stepId(s)
+            const code = s.role_code || 'R?'
+            nodes.push({
+              id,
+              label: code,
+              badge: roleShort(s),
+              hint: nodeHint(s),
+              status: s.status,
+              stepType: s.step_type,
+              seq: s.seq,
+              round,
+              x: rx,
+              y: contentY + (MAIN_H - ROLE_H) / 2,
+              w: ROLE_W,
+              h: ROLE_H,
+              kind: 'role',
+              factorIds: factorIdsOf(s),
+            })
+            ids.push(id)
+            rx += ROLE_W + roleInnerGap
+          }
+          stageIds.push(ids)
+          x = rx - roleInnerGap + GAP_X
         }
-        stageIds.push(ids)
-        x = rx - roleInnerGap + GAP_X
       }
-    }
 
-    for (let i = 1; i < stageIds.length; i++) {
-      const prev = stageIds[i - 1]
-      const curr = stageIds[i]
-      if (prev.length === 1 && curr.length > 1) {
-        curr.forEach((to) => edges.push({ from: prev[0], to }))
-      } else if (prev.length > 1 && curr.length === 1) {
-        prev.forEach((from) => edges.push({ from, to: curr[0] }))
-      } else if (prev.length > 1 && curr.length > 1) {
-        edges.push({
-          from: prev[Math.floor(prev.length / 2)],
-          to: curr[Math.floor(curr.length / 2)],
-        })
-      } else {
-        edges.push({ from: prev[0], to: curr[0] })
+      for (let si = 0; si < stageIds.length - 1; si++) {
+        const fromIds = stageIds[si]
+        const toIds = stageIds[si + 1]
+        // 主链路：上一阶段末节点 → 下一阶段首节点；角色组用中位连接到下一主节点
+        if (fromIds.length === 1 && toIds.length === 1) {
+          edges.push({ from: fromIds[0], to: toIds[0] })
+        } else if (fromIds.length === 1 && toIds.length > 1) {
+          for (const t of toIds) edges.push({ from: fromIds[0], to: t })
+        } else if (fromIds.length > 1 && toIds.length === 1) {
+          for (const f of fromIds) edges.push({ from: f, to: toIds[0] })
+        } else {
+          const mid = fromIds[Math.floor(fromIds.length / 2)]
+          for (const t of toIds) edges.push({ from: mid, to: t })
+        }
       }
+
+      const height = LABEL_H + MAIN_H + 8
+      lanes.push({
+        round,
+        attempt: attemptNo,
+        title,
+        nodes,
+        edges,
+        width: Math.max(naturalW, contentMaxW),
+        height,
+        y0: yCursor,
+      })
+      yCursor += height + ROUND_GAP
     }
+  })
 
-    const laneH = LABEL_H + MAIN_H + PAD_Y
-    lanes.push({
-      round,
-      title,
-      nodes,
-      edges,
-      width: Math.max(x - GAP_X + PAD_X, naturalW),
-      height: laneH,
-      y0: yCursor,
-    })
-    yCursor += laneH + ROUND_GAP
-  }
-
-  const canvasW = Math.max(contentMaxW, 720)
+  const height = Math.max(yCursor - ROUND_GAP + PAD_Y, 120)
+  const width = Math.max(contentMaxW, 640)
+  // 等比拉伸各泳道宽度到画布宽，避免右侧空一大截
   for (const lane of lanes) {
-    const minX = Math.min(...lane.nodes.map((n) => n.x), PAD_X)
-    const maxX = Math.max(...lane.nodes.map((n) => n.x + n.w), PAD_X)
-    const contentW = maxX - minX
-    const offset = Math.max(0, (canvasW - contentW) / 2 - minX)
-    if (offset > 0) lane.nodes.forEach((n) => (n.x += offset))
-    lane.width = canvasW
+    if (lane.nodes.length === 0) continue
+    const minX = Math.min(...lane.nodes.map((n) => n.x))
+    const maxX = Math.max(...lane.nodes.map((n) => n.x + n.w))
+    const span = maxX - minX
+    const target = width - PAD_X * 2
+    if (span > 0 && target > span) {
+      const scale = target / span
+      for (const n of lane.nodes) {
+        n.x = PAD_X + (n.x - minX) * scale
+      }
+    }
+    lane.width = width
   }
 
   return {
     lanes,
     allNodes: lanes.flatMap((l) => l.nodes),
-    width: canvasW,
-    height: Math.max(yCursor - ROUND_GAP + PAD_Y, 140),
+    width,
+    height,
+    attemptCount,
+    showingLatestOnly: attemptCount > 1 && !showAllAttempts.value,
   }
 })
 
 const nodeMap = computed(() => {
   const m = new Map<string, FlowNode>()
-  layout.value.allNodes.forEach((n) => m.set(n.id, n))
+  layout.value.lanes.flatMap((l) => l.nodes).forEach((n) => m.set(n.id, n))
   return m
 })
 
@@ -531,14 +576,26 @@ const stats = computed(() => {
         <span>共 {{ stats.total }} 步</span>
         <span v-if="stats.rounds">· {{ stats.rounds }} 轮</span>
         <span v-if="stats.reviews">· 评审 {{ stats.reviews }}</span>
+        <span v-if="layout.attemptCount > 1">· 含 {{ layout.attemptCount }} 次尝试</span>
       </div>
       <div class="legend">
+        <button
+          v-if="layout.attemptCount > 1"
+          type="button"
+          class="attempt-toggle"
+          @click="showAllAttempts = !showAllAttempts"
+        >
+          {{ showAllAttempts ? '只看最后一次' : '显示全部尝试' }}
+        </button>
         <span class="lg is-extract">提取</span>
         <span class="lg is-role">角色</span>
         <span class="lg is-gate">门槛</span>
         <span class="lg is-revise">修订</span>
         <span class="lg is-done">落盘</span>
       </div>
+    </div>
+    <div v-if="layout.showingLatestOnly" class="retry-hint">
+      任务曾自动重试；图中默认只展示最后一次完整流水线（每轮仅一次「回灌修订」）。可点右上角查看全部尝试。
     </div>
 
     <div v-if="!steps?.length" class="empty">暂无执行步骤</div>
@@ -556,7 +613,7 @@ const stats = computed(() => {
               <path d="M0,0 L7,3.5 L0,7 Z" fill="#94a3b8" />
             </marker>
           </defs>
-          <template v-for="lane in layout.lanes" :key="'e-' + lane.round">
+          <template v-for="lane in layout.lanes" :key="'e-' + lane.attempt + '-' + lane.round">
             <path
               v-for="(e, i) in lane.edges"
               :key="i"
@@ -569,7 +626,7 @@ const stats = computed(() => {
 
         <div
           v-for="lane in layout.lanes"
-          :key="'t-' + lane.round"
+          :key="'t-' + lane.attempt + '-' + lane.round"
           class="round-label"
           :style="{ top: lane.y0 + 'px', left: PAD_X + 'px' }"
         >
@@ -708,6 +765,25 @@ const stats = computed(() => {
   display: flex;
   gap: 8px;
   flex-wrap: wrap;
+  align-items: center;
+}
+.attempt-toggle {
+  border: 1px solid #c4b5fd;
+  background: #f5f3ff;
+  color: #6d28d9;
+  border-radius: 999px;
+  padding: 2px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.retry-hint {
+  margin: 0 0 10px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  background: #f5f3ff;
+  color: #5b21b6;
+  font-size: 12px;
+  line-height: 1.5;
 }
 .lg {
   font-size: 11px;

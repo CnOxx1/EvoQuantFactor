@@ -7,12 +7,12 @@ from factor_backend.db.models import PromptOverrideRow, get_session_factory, utc
 from factor_backend.services.prompt_loader import ROLE_FILES, PromptLoader
 
 
-PROMPT_KEYS = ["step1_extract", "step1_optimize", *ROLE_FILES.keys(), "_shared_mcp"]
+PROMPT_KEYS = ["step1_extract", "step1_optimize", *ROLE_FILES.keys(), "_shared_mcp", "news_summarize"]
 
 
 def _file_default(key: str) -> dict[str, Any]:
     loader = PromptLoader()
-    if key in ("step1_extract", "step1_optimize"):
+    if key in ("step1_extract", "step1_optimize", "news_summarize"):
         data = loader.load(f"{key}.json")
         return {
             "key": key,
@@ -174,6 +174,18 @@ def step1_runtime_prompt(prompt_key: str = "step1_extract") -> dict[str, Any]:
     return {
         "key": prompt_key,
         "system": system,
+        "user_template": cfg.get("user_template") or "",
+        "mcp": cfg.get("mcp") or {},
+        "source": cfg.get("source"),
+    }
+
+
+def news_runtime_prompt() -> dict[str, Any]:
+    """资讯摘要提示词（不追加 MCP 共用段）。"""
+    cfg = get_prompt_config("news_summarize")
+    return {
+        "key": "news_summarize",
+        "system": cfg.get("system") or "",
         "user_template": cfg.get("user_template") or "",
         "mcp": cfg.get("mcp") or {},
         "source": cfg.get("source"),

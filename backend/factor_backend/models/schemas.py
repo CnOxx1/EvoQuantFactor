@@ -45,6 +45,29 @@ class ReportOut(BaseModel):
     size_bytes: int
     created_at: str
     meta: dict[str, Any] = Field(default_factory=dict)
+    external_id: str | None = None
+    source: str | None = None
+    job_count: int = 0
+
+
+class ReportListOut(BaseModel):
+    total: int
+    offset: int
+    limit: int
+    items: list[ReportOut]
+
+
+class ReportContentOut(BaseModel):
+    report_id: str
+    title: str | None = None
+    filename: str
+    content: str
+    meta: dict[str, Any] = Field(default_factory=dict)
+    text_incomplete: bool = False
+    pdf_url: str | None = None
+    news_summary_status: str | None = None
+    news_summary: dict[str, Any] | None = None
+    news_summary_error: str | None = None
 
 
 class SeedFactorIn(BaseModel):

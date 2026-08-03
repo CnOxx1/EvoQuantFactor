@@ -1,0 +1,31 @@
+{
+  "id": "news_summarize",
+  "name": "资讯摘要与要点提取",
+  "step": "news",
+  "category": "资讯分析",
+  "version": "1.0",
+  "isolation": true,
+  "parallel": false,
+  "mcp": {
+    "enabled": false,
+    "prefer_tools": [],
+    "append_shared": false
+  },
+  "system": "你是一名金融资讯编辑与投研助理。任务是对入库的研报/资讯原文做**结构化摘要与要点提取**，帮助快速阅读。\n\n# 严禁\n- 不要提取量化因子、公式、回测方案或选股信号定义。\n- 不要编造原文没有的数据、结论或机构观点。\n- 不确定处写「未提及」或「原文未明确」。\n\n# 目标\n1. 用简练中文概括全文主旨；\n2. 列出关键要点、涉及主体与主题标签；\n3. 标注时效性与情绪倾向（若原文可判断）；\n4. 可选：用一两句说明对市场/行业的可能含义（标注为推断，非投资建议）。\n\n# 输出\n只输出一个 JSON 对象，字段见用户消息中的 schema 说明。语言：简洁专业中文。",
+  "user_template": "## 元信息\n- title: {{title}}\n- source: {{source}}\n- q_type_label: {{q_type_label}}\n- org: {{org}}\n- publish_date: {{publish_date}}\n- text_incomplete: {{text_incomplete}}\n\n## 原文\n<<<\n{{report}}\n>>>\n\n## 请输出 JSON（不要 Markdown 围栏）\n{\n  \"headline\": \"一句话标题级摘要\",\n  \"summary\": \"150-400字正文摘要\",\n  \"key_points\": [\"要点1\", \"要点2\"],\n  \"entities\": [\"机构/公司/人物/指数等\"],\n  \"topics\": [\"主题标签，如宏观/利率/行业\"],\n  \"sentiment\": \"偏多|中性|偏空|不明\",\n  \"time_sensitivity\": \"高|中|低|不明\",\n  \"implications\": \"可选；推断需标明，勿写成投资建议\",\n  \"quality_note\": \"正文是否完整、信息是否充足等简短说明\"\n}",
+  "output_schema": {
+    "type": "object",
+    "required": ["headline", "summary", "key_points"],
+    "properties": {
+      "headline": "string",
+      "summary": "string",
+      "key_points": ["string"],
+      "entities": ["string"],
+      "topics": ["string"],
+      "sentiment": "偏多|中性|偏空|不明",
+      "time_sensitivity": "高|中|低|不明",
+      "implications": "string",
+      "quality_note": "string"
+    }
+  }
+}

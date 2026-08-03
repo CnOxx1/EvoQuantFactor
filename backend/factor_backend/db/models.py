@@ -25,6 +25,8 @@ class ReportRow(Base):
     content: Mapped[str] = mapped_column(Text, default="")
     size_bytes: Mapped[int] = mapped_column(Integer, default=0)
     meta_json: Mapped[str] = mapped_column(Text, default="{}")
+    external_id: Mapped[str | None] = mapped_column(String(128), nullable=True, index=True)
+    source: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
 
@@ -181,6 +183,11 @@ def _sqlite_migrate(engine) -> None:
         llm_cols = {r[1] for r in conn.execute(text("PRAGMA table_info(llm_config)")).fetchall()}
         if llm_cols and "api_format" not in llm_cols:
             conn.execute(text("ALTER TABLE llm_config ADD COLUMN api_format VARCHAR(32) DEFAULT 'openai'"))
+        report_cols = {r[1] for r in conn.execute(text("PRAGMA table_info(reports)")).fetchall()}
+        if report_cols and "external_id" not in report_cols:
+            conn.execute(text("ALTER TABLE reports ADD COLUMN external_id VARCHAR(128)"))
+        if report_cols and "source" not in report_cols:
+            conn.execute(text("ALTER TABLE reports ADD COLUMN source VARCHAR(64)"))
         # ensure batches table exists via create_all already
 
 

@@ -48,11 +48,81 @@ class Settings(BaseSettings):
     job_timeout_sec: int = 1800  # 单任务默认 30 分钟
     job_failure_retries: int = 1  # 整图失败后再重试次数（不含首次）
 
+    # 研报/资讯自动采集（半自动：入库 + 资讯摘要，不自动建因子 job）
+    report_collector_enabled: bool = True
+    report_collector_interval_sec: int = 600
+    # 多源（逗号分隔）：eastmoney_report,eastmoney_news,luobo,wallstreetcn,sina,ths,jin10
+    report_collector_sources: str = (
+        "eastmoney_report,eastmoney_news,wallstreetcn,sina,ths,jin10,luobo"
+    )
+    report_collector_qtypes: str = "0,1,2,3"  # 个股/行业/策略/宏观
+    report_collector_news_columns: str = "350,344,355,354,351,353"  # 导读/股市/公司/宏观/产经/国际
+    report_collector_page_size: int = 20
+    report_collector_lookback_hours: int = 24
+    report_collector_request_gap_sec: float = 1.5
+
+    # 萝卜投研登录态（浏览器登录 robo.datayes.com 后从 Cookie 复制）
+    luobo_cloud_sso_token: str = ""
+    luobo_cookie: str = ""
+    luobo_collect_feeds: bool = True
+    luobo_collect_reports: bool = True
+
+    # 资讯入库后自动 LLM 摘要（非因子流水线）
+    news_summarize_enabled: bool = True
+    news_summarize_max_chars: int = 24000
+    news_summarize_workers: int = 2
+
     @property
     def use_mock_llm(self) -> bool:
         if self.llm_mock:
             return True
         return not bool(self.llm_api_key)
+
+    def report_collector_qtype_list(self) -> list[int]:
+        out: list[int] = []
+        for part in (self.report_collector_qtypes or "").split(","):
+            part = part.strip()
+            if not part:
+                continue
+            try:
+                out.append(int(part))
+            except ValueError:
+                continue
+        return out or [0, 1, 2, 3]
+
+    def report_collector_source_list(self) -> list[str]:
+        alias = {
+            "eastmoney": "eastmoney_report",
+            "datayes": "luobo",
+            "robo": "luobo",
+            "萝卜投研": "luobo",
+            "wscn": "wallstreetcn",
+            "华尔街见闻": "wallstreetcn",
+            "sina_finance": "sina",
+            "新浪": "sina",
+            "10jqka": "ths",
+            "同花顺": "ths",
+            "金十": "jin10",
+        }
+        out: list[str] = []
+        for part in (self.report_collector_sources or "").split(","):
+            part = part.strip().lower()
+            if not part:
+                continue
+            part = alias.get(part, part)
+            out.append(part)
+        return out or [
+            "eastmoney_report",
+            "eastmoney_news",
+            "wallstreetcn",
+            "sina",
+            "ths",
+            "jin10",
+            "luobo",
+        ]
+
+    def luobo_configured(self) -> bool:
+        return bool((self.luobo_cloud_sso_token or "").strip() or (self.luobo_cookie or "").strip())
 
 
 @lru_cache

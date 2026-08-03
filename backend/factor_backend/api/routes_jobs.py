@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 
 from factor_backend.api.deps import require_api_token
 from factor_backend.config import get_settings
@@ -218,7 +218,10 @@ def rerun_job(job_id: str) -> JobSummary:
 
 
 @router.get("/{job_id}/factors", response_model=list[FactorFormula])
-def get_factors(job_id: str) -> list[FactorFormula]:
+def get_factors(
+    job_id: str,
+    include_candidates: bool = Query(default=True, description="是否包含未过线候选因子"),
+) -> list[FactorFormula]:
     storage = get_storage()
     try:
         storage.get_job(job_id)
@@ -227,7 +230,13 @@ def get_factors(job_id: str) -> list[FactorFormula]:
     result = storage.get_result(job_id)
     if not result:
         raise HTTPException(409, "任务尚未完成或无结果")
-    return [FactorFormula(**f) for f in result.get("factors", [])]
+    out: list[FactorFormula] = [FactorFormula(**f) for f in result.get("factors", [])]
+    if include_candidates:
+        for f in result.get("candidates") or []:
+            if isinstance(f, dict):
+                out.append(FactorFormula(**{**f, "status": f.get("status") or "CANDIDATE"}))
+    return out
+
 
 
 def _step_view(s: dict) -> dict:

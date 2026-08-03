@@ -32,6 +32,13 @@ class LibraryFactorOut(BaseModel):
     inputs: list[str] = Field(default_factory=list)
     status: str = "LIBRARY"
     tags: list[str] = Field(default_factory=list)
+    job_id: str | None = None
+    origin_factor_id: str | None = None
+    final_score: float | None = None
+    economic_logic: str | None = None
+    signal_direction: str | None = None
+    frequency: str | None = None
+    reason: str | None = None
 
 
 class LibraryFactorsResponse(BaseModel):

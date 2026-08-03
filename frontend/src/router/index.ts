@@ -10,6 +10,7 @@ const router = createRouter({
       redirect: '/dashboard',
       children: [
         { path: 'dashboard', name: 'dashboard', component: () => import('@/views/DashboardView.vue'), meta: { title: '工作台' } },
+        { path: 'reports', name: 'reports', component: () => import('@/views/ReportsView.vue'), meta: { title: '资讯分析' } },
         { path: 'jobs', name: 'jobs', component: () => import('@/views/JobsView.vue'), meta: { title: '研报分析' } },
         { path: 'jobs/:id', name: 'job-detail', component: () => import('@/views/JobDetailView.vue'), meta: { title: '任务详情' } },
         { path: 'batches', name: 'batches', component: () => import('@/views/BatchesView.vue'), meta: { title: '批量任务' } },

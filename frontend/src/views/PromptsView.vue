@@ -3,7 +3,7 @@
     <div class="head">
       <div>
         <h2>提示词管理</h2>
-        <p class="sub">配置 Step1 提取/优化、六角色评审与 MCP 共用提示词；保存后写入覆盖层，可一键恢复文件默认。</p>
+        <p class="sub">按分类管理提示词：Step1、六角色评审、资讯分析、MCP 共用等；保存后写入覆盖层，可一键恢复文件默认。</p>
       </div>
       <n-space v-if="detail" align="center">
         <n-tag size="small" :type="detail.source === 'db_override' ? 'warning' : 'default'" :bordered="false">
@@ -92,7 +92,7 @@
 
               <n-tab-pane name="user" tab="User 模板">
                 <n-alert type="info" :bordered="false" style="margin-bottom: 10px">
-                  支持变量占位如 <code v-pre>{{report}}</code>、<code v-pre>{{factors}}</code>、<code v-pre>{{revise_packet}}</code>。
+                  支持变量占位如 <code v-pre>{{report}}</code>、<code v-pre>{{title}}</code>、<code v-pre>{{factors}}</code>。
                 </n-alert>
                 <n-input
                   v-model:value="draft.user_template"
@@ -236,6 +236,7 @@ const weightTotal = computed(() =>
 )
 
 function groupOf(key: string): string {
+  if (key.startsWith('news_') || key.startsWith('资讯')) return '资讯分析'
   if (key.startsWith('step1')) return 'Step1 提取 / 优化'
   if (/^R\d$/.test(key) || key.startsWith('step2')) return '六角色评审'
   if (key.includes('shared') || key.includes('mcp')) return '共用'
@@ -243,7 +244,7 @@ function groupOf(key: string): string {
   return '其他'
 }
 
-const GROUP_ORDER = ['Step1 提取 / 优化', '六角色评审', '门禁', '共用', '其他']
+const GROUP_ORDER = ['资讯分析', 'Step1 提取 / 优化', '六角色评审', '门禁', '共用', '其他']
 
 const grouped = computed(() => {
   const q = filter.value.trim().toLowerCase()

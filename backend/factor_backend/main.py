@@ -16,6 +16,8 @@ from factor_backend.api.routes_reports import router as reports_router
 from factor_backend.api.routes_system import router as system_router
 from factor_backend.config import get_settings
 from factor_backend.db.models import init_db
+from factor_backend.services.news_summarize import start_news_summarize_workers, stop_news_summarize_workers
+from factor_backend.services.report_ingest.collector import start_report_collector, stop_report_collector
 from factor_backend.services.worker import start_worker, stop_worker
 
 
@@ -27,7 +29,11 @@ async def lifespan(_app: FastAPI):
     init_db()
     if settings.worker_enabled:
         start_worker()
+    start_news_summarize_workers()
+    start_report_collector()
     yield
+    stop_report_collector()
+    stop_news_summarize_workers()
     stop_worker()
 
 

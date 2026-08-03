@@ -25,19 +25,78 @@ class Storage:
         meta: dict[str, Any] | None = None,
     ) -> dict[str, Any]:
         report_id = self.new_id("rpt")
+        meta = dict(meta or {})
+        external_id = meta.get("external_id")
+        source = meta.get("source")
         Session = get_session_factory()
         with Session() as db:
+            if external_id:
+                existing = db.scalar(select(ReportRow).where(ReportRow.external_id == str(external_id)).limit(1))
+                if existing:
+                    return self._report_dict(existing)
             row = ReportRow(
                 report_id=report_id,
                 title=title or filename.rsplit(".", 1)[0],
                 filename=filename,
                 content=content,
                 size_bytes=len(content.encode("utf-8")),
-                meta_json=json.dumps(meta or {}, ensure_ascii=False),
+                meta_json=json.dumps(meta, ensure_ascii=False),
+                external_id=str(external_id) if external_id else None,
+                source=str(source) if source else None,
             )
             db.add(row)
             db.commit()
             return self._report_dict(row)
+
+    def find_report_by_external_id(self, external_id: str) -> dict[str, Any] | None:
+        Session = get_session_factory()
+        with Session() as db:
+            row = db.scalar(select(ReportRow).where(ReportRow.external_id == external_id).limit(1))
+            return self._report_dict(row) if row else None
+
+    def list_reports(
+        self,
+        *,
+        limit: int = 50,
+        offset: int = 0,
+        q: str | None = None,
+        source: str | None = None,
+    ) -> dict[str, Any]:
+        from sqlalchemy import func, or_
+
+        Session = get_session_factory()
+        with Session() as db:
+            filters = []
+            if source:
+                filters.append(ReportRow.source == source)
+            if q and q.strip():
+                like = f"%{q.strip()}%"
+                filters.append(
+                    or_(
+                        ReportRow.title.like(like),
+                        ReportRow.filename.like(like),
+                        ReportRow.external_id.like(like),
+                        ReportRow.meta_json.like(like),
+                    )
+                )
+            count_q = select(func.count()).select_from(ReportRow)
+            list_q = select(ReportRow)
+            for f in filters:
+                count_q = count_q.where(f)
+                list_q = list_q.where(f)
+            total = int(db.scalar(count_q) or 0)
+            rows = db.scalars(
+                list_q.order_by(ReportRow.created_at.desc()).offset(max(0, offset)).limit(max(1, min(limit, 200)))
+            ).all()
+            items = []
+            for row in rows:
+                d = self._report_dict(row)
+                job_count = db.scalar(
+                    select(func.count()).select_from(JobRow).where(JobRow.report_id == row.report_id)
+                )
+                d["job_count"] = int(job_count or 0)
+                items.append(d)
+            return {"total": total, "offset": offset, "limit": limit, "items": items}
 
     def get_report_meta(self, report_id: str) -> dict[str, Any]:
         Session = get_session_factory()
@@ -55,14 +114,51 @@ class Storage:
                 raise FileNotFoundError(report_id)
             return row.content
 
+    def patch_report_meta(self, report_id: str, patch: dict[str, Any]) -> dict[str, Any]:
+        """合并写入 report.meta_json（浅合并顶层键）。"""
+        Session = get_session_factory()
+        with Session() as db:
+            row = db.get(ReportRow, report_id)
+            if not row:
+                raise FileNotFoundError(report_id)
+            meta = json.loads(row.meta_json or "{}")
+            meta.update(patch or {})
+            row.meta_json = json.dumps(meta, ensure_ascii=False)
+            db.commit()
+            return self._report_dict(row)
+
+    def update_report_content(
+        self,
+        report_id: str,
+        *,
+        content: str,
+        meta_patch: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        Session = get_session_factory()
+        with Session() as db:
+            row = db.get(ReportRow, report_id)
+            if not row:
+                raise FileNotFoundError(report_id)
+            row.content = content or ""
+            row.size_bytes = len((content or "").encode("utf-8"))
+            if meta_patch:
+                meta = json.loads(row.meta_json or "{}")
+                meta.update(meta_patch)
+                row.meta_json = json.dumps(meta, ensure_ascii=False)
+            db.commit()
+            return self._report_dict(row)
+
     def _report_dict(self, row: ReportRow) -> dict[str, Any]:
+        meta = json.loads(row.meta_json or "{}")
         return {
             "report_id": row.report_id,
             "title": row.title,
             "filename": row.filename,
             "size_bytes": row.size_bytes,
             "created_at": row.created_at.isoformat() if row.created_at else "",
-            "meta": json.loads(row.meta_json or "{}"),
+            "meta": meta,
+            "external_id": getattr(row, "external_id", None) or meta.get("external_id"),
+            "source": getattr(row, "source", None) or meta.get("source"),
         }
 
     def create_job(

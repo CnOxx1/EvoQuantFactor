@@ -34,33 +34,94 @@
               remote
               :row-key="(row: LibraryFactor) => row.factor_id"
               v-model:checked-row-keys="libraryChecked"
-              :row-props="() => ({ style: 'cursor: pointer' })"
               @update:page="onPageChange"
               @update:page-size="onPageSizeChange"
             />
           </n-card>
         </n-space>
       </n-tab-pane>
-      <n-tab-pane name="jobs" tab="任务产出">
+
+      <n-tab-pane name="workspace" tab="任务入库">
         <n-space vertical :size="12">
-          <n-space>
+          <n-alert type="info" :bordered="false">
+            过线保存（SAVE）的任务因子。淘汰因子请到「淘汰库」查看。
+          </n-alert>
+          <n-space align="center">
+            <n-input
+              v-model:value="wsQuery"
+              clearable
+              placeholder="搜索任务 ID / 名称 / 公式"
+              style="width: 300px"
+              @keyup.enter="() => reloadPack('workspace')"
+            />
+            <n-button type="primary" :loading="wsLoading" @click="() => reloadPack('workspace')">搜索</n-button>
+            <n-button quaternary :loading="wsLoading" @click="() => loadPack('workspace', true)">刷新</n-button>
             <n-button
               type="warning"
-              :disabled="!jobChecked.length"
+              :disabled="!wsChecked.length"
               :loading="optimizing"
-              @click="optimizeJobs"
+              @click="optimizePack('workspace', '任务入库')"
             >
-              优化因子{{ jobChecked.length ? ` (${jobChecked.length})` : '' }}
+              优化因子{{ wsChecked.length ? ` (${wsChecked.length})` : '' }}
             </n-button>
           </n-space>
           <n-card size="small">
             <n-data-table
-              :columns="jobColumns"
-              :data="jobRows"
-              :loading="jobLoading"
+              :columns="wsColumns"
+              :data="wsRows"
+              :loading="wsLoading"
               size="small"
-              :row-key="jobRowKey"
-              v-model:checked-row-keys="jobChecked"
+              :scroll-x="1200"
+              :pagination="wsPagination"
+              :paginate-single-page="false"
+              remote
+              :row-key="(row: LibraryFactor) => row.factor_id"
+              v-model:checked-row-keys="wsChecked"
+              @update:page="(p: number) => onPackPage('workspace', p)"
+              @update:page-size="(s: number) => onPackPageSize('workspace', s)"
+            />
+          </n-card>
+        </n-space>
+      </n-tab-pane>
+
+      <n-tab-pane name="dropped" tab="淘汰库">
+        <n-space vertical :size="12">
+          <n-alert type="warning" :bordered="false">
+            门槛淘汰（DROP）的因子，保留公式与淘汰原因，可勾选后再次优化。
+          </n-alert>
+          <n-space align="center">
+            <n-input
+              v-model:value="dropQuery"
+              clearable
+              placeholder="搜索任务 ID / 名称 / 淘汰原因"
+              style="width: 300px"
+              @keyup.enter="() => reloadPack('dropped')"
+            />
+            <n-button type="primary" :loading="dropLoading" @click="() => reloadPack('dropped')">搜索</n-button>
+            <n-button quaternary :loading="dropLoading" @click="() => loadPack('dropped', true)">刷新</n-button>
+            <n-button
+              type="warning"
+              :disabled="!dropChecked.length"
+              :loading="optimizing"
+              @click="optimizePack('dropped', '淘汰库')"
+            >
+              优化因子{{ dropChecked.length ? ` (${dropChecked.length})` : '' }}
+            </n-button>
+          </n-space>
+          <n-card size="small">
+            <n-data-table
+              :columns="dropColumns"
+              :data="dropRows"
+              :loading="dropLoading"
+              size="small"
+              :scroll-x="1400"
+              :pagination="dropPagination"
+              :paginate-single-page="false"
+              remote
+              :row-key="(row: LibraryFactor) => row.factor_id"
+              v-model:checked-row-keys="dropChecked"
+              @update:page="(p: number) => onPackPage('dropped', p)"
+              @update:page-size="(s: number) => onPackPageSize('dropped', s)"
             />
           </n-card>
         </n-space>
@@ -72,35 +133,92 @@
 <script setup lang="ts">
 import { computed, h, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
-import { NButton, NCard, NDataTable, NInput, NSpace, NTabPane, NTabs, useMessage } from 'naive-ui'
+import {
+  NAlert,
+  NButton,
+  NCard,
+  NDataTable,
+  NInput,
+  NSpace,
+  NTabPane,
+  NTabs,
+  NTag,
+  useMessage,
+} from 'naive-ui'
 import type { DataTableColumns, DataTableRowKey, PaginationProps } from 'naive-ui'
 import {
   createJobEvaluate,
-  getFactors,
   getLibraryFactors,
-  listJobs,
-  type FactorFormula,
   type LibraryFactor,
   type SeedFactorIn,
 } from '@/api/client'
 
-type JobFactorRow = FactorFormula & { job_id: string; _key: string }
+type PackId = 'workspace' | 'dropped'
 
 const message = useMessage()
 const router = useRouter()
-const tab = ref<'alpha101' | 'jobs'>('alpha101')
+const tab = ref<'alpha101' | PackId>('alpha101')
 const loading = ref(false)
-const jobLoading = ref(false)
+const wsLoading = ref(false)
+const dropLoading = ref(false)
 const optimizing = ref(false)
 const query = ref('')
+const wsQuery = ref('')
+const dropQuery = ref('')
 const libraryRows = ref<LibraryFactor[]>([])
+const wsRows = ref<LibraryFactor[]>([])
+const dropRows = ref<LibraryFactor[]>([])
 const total = ref(0)
+const wsTotal = ref(0)
+const dropTotal = ref(0)
 const page = ref(1)
 const pageSize = ref(20)
-const jobRows = ref<JobFactorRow[]>([])
+const wsPage = ref(1)
+const wsPageSize = ref(20)
+const dropPage = ref(1)
+const dropPageSize = ref(20)
 const libraryChecked = ref<DataTableRowKey[]>([])
-const jobChecked = ref<DataTableRowKey[]>([])
-let jobsLoaded = false
+const wsChecked = ref<DataTableRowKey[]>([])
+const dropChecked = ref<DataTableRowKey[]>([])
+const packLoaded: Record<PackId, boolean> = { workspace: false, dropped: false }
+
+function statusTag(status?: string) {
+  const type =
+    status === 'SAVE' ? 'success' : status === 'DROP' ? 'error' : status === 'CANDIDATE' ? 'warning' : 'default'
+  return h(NTag, { size: 'small', type, bordered: false }, () => status || '-')
+}
+
+function jobLink(row: LibraryFactor) {
+  return row.job_id
+    ? h(
+        NButton,
+        {
+          text: true,
+          type: 'primary',
+          size: 'small',
+          onClick: () => router.push(`/jobs/${row.job_id}`),
+        },
+        () => row.job_id,
+      )
+    : '-'
+}
+
+function actionBtn(row: LibraryFactor, packLabel: string) {
+  return h(
+    NButton,
+    {
+      text: true,
+      type: 'warning',
+      size: 'small',
+      loading: optimizing.value,
+      onClick: (e: MouseEvent) => {
+        e.stopPropagation()
+        optimizeOne(row, packLabel)
+      },
+    },
+    () => '优化因子',
+  )
+}
 
 const libraryColumns: DataTableColumns<LibraryFactor> = [
   { type: 'selection' },
@@ -115,58 +233,31 @@ const libraryColumns: DataTableColumns<LibraryFactor> = [
   },
   { title: '因子公式', key: 'formula_or_rule', ellipsis: { tooltip: true }, minWidth: 360 },
   { title: '来源', key: 'source', width: 180, ellipsis: { tooltip: true } },
-  {
-    title: '操作',
-    key: 'actions',
-    width: 100,
-    fixed: 'right',
-    render: (row) =>
-      h(
-        NButton,
-        {
-          text: true,
-          type: 'warning',
-          size: 'small',
-          loading: optimizing.value,
-          onClick: (e: MouseEvent) => {
-            e.stopPropagation()
-            optimizeOneLibrary(row)
-          },
-        },
-        () => '优化因子',
-      ),
-  },
+  { title: '操作', key: 'actions', width: 100, fixed: 'right', render: (row) => actionBtn(row, 'Alpha101') },
 ]
 
-const jobColumns: DataTableColumns<JobFactorRow> = [
+const wsColumns: DataTableColumns<LibraryFactor> = [
   { type: 'selection' },
-  { title: '任务', key: 'job_id', width: 160, ellipsis: { tooltip: true } },
-  { title: 'ID', key: 'factor_id', width: 70 },
-  { title: '名称', key: 'name_zh' },
+  { title: '状态', key: 'status', width: 90, render: (row) => statusTag(row.status) },
+  { title: '名称', key: 'name_zh', width: 140, ellipsis: { tooltip: true } },
+  { title: '原ID', key: 'origin_factor_id', width: 70 },
   { title: '类别', key: 'category', width: 90 },
-  { title: '因子公式', key: 'formula_or_rule', ellipsis: { tooltip: true } },
   { title: '评分', key: 'final_score', width: 70 },
-  {
-    title: '操作',
-    key: 'actions',
-    width: 100,
-    fixed: 'right',
-    render: (row) =>
-      h(
-        NButton,
-        {
-          text: true,
-          type: 'warning',
-          size: 'small',
-          loading: optimizing.value,
-          onClick: (e: MouseEvent) => {
-            e.stopPropagation()
-            optimizeOneJob(row)
-          },
-        },
-        () => '优化因子',
-      ),
-  },
+  { title: '因子公式', key: 'formula_or_rule', ellipsis: { tooltip: true }, minWidth: 320 },
+  { title: '任务', key: 'job_id', width: 150, ellipsis: { tooltip: true }, render: jobLink },
+  { title: '操作', key: 'actions', width: 100, fixed: 'right', render: (row) => actionBtn(row, '任务入库') },
+]
+
+const dropColumns: DataTableColumns<LibraryFactor> = [
+  { type: 'selection' },
+  { title: '状态', key: 'status', width: 80, render: (row) => statusTag(row.status || 'DROP') },
+  { title: '名称', key: 'name_zh', width: 140, ellipsis: { tooltip: true } },
+  { title: '原ID', key: 'origin_factor_id', width: 70 },
+  { title: '评分', key: 'final_score', width: 70 },
+  { title: '淘汰原因', key: 'reason', ellipsis: { tooltip: true }, minWidth: 220 },
+  { title: '因子公式', key: 'formula_or_rule', ellipsis: { tooltip: true }, minWidth: 280 },
+  { title: '任务', key: 'job_id', width: 150, ellipsis: { tooltip: true }, render: jobLink },
+  { title: '操作', key: 'actions', width: 100, fixed: 'right', render: (row) => actionBtn(row, '淘汰库') },
 ]
 
 const pagination = computed<PaginationProps>(() => ({
@@ -178,26 +269,29 @@ const pagination = computed<PaginationProps>(() => ({
   prefix: ({ itemCount }) => `共 ${itemCount ?? 0} 条`,
 }))
 
-function jobRowKey(row: JobFactorRow) {
-  return row._key
-}
+const wsPagination = computed<PaginationProps>(() => ({
+  page: wsPage.value,
+  pageSize: wsPageSize.value,
+  itemCount: wsTotal.value,
+  showSizePicker: true,
+  pageSizes: [10, 20, 50],
+  prefix: ({ itemCount }) => `共 ${itemCount ?? 0} 条`,
+}))
 
-function toSeed(f: {
-  factor_id: string
-  name_zh?: string
-  name_en?: string
-  category?: string
-  formula_or_rule?: string
-  inputs?: string[]
-  economic_logic?: string
-  signal_direction?: string
-  source?: string
-  frequency?: string
-}): SeedFactorIn | null {
+const dropPagination = computed<PaginationProps>(() => ({
+  page: dropPage.value,
+  pageSize: dropPageSize.value,
+  itemCount: dropTotal.value,
+  showSizePicker: true,
+  pageSizes: [10, 20, 50],
+  prefix: ({ itemCount }) => `共 ${itemCount ?? 0} 条`,
+}))
+
+function toSeed(f: LibraryFactor): SeedFactorIn | null {
   const formula = (f.formula_or_rule || '').trim()
   if (!formula) return null
   return {
-    factor_id: String(f.factor_id),
+    factor_id: String(f.origin_factor_id || f.factor_id),
     name_zh: f.name_zh || String(f.factor_id),
     name_en: f.name_en,
     category: f.category,
@@ -220,7 +314,8 @@ async function submitOptimize(factors: SeedFactorIn[], title: string) {
     const { data } = await createJobEvaluate({ factors, title })
     message.success(`已创建优化任务 ${data.job_id}`)
     libraryChecked.value = []
-    jobChecked.value = []
+    wsChecked.value = []
+    dropChecked.value = []
     router.push(`/jobs/${data.job_id}`)
   } catch (e: any) {
     message.error(e?.response?.data?.detail || e.message || '创建优化任务失败')
@@ -235,28 +330,21 @@ async function optimizeLibrary() {
   await submitOptimize(seeds, `优化因子 · Alpha101 · ${seeds.length} 个`)
 }
 
-async function optimizeJobs() {
-  const selected = jobRows.value.filter((r) => jobChecked.value.includes(r._key))
+async function optimizePack(pack: PackId, label: string) {
+  const rows = pack === 'workspace' ? wsRows.value : dropRows.value
+  const checked = pack === 'workspace' ? wsChecked.value : dropChecked.value
+  const selected = rows.filter((r) => checked.includes(r.factor_id))
   const seeds = selected.map(toSeed).filter((x): x is SeedFactorIn => !!x)
-  await submitOptimize(seeds, `优化因子 · 任务产出 · ${seeds.length} 个`)
+  await submitOptimize(seeds, `优化因子 · ${label} · ${seeds.length} 个`)
 }
 
-async function optimizeOneLibrary(row: LibraryFactor) {
+async function optimizeOne(row: LibraryFactor, packLabel: string) {
   const seed = toSeed(row)
   if (!seed) {
     message.warning('该因子缺少可用公式')
     return
   }
-  await submitOptimize([seed], `优化因子 · ${row.factor_id}`)
-}
-
-async function optimizeOneJob(row: JobFactorRow) {
-  const seed = toSeed(row)
-  if (!seed) {
-    message.warning('该因子缺少可用公式')
-    return
-  }
-  await submitOptimize([seed], `优化因子 · ${row.factor_id}`)
+  await submitOptimize([seed], `优化因子 · ${packLabel} · ${row.name_zh || row.factor_id}`)
 }
 
 async function loadAlpha() {
@@ -278,6 +366,57 @@ async function loadAlpha() {
   }
 }
 
+async function loadPack(pack: PackId, force = false) {
+  if (packLoaded[pack] && !force) return
+  const loadingRef = pack === 'workspace' ? wsLoading : dropLoading
+  const queryRef = pack === 'workspace' ? wsQuery : dropQuery
+  const pageRef = pack === 'workspace' ? wsPage : dropPage
+  const pageSizeRef = pack === 'workspace' ? wsPageSize : dropPageSize
+  const rowsRef = pack === 'workspace' ? wsRows : dropRows
+  const totalRef = pack === 'workspace' ? wsTotal : dropTotal
+  const checkedRef = pack === 'workspace' ? wsChecked : dropChecked
+  loadingRef.value = true
+  try {
+    const { data } = await getLibraryFactors(pack, {
+      q: queryRef.value.trim() || undefined,
+      limit: pageSizeRef.value,
+      offset: (pageRef.value - 1) * pageSizeRef.value,
+    })
+    rowsRef.value = data.factors
+    totalRef.value = data.total
+    const ids = new Set(data.factors.map((f) => f.factor_id))
+    checkedRef.value = checkedRef.value.filter((k) => ids.has(String(k)))
+    packLoaded[pack] = true
+  } catch (e: any) {
+    message.error(e?.response?.data?.detail || e.message || `加载${pack === 'dropped' ? '淘汰库' : '任务入库'}失败`)
+  } finally {
+    loadingRef.value = false
+  }
+}
+
+function reloadPack(pack: PackId) {
+  if (pack === 'workspace') wsPage.value = 1
+  else dropPage.value = 1
+  loadPack(pack, true)
+}
+
+function onPackPage(pack: PackId, p: number) {
+  if (pack === 'workspace') wsPage.value = p
+  else dropPage.value = p
+  loadPack(pack, true)
+}
+
+function onPackPageSize(pack: PackId, size: number) {
+  if (pack === 'workspace') {
+    wsPageSize.value = size
+    wsPage.value = 1
+  } else {
+    dropPageSize.value = size
+    dropPage.value = 1
+  }
+  loadPack(pack, true)
+}
+
 function onSearch() {
   page.value = 1
   loadAlpha()
@@ -294,38 +433,8 @@ function onPageSizeChange(size: number) {
   loadAlpha()
 }
 
-async function loadJobs() {
-  if (jobsLoaded) return
-  jobLoading.value = true
-  try {
-    const { data: jobs } = await listJobs(30)
-    const succeeded = jobs.filter((j) => j.status === 'succeeded').slice(0, 10)
-    const all: JobFactorRow[] = []
-    for (const j of succeeded) {
-      try {
-        const { data } = await getFactors(j.job_id)
-        data.forEach((f) =>
-          all.push({
-            ...f,
-            job_id: j.job_id,
-            _key: `${j.job_id}:${f.factor_id}`,
-          }),
-        )
-      } catch {
-        /* ignore */
-      }
-    }
-    jobRows.value = all
-    jobsLoaded = true
-  } catch (e: any) {
-    message.error(e?.response?.data?.detail || e.message || '加载失败')
-  } finally {
-    jobLoading.value = false
-  }
-}
-
 watch(tab, (v) => {
-  if (v === 'jobs') loadJobs()
+  if (v === 'workspace' || v === 'dropped') loadPack(v)
 })
 
 onMounted(loadAlpha)

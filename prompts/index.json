@@ -62,6 +62,13 @@
       "parallel_group": "role_review"
     },
     {
+      "file": "news_summarize.json",
+      "id": "news_summarize",
+      "step": "news",
+      "category": "资讯分析",
+      "usage": "资讯入库后的摘要与要点提取（非因子）"
+    },
+    {
       "file": "step3_router.json",
       "id": "step3_router",
       "step": 3

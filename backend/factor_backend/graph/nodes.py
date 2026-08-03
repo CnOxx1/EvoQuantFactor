@@ -4,6 +4,10 @@ from typing import Any
 
 from factor_backend.models.schemas import JobProgress, StepType
 from factor_backend.services.agents import run_role_reviews, run_step1_extract
+from factor_backend.services.factor_library import (
+    upsert_job_factors_to_dropped,
+    upsert_job_factors_to_workspace,
+)
 from factor_backend.services.llm_config import get_llm_config
 from factor_backend.services.reviewers import ROLES
 from factor_backend.services.router_logic import decide_action, merge_scorecards
@@ -609,9 +613,14 @@ def node_persist(state: GraphState) -> dict[str, Any]:
     job_id = state["job_id"]
     report_id = state["report_id"]
     frozen = state.get("frozen") or {}
-    dropped = state.get("dropped") or []
+    dropped = list(state.get("dropped") or [])
     rounds_used = int(state.get("round") or 0)
     last_extract = state.get("extract") or {}
+    factors_by_id = {
+        str(f.get("factor_id")): f
+        for f in (last_extract.get("factors") or state.get("factors") or [])
+        if isinstance(f, dict) and f.get("factor_id") is not None
+    }
 
     saved_factors = []
     for fid, fobj in frozen.items():
@@ -651,13 +660,57 @@ def node_persist(state: GraphState) -> dict[str, Any]:
             }
         )
 
+    # 未过线但有公式：写入淘汰库
+    dropped_factors: list[dict[str, Any]] = []
+    saved_ids = {str(f["factor_id"]) for f in saved_factors}
+    for d in dropped:
+        if not isinstance(d, dict):
+            continue
+        fid = str(d.get("factor_id") or "")
+        if not fid or fid in saved_ids:
+            continue
+        src = factors_by_id.get(fid) or {}
+        merged = {**src, **{k: v for k, v in d.items() if v is not None}}
+        definition = merged.get("definition")
+        if isinstance(definition, dict):
+            formula = definition.get("formula_or_rule") or definition.get("formula")
+            inputs = definition.get("inputs") or []
+            frequency = definition.get("frequency")
+        elif isinstance(definition, str) and definition.strip():
+            formula = definition.strip()
+            inputs, frequency = [], merged.get("frequency")
+        else:
+            formula = merged.get("formula_or_rule") or merged.get("formula") or merged.get("calculation")
+            inputs, frequency = merged.get("inputs") or [], merged.get("frequency")
+        if not formula:
+            continue
+        dropped_factors.append(
+            {
+                "factor_id": fid,
+                "name_zh": merged.get("name_zh") or merged.get("name") or fid,
+                "name_en": merged.get("name_en"),
+                "category": merged.get("category"),
+                "formula_or_rule": formula,
+                "inputs": inputs or [],
+                "frequency": frequency,
+                "signal_direction": merged.get("signal_direction"),
+                "economic_logic": merged.get("economic_logic"),
+                "final_score": d.get("final_score") if d.get("final_score") is not None else merged.get("final_score"),
+                "median_score": d.get("median_score")
+                if d.get("median_score") is not None
+                else merged.get("median_score"),
+                "scores": d.get("scores") or merged.get("scores") or {},
+                "status": "DROP",
+                "reason": d.get("reason") or "门槛淘汰",
+            }
+        )
+
     def _brief(items: list[dict[str, Any]], *, limit: int = 4) -> str:
         bits: list[str] = []
         for it in items[:limit]:
             fid = it.get("factor_id")
             reason = (it.get("reason") or "").strip()
             if reason:
-                # keep summary readable
                 short = reason if len(reason) <= 80 else reason[:77] + "…"
                 bits.append(f"{fid}（{short}）")
             else:
@@ -667,11 +720,13 @@ def node_persist(state: GraphState) -> dict[str, Any]:
             bits.append(f"等{extra}个")
         return "；".join(bits)
 
-    summary_parts = [f"保存 {len(saved_factors)} 个因子，淘汰 {len(dropped)} 个"]
+    summary_parts = [
+        f"保存 {len(saved_factors)} 个因子，淘汰入库 {len(dropped_factors)} 个"
+    ]
     if saved_factors:
         summary_parts.append("保存：" + _brief(saved_factors))
-    if dropped:
-        summary_parts.append("淘汰：" + _brief(dropped))
+    if dropped_factors:
+        summary_parts.append("淘汰：" + _brief(dropped_factors))
 
     result = {
         "job_id": job_id,
@@ -679,6 +734,7 @@ def node_persist(state: GraphState) -> dict[str, Any]:
         "status": "succeeded",
         "rounds_used": rounds_used,
         "factors": saved_factors,
+        "candidates": dropped_factors,  # 兼容旧字段：任务详情仍可展示淘汰因子
         "dropped": dropped,
         "extract_final": last_extract,
         "frozen_ids": list(frozen.keys()),
@@ -687,12 +743,18 @@ def node_persist(state: GraphState) -> dict[str, Any]:
 
     storage = get_storage()
     storage.save_result(job_id, result)
+    try:
+        upsert_job_factors_to_workspace(job_id=job_id, saved=saved_factors)
+        upsert_job_factors_to_dropped(job_id=job_id, dropped=dropped_factors)
+    except Exception:  # noqa: BLE001
+        pass
     _recorder(state).record(
         StepType.persist,
         title="结果落盘",
         summary="。".join(summary_parts),
         payload={
             "saved_ids": [f["factor_id"] for f in saved_factors],
+            "candidate_ids": [f["factor_id"] for f in dropped_factors],
             "dropped_ids": [d.get("factor_id") for d in dropped],
             "saved": [
                 {
@@ -706,6 +768,19 @@ def node_persist(state: GraphState) -> dict[str, Any]:
                     "action": "SAVE",
                 }
                 for f in saved_factors
+            ],
+            "candidates": [
+                {
+                    "factor_id": f["factor_id"],
+                    "name_zh": f.get("name_zh"),
+                    "category": f.get("category"),
+                    "formula_or_rule": f.get("formula_or_rule"),
+                    "final_score": f.get("final_score"),
+                    "median_score": f.get("median_score"),
+                    "reason": f.get("reason"),
+                    "action": "DROP",
+                }
+                for f in dropped_factors
             ],
             "dropped": [
                 {
@@ -723,6 +798,7 @@ def node_persist(state: GraphState) -> dict[str, Any]:
                 if isinstance(d, dict)
             ],
             "engine": "langgraph",
+            "library_packs": ["workspace", "dropped"],
         },
     )
     storage.update_job(

@@ -29,6 +29,7 @@ import type { MenuOption } from 'naive-ui'
 import {
   HomeOutline,
   DocumentTextOutline,
+  MailOutline,
   LayersOutline,
   FlaskOutline,
   HardwareChipOutline,
@@ -45,6 +46,7 @@ const router = useRouter()
 
 const menuOptions: MenuOption[] = [
   { label: '工作台', key: '/dashboard', icon: icon(HomeOutline) },
+  { label: '资讯分析', key: '/reports', icon: icon(MailOutline) },
   { label: '研报分析', key: '/jobs', icon: icon(DocumentTextOutline) },
   { label: '批量任务', key: '/batches', icon: icon(LayersOutline) },
   { label: '因子库', key: '/factors', icon: icon(FlaskOutline) },
@@ -57,6 +59,7 @@ const activeKey = computed(() => {
   const p = route.path
   if (p.startsWith('/jobs')) return '/jobs'
   if (p.startsWith('/batches')) return '/batches'
+  if (p.startsWith('/reports')) return '/reports'
   return p
 })
 
