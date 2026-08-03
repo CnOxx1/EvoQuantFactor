@@ -71,6 +71,13 @@ class Settings(BaseSettings):
     news_summarize_enabled: bool = True
     news_summarize_max_chars: int = 24000
     news_summarize_workers: int = 2
+    news_summarize_queue_max: int = 200
+    news_summarize_max_retries: int = 2
+
+    # 采集优化：每轮自动重抓 incomplete PDF 条数；跨源指纹去重
+    report_collector_pdf_refetch_limit: int = 5
+    report_collector_fingerprint_dedupe: bool = True
+    report_collector_title_backfill_on_start: bool = True
 
     @property
     def use_mock_llm(self) -> bool:

@@ -22,17 +22,18 @@
 
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
-import { NButton, NCard, NDivider, NForm, NFormItem, NInput, NSpace, NTag, useMessage } from 'naive-ui'
+import { NButton, NCard, NDivider, NForm, NFormItem, NInput, NSpace, NTag } from 'naive-ui'
 import { healthApi, metaApi } from '@/api/client'
+import { useModuleNotify } from '@/composables/useAppNotify'
 
-const message = useMessage()
+const notify = useModuleNotify('系统设置')
 const token = ref(localStorage.getItem('api_token') || '')
 const healthOk = ref(false)
 const metaText = ref('')
 
 function save() {
   localStorage.setItem('api_token', token.value.trim())
-  message.success('已保存到本地')
+  notify.success('已保存到本地')
   check()
 }
 

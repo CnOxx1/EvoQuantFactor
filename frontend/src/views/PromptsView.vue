@@ -165,9 +165,9 @@ import {
   NTabs,
   NTag,
   useDialog,
-  useMessage,
 } from 'naive-ui'
 import { getPrompt, listPrompts, putPrompt, resetPrompt } from '@/api/client'
+import { useModuleNotify } from '@/composables/useAppNotify'
 
 type PromptSummary = {
   key: string
@@ -190,7 +190,7 @@ type PromptDetail = {
   updated_at?: string | null
 }
 
-const message = useMessage()
+const notify = useModuleNotify('提示词管理')
 const dialog = useDialog()
 const list = ref<PromptSummary[]>([])
 const listLoading = ref(false)
@@ -335,7 +335,7 @@ async function loadDetail(key: string) {
     const { data } = await getPrompt(key)
     applyDetail(data as PromptDetail)
   } catch (e: any) {
-    message.error(e?.response?.data?.detail || e.message || '加载详情失败')
+    notify.error(e?.response?.data?.detail || e.message || '加载详情失败')
   } finally {
     detailLoading.value = false
   }
@@ -362,7 +362,7 @@ function onSelect(key: string) {
 
 async function reloadCurrent() {
   await loadDetail(current.value)
-  message.info('已重新加载')
+  notify.info('已重新加载')
 }
 
 async function save() {
@@ -371,7 +371,7 @@ async function save() {
   try {
     weights = JSON.parse(weightsText.value || '{}')
   } catch {
-    message.error('权重 JSON 格式不正确')
+    notify.error('权重 JSON 格式不正确')
     tab.value = 'weights'
     return
   }
@@ -384,10 +384,10 @@ async function save() {
       weights,
     })
     applyDetail(data as PromptDetail)
-    message.success('已保存')
+    notify.success('已保存')
     await loadList()
   } catch (e: any) {
-    message.error(e?.response?.data?.detail || e.message || '保存失败')
+    notify.error(e?.response?.data?.detail || e.message || '保存失败')
   } finally {
     saving.value = false
   }
@@ -404,10 +404,10 @@ async function onReset() {
       try {
         const { data } = await resetPrompt(current.value)
         applyDetail(data as PromptDetail)
-        message.success('已恢复默认')
+        notify.success('已恢复默认')
         await loadList()
       } catch (e: any) {
-        message.error(e?.response?.data?.detail || e.message || '恢复失败')
+        notify.error(e?.response?.data?.detail || e.message || '恢复失败')
       } finally {
         resetting.value = false
       }
@@ -420,7 +420,7 @@ onMounted(async () => {
     await loadList()
     if (current.value) await loadDetail(current.value)
   } catch (e: any) {
-    message.error(e?.response?.data?.detail || e.message || '加载失败')
+    notify.error(e?.response?.data?.detail || e.message || '加载失败')
   }
 })
 </script>

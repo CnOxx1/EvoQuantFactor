@@ -49,12 +49,12 @@ import {
   NProgress,
   NSpace,
   NTag,
-  useMessage,
 } from 'naive-ui'
 import type { DataTableColumns } from 'naive-ui'
 import { createBatch, listBatches, type BatchSummary } from '@/api/client'
+import { useModuleNotify } from '@/composables/useAppNotify'
 
-const message = useMessage()
+const notify = useModuleNotify('批量任务')
 const router = useRouter()
 const loading = ref(false)
 const submitting = ref(false)
@@ -97,7 +97,7 @@ async function load() {
     const { data } = await listBatches(50)
     batches.value = data
   } catch (e: any) {
-    message.error(e?.response?.data?.detail || e.message || '加载失败')
+    notify.error(e?.response?.data?.detail || e.message || '加载失败')
   } finally {
     loading.value = false
   }
@@ -106,7 +106,7 @@ async function load() {
 async function submit() {
   const valid = items.value.filter((i) => i.content.trim())
   if (!valid.length) {
-    message.warning('请至少填写一份研报')
+    notify.warning('请至少填写一份研报')
     return
   }
   submitting.value = true
@@ -115,11 +115,11 @@ async function submit() {
       title: `批量-${valid.length}`,
       items: valid,
     })
-    message.success('批次已创建')
+    notify.success('批次已创建')
     show.value = false
     router.push(`/batches/${data.batch_id}`)
   } catch (e: any) {
-    message.error(e?.response?.data?.detail || e.message || '创建失败')
+    notify.error(e?.response?.data?.detail || e.message || '创建失败')
   } finally {
     submitting.value = false
   }

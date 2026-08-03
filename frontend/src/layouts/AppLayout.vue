@@ -13,6 +13,9 @@
     <section class="main">
       <header class="topbar">
         <div class="crumb">{{ crumb }}</div>
+        <div class="topbar-actions">
+          <NotificationCenter />
+        </div>
       </header>
       <main class="content">
         <router-view />
@@ -36,6 +39,7 @@ import {
   OptionsOutline,
   SettingsOutline,
 } from '@vicons/ionicons5'
+import NotificationCenter from '@/components/NotificationCenter.vue'
 
 function icon(comp: any) {
   return () => h(NIcon, null, { default: () => h(comp) })
@@ -103,11 +107,18 @@ function onMenu(key: string) {
   border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
+  justify-content: space-between;
   padding: 0 24px;
+  gap: 12px;
 }
 .crumb {
   font-size: 14px;
   color: #64748b;
+}
+.topbar-actions {
+  display: flex;
+  align-items: center;
+  margin-left: auto;
 }
 .content {
   flex: 1;

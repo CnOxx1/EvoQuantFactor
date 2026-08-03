@@ -66,12 +66,12 @@ import {
   NTag,
   NUpload,
   NUploadDragger,
-  useMessage,
 } from 'naive-ui'
 import type { DataTableColumns, UploadFileInfo } from 'naive-ui'
 import { createJobFromUpload, createJobText, cancelJob, listJobs, rerunJob, type JobSummary } from '@/api/client'
+import { useModuleNotify } from '@/composables/useAppNotify'
 
-const message = useMessage()
+const notify = useModuleNotify('研报分析')
 const router = useRouter()
 const loading = ref(false)
 const submitting = ref(false)
@@ -174,12 +174,12 @@ function beforeUpload(data: { file: UploadFileInfo; fileList: UploadFileInfo[] }
     name.endsWith('.md') ||
     name.endsWith('.markdown')
   if (!ok) {
-    message.warning('仅支持 PDF / TXT / Markdown')
+    notify.warning('仅支持 PDF / TXT / Markdown')
     return false
   }
   const raw = data.file.file
   if (raw && raw.size > 40 * 1024 * 1024) {
-    message.warning('文件过大（上限约 40MB）')
+    notify.warning('文件过大（上限约 40MB）')
     return false
   }
   return true
@@ -188,26 +188,26 @@ function beforeUpload(data: { file: UploadFileInfo; fileList: UploadFileInfo[] }
 async function onCancel(jobId: string) {
   try {
     await cancelJob(jobId)
-    message.success('已请求取消')
+    notify.success('已请求取消')
     await load()
   } catch (e: any) {
-    message.error(e?.response?.data?.detail || e.message || '取消失败')
+    notify.error(e?.response?.data?.detail || e.message || '取消失败')
   }
 }
 
 async function onRerun(row: JobSummary) {
   if (!row.report_id) {
-    message.warning('该任务无关联研报，无法再次分析')
+    notify.warning('该任务无关联研报，无法再次分析')
     return
   }
   rerunningId.value = row.job_id
   try {
     const { data } = await rerunJob(row.job_id)
-    message.success(`已创建再次分析任务 ${data.job_id}`)
+    notify.success(`已创建再次分析任务 ${data.job_id}`)
     await load()
     router.push(`/jobs/${data.job_id}`)
   } catch (e: any) {
-    message.error(e?.response?.data?.detail || e.message || '再次分析失败')
+    notify.error(e?.response?.data?.detail || e.message || '再次分析失败')
   } finally {
     rerunningId.value = null
   }
@@ -219,7 +219,7 @@ async function load() {
     const { data } = await listJobs(50)
     jobs.value = data
   } catch (e: any) {
-    message.error(e?.response?.data?.detail || e.message || '加载失败')
+    notify.error(e?.response?.data?.detail || e.message || '加载失败')
   } finally {
     loading.value = false
   }
@@ -232,7 +232,7 @@ async function submit() {
     if (form.mode === 'upload') {
       const file = fileList.value[0]?.file
       if (!file) {
-        message.warning('请上传研报 PDF 或文本文件')
+        notify.warning('请上传研报 PDF 或文本文件')
         return
       }
       const title =
@@ -242,7 +242,7 @@ async function submit() {
       ;({ data } = await createJobFromUpload(file, { title }))
     } else {
       if (!form.content.trim()) {
-        message.warning('请填写研报正文')
+        notify.warning('请填写研报正文')
         return
       }
       ;({ data } = await createJobText({
@@ -250,12 +250,12 @@ async function submit() {
         content: form.content,
       }))
     }
-    message.success('已创建任务')
+    notify.success('已创建任务')
     show.value = false
     resetForm()
     router.push(`/jobs/${data.job_id}`)
   } catch (e: any) {
-    message.error(e?.response?.data?.detail || e.message || '创建失败')
+    notify.error(e?.response?.data?.detail || e.message || '创建失败')
   } finally {
     submitting.value = false
   }

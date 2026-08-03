@@ -104,33 +104,38 @@ POST /api/v1/jobs/{job_id}/cancel
 
 多源入库（定时默认 **10 分钟** + 手动同步）→ 自动 **资讯摘要**；因子流水线仍需人工点「因子」。
 
-专题说明：[资讯分析与采集](资讯分析与采集.md)
+完整专题（流程、字段、状态、排障、已知限制）：[资讯分析与采集](资讯分析与采集.md)
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | `/api/v1/reports` | 列表：`q` / `source` / `limit` / `offset` |
+| GET | `/api/v1/reports` | 列表：`q` / `source` / `suitability` / `limit` / `offset` |
 | GET | `/api/v1/reports/{id}` | 元信息 |
-| GET | `/api/v1/reports/{id}/content` | 原文 + `news_summary*` |
-| POST | `/api/v1/reports/{id}/summarize` | 重跑资讯摘要 |
-| POST | `/api/v1/reports/summarize/backfill` | 未摘要批量入队 |
+| GET | `/api/v1/reports/{id}/content` | 原文 + `news_summary*` + `text_incomplete` + `pdf_url` |
+| POST | `/api/v1/reports/{id}/summarize` | 重跑资讯摘要；`force` |
+| POST | `/api/v1/reports/summarize/backfill` | 未摘要批量入队；`limit` / `only_missing` |
+| GET | `/api/v1/reports/summarize/status` | 摘要队列背压统计 |
+| POST | `/api/v1/reports/titles/backfill` | 坏标题回填；`limit` |
 | POST | `/api/v1/reports/{id}/refetch-pdf` | 东财 PDF 重抓（优先 http） |
-| POST | `/api/v1/reports` | 上传文件入库 |
-| POST | `/api/v1/reports/text` | 纯文本入库 |
-| POST | `/api/v1/reports/collect/run` | 手动触发一轮采集 |
-| GET | `/api/v1/reports/collect/status` | 状态（含 `luobo_configured`、`last_sources`） |
+| POST | `/api/v1/reports` | 上传文件入库（入队摘要） |
+| POST | `/api/v1/reports/text` | 纯文本入库（入队摘要） |
+| POST | `/api/v1/reports/collect/run` | 手动触发一轮采集（同步、可能较久） |
+| GET | `/api/v1/reports/collect/status` | 采集状态：`source_stats` / `luobo_*` / `summarize` 等 |
 
-### 源与环境变量
+### 源与环境变量（摘要）
 
-| 源 key | 说明 |
-|--------|------|
-| `eastmoney_report` / `eastmoney_news` | 东财研报 / 资讯栏目 |
-| `wallstreetcn` / `sina` / `ths` / `jin10` | 见闻 / 新浪 / 同花顺 / 金十（无需登录） |
-| `luobo` | 萝卜投研（需 `LUOBO_CLOUD_SSO_TOKEN`） |
+| 源 key | 入库 `source` | 说明 |
+|--------|---------------|------|
+| `eastmoney_report` | `eastmoney` | 东财研报 + PDF |
+| `eastmoney_news` | `eastmoney_news` | 东财资讯栏目 |
+| `wallstreetcn` / `sina` / `ths` / `jin10` | 同名 | 见闻 / 新浪 / 同花顺 / 金十（无需登录） |
+| `luobo` | `luobo` | 萝卜投研（需 `LUOBO_CLOUD_SSO_TOKEN`） |
 
 - 定时：`REPORT_COLLECTOR_ENABLED`、`REPORT_COLLECTOR_INTERVAL_SEC`（默认 600）
 - 源列表：`REPORT_COLLECTOR_SOURCES`
-- 摘要：`NEWS_SUMMARIZE_ENABLED`、`NEWS_SUMMARIZE_WORKERS`
+- 去重/PDF/标题：`REPORT_COLLECTOR_FINGERPRINT_DEDUPE`、`REPORT_COLLECTOR_PDF_REFETCH_LIMIT`、`REPORT_COLLECTOR_TITLE_BACKFILL_ON_START`
+- 摘要：`NEWS_SUMMARIZE_ENABLED`、`NEWS_SUMMARIZE_WORKERS`、`NEWS_SUMMARIZE_QUEUE_MAX`、`NEWS_SUMMARIZE_MAX_RETRIES`
 - 提示词：`news_summarize`（提示词管理 → **资讯分析**）
+- 列表因子粗筛：`suitability=factor|news_only`（宏观/晨报/正文不完整）
 
 ## 业务主流程
 

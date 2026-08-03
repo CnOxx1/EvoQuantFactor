@@ -29,11 +29,12 @@
 <script setup lang="ts">
 import { h, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { NButton, NCard, NDataTable, NGi, NGrid, NSpace, NTag, useMessage } from 'naive-ui'
+import { NButton, NCard, NDataTable, NGi, NGrid, NSpace, NTag } from 'naive-ui'
 import type { DataTableColumns } from 'naive-ui'
 import { listJobs, type JobSummary } from '@/api/client'
+import { useModuleNotify } from '@/composables/useAppNotify'
 
-const message = useMessage()
+const notify = useModuleNotify('工作台')
 const router = useRouter()
 const loading = ref(false)
 const jobs = ref<JobSummary[]>([])
@@ -73,7 +74,7 @@ async function load() {
     stats.succeeded = data.filter((j) => j.status === 'succeeded').length
     stats.failed = data.filter((j) => j.status === 'failed' || j.status === 'timed_out').length
   } catch (e: any) {
-    message.error(e?.response?.data?.detail || e.message || '加载失败，请确认后端已启动')
+    notify.error(e?.response?.data?.detail || e.message || '加载失败，请确认后端已启动')
   } finally {
     loading.value = false
   }

@@ -78,11 +78,11 @@ import {
   NSelect,
   NSpace,
   NSwitch,
-  useMessage,
 } from 'naive-ui'
 import { getLlmConfig, putLlmConfig, testLlm } from '@/api/client'
+import { useModuleNotify } from '@/composables/useAppNotify'
 
-const message = useMessage()
+const notify = useModuleNotify('LLM配置')
 const saving = ref(false)
 const testing = ref(false)
 const formatOptions = [
@@ -129,9 +129,9 @@ async function save() {
     if (form.api_key) payload.api_key = form.api_key
     const { data } = await putLlmConfig(payload)
     Object.assign(form, data, { api_key: '' })
-    message.success('已保存')
+    notify.success('已保存')
   } catch (e: any) {
-    message.error(e?.response?.data?.detail || e.message || '保存失败')
+    notify.error(e?.response?.data?.detail || e.message || '保存失败')
   } finally {
     saving.value = false
   }
@@ -151,12 +151,12 @@ async function onTest() {
     }
     if (form.api_key) payload.api_key = form.api_key
     const { data } = await testLlm(payload)
-    if (data.ok) message.success(data.message || '连通成功')
-    else message.warning(data.message || '连通失败')
+    if (data.ok) notify.success(data.message || '连通成功')
+    else notify.warning(data.message || '连通失败')
   } catch (e: any) {
     const detail = e?.response?.data?.detail
     const msg = typeof detail === 'string' ? detail : e?.response?.data?.message || e.message
-    message.error(msg || '测试失败')
+    notify.error(msg || '测试失败')
   } finally {
     testing.value = false
   }
@@ -166,7 +166,7 @@ onMounted(async () => {
   try {
     await load()
   } catch (e: any) {
-    message.error(e?.response?.data?.detail || e.message || '加载失败')
+    notify.error(e?.response?.data?.detail || e.message || '加载失败')
   }
 })
 </script>

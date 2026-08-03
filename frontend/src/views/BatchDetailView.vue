@@ -20,13 +20,14 @@
 <script setup lang="ts">
 import { h, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { NButton, NCard, NDataTable, NProgress, NSpace, NTag, useMessage } from 'naive-ui'
+import { NButton, NCard, NDataTable, NProgress, NSpace, NTag } from 'naive-ui'
+import { useModuleNotify } from '@/composables/useAppNotify'
 import type { DataTableColumns } from 'naive-ui'
 import { cancelBatch, getBatch, type BatchSummary, type JobSummary } from '@/api/client'
 
 const route = useRoute()
 const router = useRouter()
-const message = useMessage()
+const notify = useModuleNotify('批次详情')
 const batch = ref<BatchSummary | null>(null)
 let timer: number | undefined
 
@@ -47,7 +48,7 @@ async function load() {
     const { data } = await getBatch(String(route.params.id))
     batch.value = data
   } catch (e: any) {
-    message.error(e?.response?.data?.detail || e.message || '加载失败')
+    notify.error(e?.response?.data?.detail || e.message || '加载失败')
   }
 }
 
@@ -55,9 +56,9 @@ async function onCancel() {
   try {
     const { data } = await cancelBatch(String(route.params.id))
     batch.value = data
-    message.success('已请求取消')
+    notify.success('已请求取消')
   } catch (e: any) {
-    message.error(e?.response?.data?.detail || e.message || '取消失败')
+    notify.error(e?.response?.data?.detail || e.message || '取消失败')
   }
 }
 

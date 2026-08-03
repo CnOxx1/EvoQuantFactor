@@ -8,20 +8,12 @@
         </div>
       </div>
       <n-space>
+        <n-button :loading="fixingTitles" secondary @click="onFixTitles">修复坏标题</n-button>
         <n-button :loading="backfilling" secondary @click="onBackfill">补跑未摘要</n-button>
         <n-button :loading="syncing" @click="onSync">立即同步</n-button>
         <n-button quaternary :loading="loading" @click="load">刷新</n-button>
       </n-space>
     </div>
-
-    <n-alert v-if="status" type="info" :bordered="false" style="margin-bottom: 12px">
-      采集器：{{ status.enabled ? '已开启' : '未开启' }}
-      <span v-if="status.last_finished_at"> · 上次同步 {{ status.last_finished_at }}</span>
-      <span v-if="status.last_added != null"> · 新增 {{ status.last_added }} / 跳过 {{ status.last_skipped }}</span>
-      <span v-if="status.last_sources?.length"> · 源 {{ status.last_sources.join(',') }}</span>
-      <span> · 萝卜投研 {{ status.luobo_configured ? '已登录配置' : '未配置 token' }}</span>
-      <span v-if="status.last_error"> · 最近错误：{{ status.last_error }}</span>
-    </n-alert>
 
     <n-space style="margin-bottom: 12px" align="center">
       <n-input
@@ -37,6 +29,14 @@
         placeholder="来源"
         style="width: 160px"
         :options="sourceOptions"
+        @update:value="onSearch"
+      />
+      <n-select
+        v-model:value="suitability"
+        clearable
+        placeholder="因子适配"
+        style="width: 160px"
+        :options="suitabilityOptions"
         @update:value="onSearch"
       />
       <n-button type="primary" :loading="loading" @click="onSearch">搜索</n-button>
@@ -142,10 +142,10 @@ import {
   NSpin,
   NTag,
   useDialog,
-  useMessage,
 } from 'naive-ui'
 import type { DataTableColumns, PaginationProps } from 'naive-ui'
 import {
+  backfillReportTitles,
   collectReportsRun,
   collectReportsStatus,
   createJobFromReport,
@@ -158,6 +158,7 @@ import {
   type ReportContent,
   type ReportItem,
 } from '@/api/client'
+import { notifyCollectorStatus, useModuleNotify } from '@/composables/useAppNotify'
 
 type NewsSummary = {
   headline?: string
@@ -171,12 +172,13 @@ type NewsSummary = {
   quality_note?: string
 }
 
-const message = useMessage()
+const notify = useModuleNotify('资讯分析')
 const dialog = useDialog()
 const router = useRouter()
 const loading = ref(false)
 const syncing = ref(false)
 const backfilling = ref(false)
+const fixingTitles = ref(false)
 const analyzingId = ref<string | null>(null)
 const summarizing = ref(false)
 const refetchingPdf = ref(false)
@@ -186,6 +188,7 @@ const page = ref(1)
 const pageSize = ref(20)
 const query = ref('')
 const source = ref<string | null>(null)
+const suitability = ref<string | null>(null)
 const status = ref<CollectStatus | null>(null)
 
 const drawerShow = ref(false)
@@ -250,6 +253,11 @@ const sourceOptions = [
   { label: '萝卜投研', value: 'luobo' },
   { label: '上传', value: 'upload' },
   { label: '文本', value: 'text' },
+]
+
+const suitabilityOptions = [
+  { label: '适合因子', value: 'factor' },
+  { label: '仅资讯/不建议因子', value: 'news_only' },
 ]
 
 const pagination = computed<PaginationProps>(() => ({
@@ -387,6 +395,7 @@ async function loadStatus() {
   try {
     const { data } = await collectReportsStatus()
     status.value = data
+    notifyCollectorStatus(data)
   } catch {
     status.value = null
   }
@@ -398,6 +407,7 @@ async function load() {
     const { data } = await listReports({
       q: query.value.trim() || undefined,
       source: source.value || undefined,
+      suitability: suitability.value || undefined,
       limit: pageSize.value,
       offset: (page.value - 1) * pageSize.value,
     })
@@ -405,7 +415,7 @@ async function load() {
     total.value = data.total
     await loadStatus()
   } catch (e: any) {
-    message.error(e?.response?.data?.detail || e.message || '加载失败')
+    notify.error(e?.response?.data?.detail || e.message || '加载失败')
   } finally {
     loading.value = false
   }
@@ -431,12 +441,25 @@ async function onBackfill() {
   backfilling.value = true
   try {
     const { data } = await summarizeReportsBackfill({ limit: 50, only_missing: true })
-    message.success(`已入队摘要 ${data.queued} 条（跳过已完成 ${data.skipped}）`)
+    notify.success(`已入队摘要 ${data.queued} 条（跳过已完成 ${data.skipped}）`)
     await load()
   } catch (e: any) {
-    message.error(e?.response?.data?.detail || e.message || '补跑失败')
+    notify.error(e?.response?.data?.detail || e.message || '补跑失败')
   } finally {
     backfilling.value = false
+  }
+}
+
+async function onFixTitles() {
+  fixingTitles.value = true
+  try {
+    const { data } = await backfillReportTitles(300)
+    notify.success(`标题修复：扫描 ${data.scanned}，修复 ${data.fixed}`)
+    await load()
+  } catch (e: any) {
+    notify.error(e?.response?.data?.detail || e.message || '标题修复失败')
+  } finally {
+    fixingTitles.value = false
   }
 }
 
@@ -445,10 +468,10 @@ async function onSync() {
   try {
     const { data } = await collectReportsRun()
     status.value = data
-    message.success(`同步完成：新增 ${data.last_added}，跳过 ${data.last_skipped}（新条目已入队摘要）`)
+    notifyCollectorStatus(data, { forcePopup: true })
     await load()
   } catch (e: any) {
-    message.error(e?.response?.data?.detail || e.message || '同步失败')
+    notify.error(e?.response?.data?.detail || e.message || '同步失败')
   } finally {
     syncing.value = false
   }
@@ -472,7 +495,7 @@ async function onViewContent(row: ReportItem) {
     const { data } = await getReportContent(row.report_id)
     content.value = data
   } catch (e: any) {
-    message.error(e?.response?.data?.detail || e.message || '加载原文失败')
+    notify.error(e?.response?.data?.detail || e.message || '加载原文失败')
     drawerShow.value = false
   } finally {
     contentLoading.value = false
@@ -485,12 +508,12 @@ async function onRefetchPdf() {
   refetchingPdf.value = true
   try {
     const { data } = await refetchReportPdf(id)
-    message.success(`PDF 重抓成功（${data.pdf_bytes} bytes），已重新入队摘要`)
+    notify.success(`PDF 重抓成功（${data.pdf_bytes} bytes），已重新入队摘要`)
     const { data: refreshed } = await getReportContent(id)
     content.value = refreshed
     await load()
   } catch (e: any) {
-    message.error(e?.response?.data?.detail || e.message || '重抓 PDF 失败')
+    notify.error(e?.response?.data?.detail || e.message || '重抓 PDF 失败')
   } finally {
     refetchingPdf.value = false
   }
@@ -503,17 +526,17 @@ async function onResummarize() {
   try {
     const { data } = await summarizeReport(id, true)
     if (data.status === 'done') {
-      message.success('摘要已更新')
+      notify.success('摘要已更新')
     } else if (data.status === 'failed') {
-      message.error(data.error || '摘要失败')
+      notify.error(data.error || '摘要失败')
     } else {
-      message.info(`摘要状态：${data.status}`)
+      notify.info(`摘要状态：${data.status}`)
     }
     const { data: refreshed } = await getReportContent(id)
     content.value = refreshed
     await load()
   } catch (e: any) {
-    message.error(e?.response?.data?.detail || e.message || '重新摘要失败')
+    notify.error(e?.response?.data?.detail || e.message || '重新摘要失败')
   } finally {
     summarizing.value = false
   }
@@ -526,10 +549,10 @@ async function doAnalyze(row: ReportItem) {
       report_id: row.report_id,
       title: row.title || row.filename,
     })
-    message.success(`已创建因子分析任务 ${data.job_id}`)
+    notify.success(`已创建因子分析任务 ${data.job_id}`)
     router.push(`/jobs/${data.job_id}`)
   } catch (e: any) {
-    message.error(e?.response?.data?.detail || e.message || '创建分析失败')
+    notify.error(e?.response?.data?.detail || e.message || '创建分析失败')
   } finally {
     analyzingId.value = null
   }

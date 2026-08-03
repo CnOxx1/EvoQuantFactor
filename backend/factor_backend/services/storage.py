@@ -61,6 +61,7 @@ class Storage:
         offset: int = 0,
         q: str | None = None,
         source: str | None = None,
+        suitability: str | None = None,
     ) -> dict[str, Any]:
         from sqlalchemy import func, or_
 
@@ -79,6 +80,19 @@ class Storage:
                         ReportRow.meta_json.like(like),
                     )
                 )
+            # 因子适配粗筛：宏观(q_type=3)/晨报(4)/正文不完整 → news_only；其余 factor
+            news_only = or_(
+                ReportRow.meta_json.contains('"text_incomplete": true'),
+                ReportRow.meta_json.contains('"q_type": 3'),
+                ReportRow.meta_json.contains('"q_type": 4'),
+                ReportRow.meta_json.contains('"q_type_label": "宏观"'),
+                ReportRow.meta_json.contains('"q_type_label": "晨报"'),
+            )
+            suit = (suitability or "").strip().lower()
+            if suit in ("factor", "factor_suitable", "suitable"):
+                filters.append(~news_only)
+            elif suit in ("news", "news_only", "skip_factor"):
+                filters.append(news_only)
             count_q = select(func.count()).select_from(ReportRow)
             list_q = select(ReportRow)
             for f in filters:
@@ -147,6 +161,59 @@ class Storage:
                 row.meta_json = json.dumps(meta, ensure_ascii=False)
             db.commit()
             return self._report_dict(row)
+
+    def update_report_title(
+        self,
+        report_id: str,
+        *,
+        title: str,
+        meta_patch: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        Session = get_session_factory()
+        with Session() as db:
+            row = db.get(ReportRow, report_id)
+            if not row:
+                raise FileNotFoundError(report_id)
+            row.title = (title or "")[:512] or row.title
+            if meta_patch:
+                meta = json.loads(row.meta_json or "{}")
+                meta.update(meta_patch)
+                row.meta_json = json.dumps(meta, ensure_ascii=False)
+            db.commit()
+            return self._report_dict(row)
+
+    def find_report_by_content_fp(self, content_fp: str) -> dict[str, Any] | None:
+        fp = (content_fp or "").strip()
+        if not fp:
+            return None
+        Session = get_session_factory()
+        with Session() as db:
+            # meta_json 内 "content_fp": "xxxx"
+            needle = f'"content_fp": "{fp}"'
+            row = db.scalar(select(ReportRow).where(ReportRow.meta_json.contains(needle)).limit(1))
+            return self._report_dict(row) if row else None
+
+    def iter_reports(self, *, limit: int = 200, source: str | None = None) -> list[dict[str, Any]]:
+        Session = get_session_factory()
+        with Session() as db:
+            stmt = select(ReportRow).order_by(ReportRow.created_at.desc()).limit(limit)
+            if source:
+                stmt = stmt.where(ReportRow.source == source)
+            rows = db.scalars(stmt).all()
+            return [self._report_dict(r) for r in rows]
+
+    def list_incomplete_eastmoney(self, *, limit: int = 20) -> list[dict[str, Any]]:
+        Session = get_session_factory()
+        with Session() as db:
+            stmt = (
+                select(ReportRow)
+                .where(ReportRow.source == "eastmoney")
+                .where(ReportRow.meta_json.contains('"text_incomplete": true'))
+                .order_by(ReportRow.created_at.desc())
+                .limit(limit)
+            )
+            rows = db.scalars(stmt).all()
+            return [self._report_dict(r) for r in rows]
 
     def _report_dict(self, row: ReportRow) -> dict[str, Any]:
         meta = json.loads(row.meta_json or "{}")

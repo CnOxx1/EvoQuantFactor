@@ -3,13 +3,20 @@ from __future__ import annotations
 import logging
 import re
 import threading
+import time
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Callable
 
 from factor_backend.config import Settings, get_settings
-from factor_backend.services.news_summarize import enqueue_news_summarize
+from factor_backend.services.news_summarize import enqueue_news_summarize, get_summarize_status
 from factor_backend.services.report_ingest.eastmoney import EastmoneyReportClient
 from factor_backend.services.report_ingest.eastmoney_news import DEFAULT_COLUMNS, EastmoneyNewsClient
+from factor_backend.services.report_ingest.fingerprint import (
+    attach_fingerprint,
+    content_fingerprint,
+    is_bad_title,
+    title_from_stored_content,
+)
 from factor_backend.services.report_ingest.jin10 import Jin10Client
 from factor_backend.services.report_ingest.luobo import LuoboAuthError, LuoboClient
 from factor_backend.services.report_ingest.sina_finance import SinaFinanceClient
@@ -34,17 +41,37 @@ _status: dict[str, Any] = {
     "total_runs": 0,
     "last_sources": [],
     "luobo_configured": False,
+    "luobo_auth_required": False,
+    "source_stats": {},
+    "pdf_refetched": 0,
+    "titles_fixed": 0,
+    "fingerprint_skipped": 0,
+    "summarize": {},
 }
 
 
 def get_collector_status() -> dict[str, Any]:
     with _lock:
-        return dict(_status)
+        out = dict(_status)
+        out["source_stats"] = dict(_status.get("source_stats") or {})
+    out["summarize"] = get_summarize_status()
+    return out
 
 
 def _set_status(**kwargs: Any) -> None:
     with _lock:
         _status.update(kwargs)
+
+
+def _empty_stat() -> dict[str, Any]:
+    return {
+        "added": 0,
+        "skipped": 0,
+        "dup_fp": 0,
+        "failed": 0,
+        "elapsed_ms": 0,
+        "auth_error": False,
+    }
 
 
 def _parse_news_columns(settings: Settings) -> list[tuple[int, str]]:
@@ -65,70 +92,130 @@ def _parse_news_columns(settings: Settings) -> list[tuple[int, str]]:
     return out or list(DEFAULT_COLUMNS)
 
 
-def _collect_eastmoney_reports(storage: Storage, settings: Settings, errors: list[str]) -> tuple[int, int]:
+def _save_if_new(
+    storage: Storage,
+    settings: Settings,
+    *,
+    content: str,
+    filename: str,
+    title: str,
+    meta: dict[str, Any],
+    run_fps: set[str],
+) -> str:
+    """返回 added | skipped | dup_fp。"""
+    external_id = str(meta.get("external_id") or "")
+    if external_id and storage.find_report_by_external_id(external_id):
+        return "skipped"
+    meta = attach_fingerprint(meta, title, content)
+    fp = str(meta.get("content_fp") or "")
+    if settings.report_collector_fingerprint_dedupe and fp:
+        if fp in run_fps:
+            return "dup_fp"
+        existing = storage.find_report_by_content_fp(fp)
+        if existing:
+            return "dup_fp"
+        run_fps.add(fp)
+    saved = storage.save_report(content=content, filename=filename, title=title, meta=meta)
+    try:
+        enqueue_news_summarize(saved["report_id"])
+    except Exception:  # noqa: BLE001
+        logger.exception("enqueue news summarize failed %s", saved.get("report_id"))
+    return "added"
+
+
+def _tally(result: str, counters: dict[str, int]) -> None:
+    if result == "added":
+        counters["added"] += 1
+    elif result == "dup_fp":
+        counters["dup_fp"] += 1
+        counters["skipped"] += 1
+    else:
+        counters["skipped"] += 1
+
+
+def _timed_collect(
+    source: str,
+    source_stats: dict[str, dict[str, Any]],
+    errors: list[str],
+    fn: Callable[[], dict[str, int]],
+) -> None:
+    """fn -> counters: added/skipped/dup_fp/failed。"""
+    st = source_stats.setdefault(source, _empty_stat())
+    t0 = time.perf_counter()
+    try:
+        counters = fn()
+        for k in ("added", "skipped", "dup_fp", "failed"):
+            st[k] = int(st.get(k) or 0) + int(counters.get(k) or 0)
+    except LuoboAuthError as e:
+        st["auth_error"] = True
+        st["failed"] = int(st.get("failed") or 0) + 1
+        errors.append(str(e)[:240])
+        logger.warning("%s", e)
+    except Exception as e:  # noqa: BLE001
+        st["failed"] = int(st.get("failed") or 0) + 1
+        errors.append(f"{source}: {e}"[:240])
+        logger.exception("%s collect failed", source)
+    finally:
+        st["elapsed_ms"] = int((time.perf_counter() - t0) * 1000)
+
+
+def _collect_eastmoney_reports(
+    storage: Storage,
+    settings: Settings,
+    errors: list[str],
+    run_fps: set[str],
+) -> dict[str, int]:
     client = EastmoneyReportClient(request_gap_sec=settings.report_collector_request_gap_sec)
-    q_types = settings.report_collector_qtype_list()
-    added = 0
-    skipped = 0
     items = client.iter_recent_items(
-        q_types=q_types,
+        q_types=settings.report_collector_qtype_list(),
         page_size=settings.report_collector_page_size,
         lookback_hours=settings.report_collector_lookback_hours,
     )
+    counters = {"added": 0, "skipped": 0, "dup_fp": 0, "failed": 0}
     for item in items:
         info_code = str(item.get("_info_code") or "")
-        external_id = f"eastmoney:{info_code}"
         try:
-            if storage.find_report_by_external_id(external_id):
-                skipped += 1
-                continue
             content, meta = client.fetch_report_text(item)
             title = str(item.get("title") or item.get("Title") or info_code)
             filename = f"eastmoney_{info_code}.txt"
-            if storage.find_report_by_external_id(external_id):
-                skipped += 1
-                continue
-            saved = storage.save_report(content=content, filename=filename, title=title, meta=meta)
-            added += 1
-            try:
-                enqueue_news_summarize(saved["report_id"])
-            except Exception:  # noqa: BLE001
-                logger.exception("enqueue news summarize failed %s", saved.get("report_id"))
+            result = _save_if_new(
+                storage, settings, content=content, filename=filename, title=title, meta=meta, run_fps=run_fps
+            )
+            _tally(result, counters)
         except Exception as e:  # noqa: BLE001
-            errors.append(f"report:{info_code}: {e}"[:240])
+            counters["failed"] += 1
+            errors.append(f"eastmoney_report:{info_code}: {e}"[:240])
             logger.exception("collect report failed %s", info_code)
-    return added, skipped
+    return counters
 
 
-def _collect_eastmoney_news(storage: Storage, settings: Settings, errors: list[str]) -> tuple[int, int]:
+def _collect_eastmoney_news(
+    storage: Storage,
+    settings: Settings,
+    errors: list[str],
+    run_fps: set[str],
+) -> dict[str, int]:
     client = EastmoneyNewsClient(request_gap_sec=max(0.5, settings.report_collector_request_gap_sec * 0.7))
-    columns = _parse_news_columns(settings)
-    added = 0
-    skipped = 0
-    items = client.iter_recent_items(columns=columns, page_size=settings.report_collector_page_size)
+    items = client.iter_recent_items(
+        columns=_parse_news_columns(settings),
+        page_size=settings.report_collector_page_size,
+    )
+    counters = {"added": 0, "skipped": 0, "dup_fp": 0, "failed": 0}
     for item in items:
         news_id = str(item.get("_news_id") or item.get("code") or "")
-        external_id = f"eastmoney_news:{news_id}"
         try:
-            if storage.find_report_by_external_id(external_id):
-                skipped += 1
-                continue
             content, meta = client.fetch_article_text(item)
             title = str(item.get("title") or news_id)
             filename = f"eastmoney_news_{news_id}.txt"
-            if storage.find_report_by_external_id(external_id):
-                skipped += 1
-                continue
-            saved = storage.save_report(content=content, filename=filename, title=title, meta=meta)
-            added += 1
-            try:
-                enqueue_news_summarize(saved["report_id"])
-            except Exception:  # noqa: BLE001
-                logger.exception("enqueue news summarize failed %s", saved.get("report_id"))
+            result = _save_if_new(
+                storage, settings, content=content, filename=filename, title=title, meta=meta, run_fps=run_fps
+            )
+            _tally(result, counters)
         except Exception as e:  # noqa: BLE001
-            errors.append(f"news:{news_id}: {e}"[:240])
+            counters["failed"] += 1
+            errors.append(f"eastmoney_news:{news_id}: {e}"[:240])
             logger.exception("collect news failed %s", news_id)
-    return added, skipped
+    return counters
 
 
 def _collect_generic(
@@ -138,113 +225,132 @@ def _collect_generic(
     errors: list[str],
     source_name: str,
     client: Any,
-) -> tuple[int, int]:
-    """通用：iter_recent_items + fetch_item_text + save + 入队摘要。"""
-    added = 0
-    skipped = 0
+    run_fps: set[str],
+) -> dict[str, int]:
+    counters = {"added": 0, "skipped": 0, "dup_fp": 0, "failed": 0}
     try:
         items = client.iter_recent_items(page_size=settings.report_collector_page_size)
     except Exception as e:  # noqa: BLE001
         errors.append(f"{source_name}:list: {e}"[:240])
         logger.exception("%s list failed", source_name)
-        return 0, 0
+        return {"added": 0, "skipped": 0, "dup_fp": 0, "failed": 1}
     for item in items:
         try:
             content, meta = client.fetch_item_text(item)
             external_id = str(meta.get("external_id") or "")
             if not external_id:
                 continue
-            if storage.find_report_by_external_id(external_id):
-                skipped += 1
-                continue
-            title = str(
-                meta.get("title")
-                or item.get("title")
-                or item.get("content_text")
-                or external_id
-            )
+            title = str(meta.get("title") or item.get("title") or item.get("content_text") or external_id)
             if len(title) > 200:
                 title = title[:200]
             safe = re.sub(r"[^\w\-]+", "_", external_id)[:80]
             filename = f"{source_name}_{safe}.txt"
-            if storage.find_report_by_external_id(external_id):
-                skipped += 1
-                continue
-            saved = storage.save_report(content=content, filename=filename, title=title, meta=meta)
-            added += 1
-            try:
-                enqueue_news_summarize(saved["report_id"])
-            except Exception:  # noqa: BLE001
-                logger.exception("enqueue news summarize failed %s", saved.get("report_id"))
+            result = _save_if_new(
+                storage, settings, content=content, filename=filename, title=title, meta=meta, run_fps=run_fps
+            )
+            _tally(result, counters)
         except Exception as e:  # noqa: BLE001
+            counters["failed"] += 1
             errors.append(f"{source_name}:item: {e}"[:240])
             logger.exception("%s item failed", source_name)
-    return added, skipped
+    return counters
 
 
-def _collect_luobo(storage: Storage, settings: Settings, errors: list[str]) -> tuple[int, int]:
+def _collect_luobo(
+    storage: Storage,
+    settings: Settings,
+    errors: list[str],
+    run_fps: set[str],
+) -> dict[str, int]:
     client = LuoboClient(
         cloud_sso_token=settings.luobo_cloud_sso_token,
         cookie=settings.luobo_cookie,
         request_gap_sec=settings.report_collector_request_gap_sec,
     )
     if not client.configured():
-        msg = "luobo: 未配置 LUOBO_CLOUD_SSO_TOKEN（浏览器登录萝卜投研后复制 Cookie）"
-        errors.append(msg)
-        logger.warning(msg)
-        return 0, 0
+        raise LuoboAuthError("luobo: 未配置 LUOBO_CLOUD_SSO_TOKEN（请登录萝卜投研后复制 Cookie）")
 
-    added = 0
-    skipped = 0
     jobs: list[tuple[str, dict[str, Any]]] = []
-    try:
-        if settings.luobo_collect_feeds:
-            for it in client.iter_recent_feeds(page_size=settings.report_collector_page_size):
-                jobs.append(("feed", it))
-        if settings.luobo_collect_reports:
-            for it in client.iter_recent_reports(page_size=settings.report_collector_page_size):
-                jobs.append(("report", it))
-    except LuoboAuthError as e:
-        errors.append(str(e)[:240])
-        logger.warning("%s", e)
-        return 0, 0
-    except Exception as e:  # noqa: BLE001
-        errors.append(f"luobo:list: {e}"[:240])
-        logger.exception("luobo list failed")
-        return 0, 0
+    if settings.luobo_collect_feeds:
+        for it in client.iter_recent_feeds(page_size=settings.report_collector_page_size):
+            jobs.append(("feed", it))
+    if settings.luobo_collect_reports:
+        for it in client.iter_recent_reports(page_size=settings.report_collector_page_size):
+            jobs.append(("report", it))
 
+    counters = {"added": 0, "skipped": 0, "dup_fp": 0, "failed": 0}
     for kind, item in jobs:
         if kind == "feed":
             eid_key = str(item.get("_feed_id") or item.get("id") or "")
-            external_id = f"luobo:feed:{eid_key}"
             filename = f"luobo_feed_{eid_key}.txt"
             title_fallback = eid_key
             fetch = client.fetch_feed_text
         else:
             eid_key = str(item.get("_report_id") or item.get("id") or "")
-            external_id = f"luobo:report:{eid_key}"
             filename = f"luobo_report_{eid_key}.txt"
             title_fallback = eid_key
             fetch = client.fetch_report_text
         try:
-            if storage.find_report_by_external_id(external_id):
-                skipped += 1
-                continue
             content, meta = fetch(item)
-            title = str(item.get("title") or item.get("reportTitle") or title_fallback)
-            if storage.find_report_by_external_id(external_id):
-                skipped += 1
-                continue
-            saved = storage.save_report(content=content, filename=filename, title=title, meta=meta)
-            added += 1
-            try:
-                enqueue_news_summarize(saved["report_id"])
-            except Exception:  # noqa: BLE001
-                logger.exception("enqueue news summarize failed %s", saved.get("report_id"))
+            title = str(meta.get("title") or item.get("title") or item.get("reportTitle") or title_fallback)
+            result = _save_if_new(
+                storage, settings, content=content, filename=filename, title=title, meta=meta, run_fps=run_fps
+            )
+            _tally(result, counters)
+        except LuoboAuthError:
+            raise
         except Exception as e:  # noqa: BLE001
+            counters["failed"] += 1
             errors.append(f"luobo:{kind}:{eid_key}: {e}"[:240])
             logger.exception("collect luobo %s failed %s", kind, eid_key)
-    return added, skipped
+    return counters
+
+
+def backfill_bad_titles(storage: Storage | None = None, *, limit: int = 300) -> dict[str, Any]:
+    """修复坏标题（如 jin10:时间戳）。"""
+    storage = storage or get_storage()
+    fixed = 0
+    scanned = 0
+    for item in storage.iter_reports(limit=limit):
+        scanned += 1
+        title = item.get("title")
+        external_id = item.get("external_id") or (item.get("meta") or {}).get("external_id")
+        if not is_bad_title(title, str(external_id) if external_id else None):
+            continue
+        try:
+            content = storage.get_report_content(item["report_id"])
+        except FileNotFoundError:
+            continue
+        new_title = title_from_stored_content(content, fallback=str(external_id or item["report_id"]))
+        if not new_title or new_title == title or is_bad_title(new_title, str(external_id) if external_id else None):
+            continue
+        storage.update_report_title(
+            item["report_id"],
+            title=new_title,
+            meta_patch={"title": new_title, "title_backfilled_at": datetime.now(timezone.utc).isoformat()},
+        )
+        fixed += 1
+    return {"scanned": scanned, "fixed": fixed}
+
+
+def _auto_refetch_incomplete_pdfs(
+    storage: Storage,
+    settings: Settings,
+    errors: list[str],
+) -> int:
+    limit = max(0, int(settings.report_collector_pdf_refetch_limit))
+    if limit <= 0:
+        return 0
+    ok = 0
+    for item in storage.list_incomplete_eastmoney(limit=limit):
+        rid = item["report_id"]
+        try:
+            refetch_eastmoney_pdf(rid, storage=storage)
+            ok += 1
+        except Exception as e:  # noqa: BLE001
+            errors.append(f"pdf_refetch:{rid}: {e}"[:240])
+            logger.warning("auto pdf refetch failed %s: %s", rid, e)
+    return ok
 
 
 def run_collect_once(storage: Storage | None = None, settings: Settings | None = None) -> dict[str, Any]:
@@ -253,6 +359,8 @@ def run_collect_once(storage: Storage | None = None, settings: Settings | None =
     storage = storage or get_storage()
     sources = settings.report_collector_source_list()
     started = datetime.now(timezone.utc).isoformat()
+    source_stats: dict[str, dict[str, Any]] = {}
+    run_fps: set[str] = set()
     _set_status(
         running=True,
         last_started_at=started,
@@ -260,68 +368,103 @@ def run_collect_once(storage: Storage | None = None, settings: Settings | None =
         last_errors=[],
         last_sources=sources,
         luobo_configured=settings.luobo_configured(),
+        luobo_auth_required=("luobo" in sources and not settings.luobo_configured()),
+        source_stats={},
+        pdf_refetched=0,
+        titles_fixed=0,
+        fingerprint_skipped=0,
     )
 
-    added = 0
-    skipped = 0
+    added = skipped = 0
     errors: list[str] = []
+    fp_skipped = 0
+    titles_fixed = 0
+    pdf_refetched = 0
+    luobo_auth_required = False
+
     try:
+        if settings.report_collector_title_backfill_on_start:
+            try:
+                titles_fixed = int(backfill_bad_titles(storage, limit=100).get("fixed") or 0)
+            except Exception:  # noqa: BLE001
+                logger.exception("title backfill failed")
+
+        def _wrap(name: str, fn: Callable[[], dict[str, int]]) -> None:
+            _timed_collect(name, source_stats, errors, fn)
+
         if "eastmoney" in sources or "eastmoney_report" in sources:
-            a, s = _collect_eastmoney_reports(storage, settings, errors)
-            added += a
-            skipped += s
+            _wrap(
+                "eastmoney_report",
+                lambda: _collect_eastmoney_reports(storage, settings, errors, run_fps),
+            )
         if "eastmoney_news" in sources:
-            a, s = _collect_eastmoney_news(storage, settings, errors)
-            added += a
-            skipped += s
+            _wrap(
+                "eastmoney_news",
+                lambda: _collect_eastmoney_news(storage, settings, errors, run_fps),
+            )
         if "wallstreetcn" in sources:
-            a, s = _collect_generic(
-                storage=storage,
-                settings=settings,
-                errors=errors,
-                source_name="wallstreetcn",
-                client=WallstreetcnClient(request_gap_sec=settings.report_collector_request_gap_sec * 0.6),
+            _wrap(
+                "wallstreetcn",
+                lambda: _collect_generic(
+                    storage=storage,
+                    settings=settings,
+                    errors=errors,
+                    source_name="wallstreetcn",
+                    client=WallstreetcnClient(request_gap_sec=settings.report_collector_request_gap_sec * 0.6),
+                    run_fps=run_fps,
+                ),
             )
-            added += a
-            skipped += s
         if "sina" in sources:
-            a, s = _collect_generic(
-                storage=storage,
-                settings=settings,
-                errors=errors,
-                source_name="sina",
-                client=SinaFinanceClient(request_gap_sec=settings.report_collector_request_gap_sec * 0.6),
+            _wrap(
+                "sina",
+                lambda: _collect_generic(
+                    storage=storage,
+                    settings=settings,
+                    errors=errors,
+                    source_name="sina",
+                    client=SinaFinanceClient(request_gap_sec=settings.report_collector_request_gap_sec * 0.6),
+                    run_fps=run_fps,
+                ),
             )
-            added += a
-            skipped += s
         if "ths" in sources:
-            a, s = _collect_generic(
-                storage=storage,
-                settings=settings,
-                errors=errors,
-                source_name="ths",
-                client=ThsNewsClient(request_gap_sec=settings.report_collector_request_gap_sec * 0.6),
+            _wrap(
+                "ths",
+                lambda: _collect_generic(
+                    storage=storage,
+                    settings=settings,
+                    errors=errors,
+                    source_name="ths",
+                    client=ThsNewsClient(request_gap_sec=settings.report_collector_request_gap_sec * 0.6),
+                    run_fps=run_fps,
+                ),
             )
-            added += a
-            skipped += s
         if "jin10" in sources:
-            a, s = _collect_generic(
-                storage=storage,
-                settings=settings,
-                errors=errors,
-                source_name="jin10",
-                client=Jin10Client(request_gap_sec=settings.report_collector_request_gap_sec),
+            _wrap(
+                "jin10",
+                lambda: _collect_generic(
+                    storage=storage,
+                    settings=settings,
+                    errors=errors,
+                    source_name="jin10",
+                    client=Jin10Client(request_gap_sec=settings.report_collector_request_gap_sec),
+                    run_fps=run_fps,
+                ),
             )
-            added += a
-            skipped += s
         if "luobo" in sources:
-            a, s = _collect_luobo(storage, settings, errors)
-            added += a
-            skipped += s
+            _wrap("luobo", lambda: _collect_luobo(storage, settings, errors, run_fps))
+            if (source_stats.get("luobo") or {}).get("auth_error"):
+                luobo_auth_required = True
+
+        pdf_refetched = _auto_refetch_incomplete_pdfs(storage, settings, errors)
     except Exception as e:  # noqa: BLE001
         errors.append(str(e)[:240])
         logger.exception("collect run failed")
         _set_status(last_error=str(e)[:500])
+
+    total_added = sum(int((source_stats.get(k) or {}).get("added") or 0) for k in source_stats)
+    total_skipped = sum(int((source_stats.get(k) or {}).get("skipped") or 0) for k in source_stats)
+    fp_skipped = sum(int((source_stats.get(k) or {}).get("dup_fp") or 0) for k in source_stats)
+    added, skipped = total_added, total_skipped
 
     finished = datetime.now(timezone.utc).isoformat()
     with _lock:
@@ -330,13 +473,23 @@ def run_collect_once(storage: Storage | None = None, settings: Settings | None =
         _status["last_started_at"] = started
         _status["last_added"] = added
         _status["last_skipped"] = skipped
-        _status["last_errors"] = errors[:20]
+        _status["last_errors"] = errors[:30]
         if errors:
             _status["last_error"] = errors[0]
+        else:
+            _status["last_error"] = None
         _status["total_runs"] = int(_status.get("total_runs") or 0) + 1
         _status["last_sources"] = sources
         _status["luobo_configured"] = settings.luobo_configured()
-        return dict(_status)
+        _status["luobo_auth_required"] = luobo_auth_required or (
+            not settings.luobo_configured() and "luobo" in sources
+        )
+        _status["source_stats"] = source_stats
+        _status["pdf_refetched"] = pdf_refetched
+        _status["titles_fixed"] = titles_fixed
+        _status["fingerprint_skipped"] = fp_skipped
+    # 必须在释放 _lock 后再读状态（非可重入锁，持锁调用会死锁）
+    return get_collector_status()
 
 
 def refetch_eastmoney_pdf(report_id: str, storage: Storage | None = None) -> dict[str, Any]:
@@ -352,6 +505,8 @@ def refetch_eastmoney_pdf(report_id: str, storage: Storage | None = None) -> dic
     from factor_backend.services.text_extract import decode_upload
 
     content = decode_upload(f"{info_code}.pdf", raw)
+    title = str(meta.get("title") or info_code)
+    fp = content_fingerprint(title, content)
     storage.update_report_content(
         report_id,
         content=content,
@@ -361,6 +516,7 @@ def refetch_eastmoney_pdf(report_id: str, storage: Storage | None = None) -> dic
             "pdf_bytes": len(raw),
             "pdf_url": client.pdf_urls(info_code)[0],
             "pdf_refetched_at": datetime.now(timezone.utc).isoformat(),
+            **({"content_fp": fp} if fp else {}),
         },
     )
     try:
@@ -378,6 +534,12 @@ def _loop() -> None:
         settings.report_collector_source_list(),
         settings.report_collector_qtype_list(),
     )
+    if settings.report_collector_title_backfill_on_start:
+        try:
+            r = backfill_bad_titles(limit=200)
+            logger.info("title backfill on start: %s", r)
+        except Exception:  # noqa: BLE001
+            logger.exception("title backfill on start failed")
     if _stop.wait(5):
         return
     while not _stop.is_set():
@@ -394,7 +556,11 @@ def _loop() -> None:
 def start_report_collector() -> None:
     global _thread
     settings = get_settings()
-    _set_status(enabled=bool(settings.report_collector_enabled))
+    _set_status(
+        enabled=bool(settings.report_collector_enabled),
+        luobo_configured=settings.luobo_configured(),
+        luobo_auth_required=("luobo" in settings.report_collector_source_list() and not settings.luobo_configured()),
+    )
     if not settings.report_collector_enabled:
         logger.info("report collector disabled")
         return

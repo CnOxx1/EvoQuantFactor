@@ -25,8 +25,12 @@
 | POST | `/api/v1/reports` | 上传研报（文件或纯文本） |
 | GET | `/api/v1/reports/{report_id}` | 研报元信息 |
 | GET | `/api/v1/reports/{report_id}/content` | 原文 + 资讯摘要 |
+| GET | `/api/v1/reports?suitability=` | 列表；`factor` / `news_only` |
 | POST | `/api/v1/reports/collect/run` | 手动触发多源采集 |
-| GET | `/api/v1/reports/collect/status` | 采集状态 |
+| GET | `/api/v1/reports/collect/status` | 采集状态（含按源统计、摘要队列） |
+| POST | `/api/v1/reports/titles/backfill` | 坏标题回填 |
+| GET | `/api/v1/reports/summarize/status` | 摘要队列状态 |
+| POST | `/api/v1/reports/summarize/backfill` | 未摘要批量入队 |
 | POST | `/api/v1/jobs` | 基于 report_id / 文本创建分析任务 |
 | POST | `/api/v1/jobs/from-upload` | 上传并创建任务 |
 | GET | `/api/v1/jobs` | 任务列表 |

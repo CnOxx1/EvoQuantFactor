@@ -143,7 +143,6 @@ import {
   NTabPane,
   NTabs,
   NTag,
-  useMessage,
 } from 'naive-ui'
 import type { DataTableColumns, DataTableRowKey, PaginationProps } from 'naive-ui'
 import {
@@ -152,10 +151,11 @@ import {
   type LibraryFactor,
   type SeedFactorIn,
 } from '@/api/client'
+import { useModuleNotify } from '@/composables/useAppNotify'
 
 type PackId = 'workspace' | 'dropped'
 
-const message = useMessage()
+const notify = useModuleNotify('因子库')
 const router = useRouter()
 const tab = ref<'alpha101' | PackId>('alpha101')
 const loading = ref(false)
@@ -306,19 +306,19 @@ function toSeed(f: LibraryFactor): SeedFactorIn | null {
 
 async function submitOptimize(factors: SeedFactorIn[], title: string) {
   if (!factors.length) {
-    message.warning('所选因子缺少可用公式')
+    notify.warning('所选因子缺少可用公式')
     return
   }
   optimizing.value = true
   try {
     const { data } = await createJobEvaluate({ factors, title })
-    message.success(`已创建优化任务 ${data.job_id}`)
+    notify.success(`已创建优化任务 ${data.job_id}`)
     libraryChecked.value = []
     wsChecked.value = []
     dropChecked.value = []
     router.push(`/jobs/${data.job_id}`)
   } catch (e: any) {
-    message.error(e?.response?.data?.detail || e.message || '创建优化任务失败')
+    notify.error(e?.response?.data?.detail || e.message || '创建优化任务失败')
   } finally {
     optimizing.value = false
   }
@@ -341,7 +341,7 @@ async function optimizePack(pack: PackId, label: string) {
 async function optimizeOne(row: LibraryFactor, packLabel: string) {
   const seed = toSeed(row)
   if (!seed) {
-    message.warning('该因子缺少可用公式')
+    notify.warning('该因子缺少可用公式')
     return
   }
   await submitOptimize([seed], `优化因子 · ${packLabel} · ${row.name_zh || row.factor_id}`)
@@ -360,7 +360,7 @@ async function loadAlpha() {
     const ids = new Set(data.factors.map((f) => f.factor_id))
     libraryChecked.value = libraryChecked.value.filter((k) => ids.has(String(k)))
   } catch (e: any) {
-    message.error(e?.response?.data?.detail || e.message || '加载 Alpha101 失败')
+    notify.error(e?.response?.data?.detail || e.message || '加载 Alpha101 失败')
   } finally {
     loading.value = false
   }
@@ -388,7 +388,7 @@ async function loadPack(pack: PackId, force = false) {
     checkedRef.value = checkedRef.value.filter((k) => ids.has(String(k)))
     packLoaded[pack] = true
   } catch (e: any) {
-    message.error(e?.response?.data?.detail || e.message || `加载${pack === 'dropped' ? '淘汰库' : '任务入库'}失败`)
+    notify.error(e?.response?.data?.detail || e.message || `加载${pack === 'dropped' ? '淘汰库' : '任务入库'}失败`)
   } finally {
     loadingRef.value = false
   }

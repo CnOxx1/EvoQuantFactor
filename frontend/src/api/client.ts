@@ -197,6 +197,30 @@ export type ReportListResponse = {
   items: ReportItem[]
 }
 
+export type CollectSourceStat = {
+  added?: number
+  skipped?: number
+  dup_fp?: number
+  failed?: number
+  elapsed_ms?: number
+  auth_error?: boolean
+}
+
+export type SummarizeStatus = {
+  enabled?: boolean
+  queue_depth?: number
+  queue_max?: number
+  pending_unique?: number
+  enqueued_total?: number
+  dropped_full?: number
+  done_total?: number
+  failed_total?: number
+  retry_total?: number
+  running?: number
+  workers?: number
+  last_error?: string | null
+}
+
 export type CollectStatus = {
   enabled: boolean
   running: boolean
@@ -209,6 +233,12 @@ export type CollectStatus = {
   total_runs: number
   last_sources?: string[]
   luobo_configured?: boolean
+  luobo_auth_required?: boolean
+  source_stats?: Record<string, CollectSourceStat>
+  pdf_refetched?: number
+  titles_fixed?: number
+  fingerprint_skipped?: number
+  summarize?: SummarizeStatus
 }
 
 export type ReportContent = {
@@ -224,8 +254,13 @@ export type ReportContent = {
   news_summary_error?: string | null
 }
 
-export const listReports = (params?: { limit?: number; offset?: number; q?: string; source?: string }) =>
-  api.get<ReportListResponse>('/api/v1/reports', { params })
+export const listReports = (params?: {
+  limit?: number
+  offset?: number
+  q?: string
+  source?: string
+  suitability?: string
+}) => api.get<ReportListResponse>('/api/v1/reports', { params })
 export const getReport = (id: string) => api.get<ReportItem>(`/api/v1/reports/${id}`)
 export const getReportContent = (id: string) => api.get<ReportContent>(`/api/v1/reports/${id}/content`)
 export const summarizeReport = (id: string, force = true) =>
@@ -239,6 +274,12 @@ export const summarizeReportsBackfill = (params?: { limit?: number; only_missing
     params,
     timeout: 60000,
   })
+export const backfillReportTitles = (limit = 300) =>
+  api.post<{ scanned: number; fixed: number }>('/api/v1/reports/titles/backfill', null, {
+    params: { limit },
+    timeout: 120000,
+  })
+export const getSummarizeStatus = () => api.get<SummarizeStatus>('/api/v1/reports/summarize/status')
 export const refetchReportPdf = (id: string) =>
   api.post<{ report_id: string; size_bytes: number; pdf_bytes: number }>(
     `/api/v1/reports/${id}/refetch-pdf`,

@@ -47,14 +47,15 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { NButton, NCard, NDataTable, NSpace, NSpin, NTag, useMessage } from 'naive-ui'
+import { NButton, NCard, NDataTable, NSpace, NSpin, NTag } from 'naive-ui'
+import { useModuleNotify } from '@/composables/useAppNotify'
 import type { DataTableColumns } from 'naive-ui'
 import StepFlowChart from '@/components/StepFlowChart.vue'
 import { getFactors, getJob, getSteps, rerunJob, type FactorFormula, type JobSummary, type StepDetail } from '@/api/client'
 
 const route = useRoute()
 const router = useRouter()
-const message = useMessage()
+const notify = useModuleNotify('任务详情')
 const job = ref<JobSummary | null>(null)
 const factors = ref<FactorFormula[]>([])
 const steps = ref<StepDetail[]>([])
@@ -103,22 +104,22 @@ async function load() {
       factors.value = []
     }
   } catch (e: any) {
-    message.error(e?.response?.data?.detail || e.message || '加载失败')
+    notify.error(e?.response?.data?.detail || e.message || '加载失败')
   }
 }
 
 async function onRerun() {
   if (!job.value?.report_id) {
-    message.warning('该任务无关联研报，无法再次分析')
+    notify.warning('该任务无关联研报，无法再次分析')
     return
   }
   rerunning.value = true
   try {
     const { data } = await rerunJob(job.value.job_id)
-    message.success(`已创建再次分析任务 ${data.job_id}`)
+    notify.success(`已创建再次分析任务 ${data.job_id}`)
     router.push(`/jobs/${data.job_id}`)
   } catch (e: any) {
-    message.error(e?.response?.data?.detail || e.message || '再次分析失败')
+    notify.error(e?.response?.data?.detail || e.message || '再次分析失败')
   } finally {
     rerunning.value = false
   }
