@@ -43,10 +43,22 @@ const columns: DataTableColumns<JobSummary> = [
   },
 ]
 
+const TERMINAL = new Set(['succeeded', 'failed', 'cancelled', 'timed_out'])
+
+function stopPolling() {
+  if (timer) {
+    clearInterval(timer)
+    timer = undefined
+  }
+}
+
 async function load() {
   try {
     const { data } = await getBatch(String(route.params.id))
     batch.value = data
+    if (TERMINAL.has(data.status) || data.percent >= 100) {
+      stopPolling()
+    }
   } catch (e: any) {
     notify.error(e?.response?.data?.detail || e.message || '加载失败')
   }
@@ -66,7 +78,7 @@ onMounted(() => {
   load()
   timer = window.setInterval(load, 3000)
 })
-onUnmounted(() => timer && clearInterval(timer))
+onUnmounted(() => stopPolling())
 </script>
 
 <style scoped>

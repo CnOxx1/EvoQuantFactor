@@ -6,7 +6,12 @@ from factor_backend.config import get_settings
 
 
 class McpClient:
-    """行情 MCP 客户端。当前为 stub，后续替换为真实 SSE/HTTP。"""
+    """行情 MCP 客户端。
+
+    当前为 stub：`MCP_ENABLED=false` 时返回 data_unavailable；
+    为 true 时也只返回可追溯的空序列，**不可当作真实行情**。
+    无独立 market-mcp 容器依赖。
+    """
 
     def __init__(self, base_url: str | None = None, enabled: bool | None = None) -> None:
         settings = get_settings()

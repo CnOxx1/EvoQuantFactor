@@ -18,6 +18,8 @@ ROLE_FILES = {
 
 
 class PromptLoader:
+    """仅负责从 prompts/ 读 JSON；DB 覆盖与拼接见 prompt_config。"""
+
     def __init__(self, prompts_dir: str | Path | None = None) -> None:
         settings = get_settings()
         self.dir = Path(prompts_dir or settings.prompts_dir)
@@ -27,34 +29,6 @@ class PromptLoader:
         if not path.exists():
             raise FileNotFoundError(str(path))
         return json.loads(path.read_text(encoding="utf-8"))
-
-    def shared_mcp_append(self) -> str:
-        try:
-            data = self.load("_shared_mcp.json")
-            return data.get("system_append", "")
-        except FileNotFoundError:
-            return ""
-
-    def step1_system(self) -> str:
-        data = self.load("step1_extract.json")
-        system = data.get("system", "")
-        if data.get("mcp", {}).get("append_shared"):
-            system = system + "\n\n" + self.shared_mcp_append()
-        return system
-
-    def role_prompt(self, role_code: str) -> dict[str, Any]:
-        filename = ROLE_FILES[role_code]
-        data = self.load(filename)
-        system = data.get("system", "")
-        if data.get("mcp", {}).get("append_shared"):
-            system = system + "\n\n" + self.shared_mcp_append()
-        return {
-            "role_code": role_code,
-            "system": system,
-            "user_template": data.get("user_template", ""),
-            "scoring": data.get("scoring", {}),
-            "name": data.get("name", role_code),
-        }
 
     def index(self) -> dict[str, Any]:
         path = self.dir / "index.json"

@@ -299,14 +299,21 @@ def _step_view(s: dict) -> dict:
 
 
 @router.get("/{job_id}/steps", response_model=list[StepDetail])
-def get_steps(job_id: str) -> list[StepDetail]:
+def get_steps(job_id: str, include_payload: bool = True) -> list[StepDetail]:
+    """步骤列表。流程图需要 payload 时保持默认 true；仅轮询进度时可传 include_payload=false。"""
     storage = get_storage()
     try:
         storage.get_job(job_id)
     except FileNotFoundError as e:
         raise HTTPException(404, f"job not found: {job_id}") from e
     steps = storage.list_steps(job_id)
-    return [StepDetail(**_step_view(s)) for s in steps]
+    views = []
+    for s in steps:
+        view = _step_view(s)
+        if not include_payload:
+            view["payload"] = {}
+        views.append(StepDetail(**view))
+    return views
 
 
 @router.get("/{job_id}/steps/{step_id}", response_model=StepDetail)

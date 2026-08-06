@@ -102,13 +102,19 @@ class Storage:
             rows = db.scalars(
                 list_q.order_by(ReportRow.created_at.desc()).offset(max(0, offset)).limit(max(1, min(limit, 200)))
             ).all()
+            report_ids = [row.report_id for row in rows]
+            job_counts: dict[str, int] = {}
+            if report_ids:
+                count_rows = db.execute(
+                    select(JobRow.report_id, func.count())
+                    .where(JobRow.report_id.in_(report_ids))
+                    .group_by(JobRow.report_id)
+                ).all()
+                job_counts = {str(rid): int(n or 0) for rid, n in count_rows if rid}
             items = []
             for row in rows:
                 d = self._report_dict(row)
-                job_count = db.scalar(
-                    select(func.count()).select_from(JobRow).where(JobRow.report_id == row.report_id)
-                )
-                d["job_count"] = int(job_count or 0)
+                d["job_count"] = job_counts.get(row.report_id, 0)
                 items.append(d)
             return {"total": total, "offset": offset, "limit": limit, "items": items}
 

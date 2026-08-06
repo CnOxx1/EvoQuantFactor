@@ -254,6 +254,11 @@ async def _review_one_role_live(
         + "请输出 JSON：{role_code, role_name, reviews:[{factor_id, subscores:{...}, comment, suggestions, veto, veto_reason, info_insufficient}]}。"
         + f"\n可选 MCP 观察（勿编造）：{json.dumps(mcp_evidence, ensure_ascii=False)}"
     )
+    import time
+
+    from factor_backend.services import metrics
+
+    t0 = time.perf_counter()
     try:
         async def _once() -> Any:
             return await client.chat_json(system=system, user=user, model=model)
@@ -264,7 +269,11 @@ async def _review_one_role_live(
             label=f"{role_code} 评审",
             retryable=is_retryable_llm_error,
         )
+        metrics.incr("llm_review_calls_total")
+        metrics.observe_ms("llm_review_latency", (time.perf_counter() - t0) * 1000)
     except Exception as e:  # noqa: BLE001
+        metrics.incr("llm_review_errors_total")
+        metrics.observe_ms("llm_review_latency", (time.perf_counter() - t0) * 1000)
         raise LlmError(f"{role_code} 评审调用失败: {e}") from e
     reviews = raw.get("reviews") if isinstance(raw, dict) else None
     if not isinstance(reviews, list):
@@ -357,30 +366,40 @@ async def run_role_reviews(
     meta: dict[str, Any] | None = None,
     cfg: LlmRuntimeConfig | None = None,
 ) -> dict[str, dict[str, Any]]:
-    """六角色并行 gather；服务端按提示词权重重算 total_score。"""
+    """六角色并行 gather（受 review_concurrency 限制）；服务端按提示词权重重算 total_score。"""
+    from factor_backend.config import get_settings
+
     cfg = cfg or get_llm_config()
     targets = [f for f in factors if f.get("factor_id") in set(factor_ids)]
     scorecards: dict[str, dict[str, Any]] = {f["factor_id"]: {} for f in targets}
+    concurrency = max(1, int(get_settings().review_concurrency))
+    sem = asyncio.Semaphore(concurrency)
+
+    async def _guarded(coro):
+        async with sem:
+            return await coro
 
     if not cfg.should_call_llm:
         if not (cfg.use_mock or not cfg.enabled):
             raise LlmError("LLM 未就绪：无法评审")
         tasks = [
-            _review_one_role_mock(role_code=code, role_name=name, targets=targets, meta=meta)
+            _guarded(_review_one_role_mock(role_code=code, role_name=name, targets=targets, meta=meta))
             for code, name, _ in ROLES
             if code in ROLE_FILES
         ]
     else:
         client = LlmClient(cfg)
         tasks = [
-            _review_one_role_live(
-                role_code=code,
-                targets=targets,
-                factor_ids=factor_ids,
-                report_overview=report_overview,
-                meta=meta,
-                client=client,
-                model=cfg.model_review,
+            _guarded(
+                _review_one_role_live(
+                    role_code=code,
+                    targets=targets,
+                    factor_ids=factor_ids,
+                    report_overview=report_overview,
+                    meta=meta,
+                    client=client,
+                    model=cfg.model_review,
+                )
             )
             for code, name, _ in ROLES
             if code in ROLE_FILES

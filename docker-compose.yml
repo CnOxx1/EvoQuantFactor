@@ -14,9 +14,10 @@ services:
       APP_HOST: 0.0.0.0
       APP_PORT: 8080
       PROMPTS_DIR: /app/prompts
-      CONFIG_PATH: /app/config/default.yaml
-      MCP_MARKET_URL: ${MCP_MARKET_URL:-http://market-mcp:8100/sse}
-      REDIS_URL: ${REDIS_URL:-redis://redis:6379/0}
+      # 一体模式默认内嵌 worker；split profile 下应设 WORKER_ENABLED=false
+      WORKER_ENABLED: ${WORKER_ENABLED:-true}
+      REPORT_COLLECTOR_ENABLED: ${REPORT_COLLECTOR_ENABLED:-false}
+      NEWS_SUMMARIZE_ENABLED: ${NEWS_SUMMARIZE_ENABLED:-false}
     volumes:
       - ./prompts:/app/prompts:ro
       - ./config:/app/config:ro
@@ -31,34 +32,52 @@ services:
     networks:
       - factor-net
 
-  # 可选：行情 MCP 占位服务（外部实现后替换镜像即可）
-  market-mcp:
-    profiles: ["full"]
-    image: ${MARKET_MCP_IMAGE:-ghcr.io/example/market-mcp:placeholder}
-    container_name: market-mcp
+  # 可选：与 API 拆分的 job worker（docker compose --profile split up）
+  factor-worker:
+    profiles: ["split"]
+    image: factor-api:latest
+    container_name: factor-worker
     restart: unless-stopped
-    ports:
-      - "8100:8100"
     env_file:
       - .env
-    networks:
-      - factor-net
-
-  redis:
-    profiles: ["full"]
-    image: redis:7-alpine
-    container_name: factor-redis
-    restart: unless-stopped
-    ports:
-      - "6379:6379"
+    environment:
+      PROMPTS_DIR: /app/prompts
+      WORKER_ENABLED: "true"
+      REPORT_COLLECTOR_ENABLED: "false"
+      NEWS_SUMMARIZE_ENABLED: "false"
+    command: ["python", "-m", "factor_backend", "worker"]
     volumes:
-      - redis-data:/data
+      - ./prompts:/app/prompts:ro
+      - ./config:/app/config:ro
+      - ./data:/app/data
+      - ./backend:/app/backend:ro
     networks:
       - factor-net
+    depends_on:
+      - factor-api
+
+  factor-collector:
+    profiles: ["split"]
+    image: factor-api:latest
+    container_name: factor-collector
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      PROMPTS_DIR: /app/prompts
+      REPORT_COLLECTOR_ENABLED: "true"
+      NEWS_SUMMARIZE_ENABLED: ${NEWS_SUMMARIZE_ENABLED:-false}
+    command: ["python", "-m", "factor_backend", "collector"]
+    volumes:
+      - ./prompts:/app/prompts:ro
+      - ./config:/app/config:ro
+      - ./data:/app/data
+      - ./backend:/app/backend:ro
+    networks:
+      - factor-net
+    depends_on:
+      - factor-api
 
 networks:
   factor-net:
     driver: bridge
-
-volumes:
-  redis-data:

@@ -4,8 +4,11 @@ from fastapi import APIRouter
 
 from factor_backend import __version__
 from factor_backend.config import get_settings
+from factor_backend.services import metrics
 from factor_backend.services.llm_config import llm_config_public_dict
+from factor_backend.services.news_summarize import get_summarize_status
 from factor_backend.services.prompt_loader import PromptLoader, ROLE_FILES
+from factor_backend.services.report_ingest.collector import get_collector_status
 from factor_backend.services.worker import worker_status
 
 router = APIRouter(tags=["system"])
@@ -42,6 +45,28 @@ def health() -> dict:
             "model_step1": llm.get("model_step1"),
         },
     }
+
+
+@router.get("/metrics")
+def metrics_endpoint() -> dict:
+    """进程内指标快照（JSON）；便于运维与调试，非 Prometheus 文本格式。"""
+    settings = get_settings()
+    out = metrics.snapshot()
+    out["worker"] = worker_status()
+    out["news_summarize"] = get_summarize_status()
+    try:
+        out["collector"] = get_collector_status()
+    except Exception:  # noqa: BLE001
+        out["collector"] = {"error": "unavailable"}
+    out["config"] = {
+        "env": settings.app_env,
+        "worker_enabled": settings.worker_enabled,
+        "report_collector_enabled": settings.report_collector_enabled,
+        "news_summarize_enabled": settings.news_summarize_enabled,
+        "review_concurrency": settings.review_concurrency,
+        "mcp_enabled": settings.mcp_enabled,
+    }
+    return out
 
 
 @router.get("/api/v1/meta")
@@ -82,6 +107,7 @@ def meta() -> dict:
             "batches": "/api/v1/batches",
             "cancel": "/api/v1/jobs/{id}/cancel",
             "factor_library": "/api/v1/factor-library",
+            "metrics": "/metrics",
         },
         "worker_concurrency": settings.worker_concurrency,
     }

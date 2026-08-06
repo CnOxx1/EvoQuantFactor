@@ -8,6 +8,9 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 logger = logging.getLogger(__name__)
 
+# 默认只开东财源；其余适配器仍保留，需显式加入 REPORT_COLLECTOR_SOURCES
+_DEFAULT_COLLECTOR_SOURCES = "eastmoney_report,eastmoney_news"
+
 
 def repo_root() -> Path:
     return Path(__file__).resolve().parents[2]
@@ -39,48 +42,46 @@ class Settings(BaseSettings):
     save_mean_min: float = 80
     save_median_min: float = 75
     max_round: int = 3
+    # Step2 六角色同时调用 LLM 的并发上限（降低限流/费用尖峰）
+    review_concurrency: int = 3
 
     mcp_enabled: bool = False
-    mcp_market_url: str = "http://market-mcp:8100/sse"
+    mcp_market_url: str = "http://127.0.0.1:8100/sse"
 
     data_dir: str = str(repo_root() / "data")
     prompts_dir: str = str(repo_root() / "prompts")
+    # 参考文档路径；运行时不加载 YAML（门槛/模型以本 Settings + DB 为准）
     config_path: str = str(repo_root() / "config" / "default.yaml")
 
     worker_enabled: bool = True
     worker_poll_interval: float = 1.0
-    worker_concurrency: int = 3  # 同时处理多份研报的并行 worker 数
-    job_timeout_sec: int = 1800  # 单任务默认 30 分钟
-    job_failure_retries: int = 1  # 整图失败后再重试次数（不含首次）
+    worker_concurrency: int = 3
+    job_timeout_sec: int = 1800
+    job_failure_retries: int = 1
 
-    # 研报/资讯自动采集（半自动：入库 + 资讯摘要，不自动建因子 job）
-    report_collector_enabled: bool = True
+    # 采集默认关闭，避免拖垮 API 进程；需要时显式开启
+    report_collector_enabled: bool = False
     report_collector_interval_sec: int = 600
-    # 多源（逗号分隔）：eastmoney_report,eastmoney_news,luobo,wallstreetcn,sina,ths,jin10
-    report_collector_sources: str = (
-        "eastmoney_report,eastmoney_news,wallstreetcn,sina,ths,jin10,luobo"
-    )
-    report_collector_qtypes: str = "0,1,2,3"  # 个股/行业/策略/宏观
-    report_collector_news_columns: str = "350,344,355,354,351,353"  # 导读/股市/公司/宏观/产经/国际
+    report_collector_sources: str = _DEFAULT_COLLECTOR_SOURCES
+    report_collector_qtypes: str = "0,1,2,3"
+    report_collector_news_columns: str = "350,344,355,354,351,353"
     report_collector_page_size: int = 20
     report_collector_lookback_hours: int = 24
     report_collector_request_gap_sec: float = 1.5
 
-    # 萝卜投研登录态（浏览器登录 robo.datayes.com 后从 Cookie 复制）
     luobo_cloud_sso_token: str = ""
     luobo_cookie: str = ""
     luobo_collect_feeds: bool = True
     luobo_collect_reports: bool = True
 
-    # 资讯入库后自动 LLM 摘要（非因子流水线；多 worker = 多路并行 LLM/Cursor agent）
-    news_summarize_enabled: bool = True
+    # 摘要默认关闭；开启后默认低并发
+    news_summarize_enabled: bool = False
     news_summarize_max_chars: int = 24000
-    news_summarize_workers: int = 8
+    news_summarize_workers: int = 2
     news_summarize_queue_max: int = 500
     news_summarize_max_retries: int = 2
-    news_summarize_workers_cap: int = 32  # 安全上限，防止误配过大
+    news_summarize_workers_cap: int = 32
 
-    # 采集优化：每轮自动重抓 incomplete PDF 条数；跨源指纹去重
     report_collector_pdf_refetch_limit: int = 5
     report_collector_fingerprint_dedupe: bool = True
     report_collector_title_backfill_on_start: bool = True
@@ -124,15 +125,7 @@ class Settings(BaseSettings):
                 continue
             part = alias.get(part, part)
             out.append(part)
-        return out or [
-            "eastmoney_report",
-            "eastmoney_news",
-            "wallstreetcn",
-            "sina",
-            "ths",
-            "jin10",
-            "luobo",
-        ]
+        return out or ["eastmoney_report", "eastmoney_news"]
 
     def luobo_configured(self) -> bool:
         return bool((self.luobo_cloud_sso_token or "").strip() or (self.luobo_cookie or "").strip())
@@ -141,7 +134,6 @@ class Settings(BaseSettings):
         return (self.app_env or "").strip().lower() in {"production", "prod", "staging"}
 
     def security_warnings(self) -> list[str]:
-        """返回当前配置的安全/运维告警（不抛错）。"""
         warnings: list[str] = []
         if self.auth_disabled:
             warnings.append("AUTH_DISABLED=true：API 未鉴权")
@@ -153,11 +145,12 @@ class Settings(BaseSettings):
             warnings.append("LLM_MOCK=true：生产环境默认走 mock（运行时仍以 DB 配置为准）")
         if self.mcp_enabled:
             warnings.append("MCP_ENABLED=true：行情 MCP 仍为 stub，评审证据勿当真实数据")
+        if self.report_collector_enabled and self.worker_enabled:
+            warnings.append("采集与 job worker 同进程：高负载时建议 --profile split 拆分")
         return warnings
 
 
 def validate_runtime_settings(settings: Settings | None = None) -> list[str]:
-    """启动时校验配置。生产+strict 时对危险配置抛错；其余记 warning。"""
     settings = settings or get_settings()
     warnings = settings.security_warnings()
     for w in warnings:
@@ -169,7 +162,7 @@ def validate_runtime_settings(settings: Settings | None = None) -> list[str]:
             hard_errors.append("生产环境禁止 AUTH_DISABLED=true（或设 STRICT_PRODUCTION=false 显式跳过）")
         if not (settings.api_token or "").strip():
             hard_errors.append("生产环境必须设置 API_TOKEN")
-        if (settings.api_token or "").strip() in {"please-change-me", "changeme", "secret"}:
+        if (settings.api_token or "").strip() in {"please-change-me", "changeme", "secret", "replace-with-a-long-random-token"}:
             hard_errors.append("生产环境 API_TOKEN 仍为占位值，请更换为强随机串")
         if hard_errors:
             msg = "; ".join(hard_errors)

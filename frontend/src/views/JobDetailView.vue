@@ -86,6 +86,15 @@ const factorCols: DataTableColumns<FactorFormula> = [
   { title: '中位分', key: 'median_score', width: 70 },
 ]
 
+const TERMINAL = new Set(['succeeded', 'failed', 'cancelled', 'timed_out'])
+
+function stopPolling() {
+  if (timer) {
+    clearInterval(timer)
+    timer = undefined
+  }
+}
+
 async function load() {
   const id = String(route.params.id)
   try {
@@ -102,6 +111,9 @@ async function load() {
       }
     } else {
       factors.value = []
+    }
+    if (TERMINAL.has(j.data.status)) {
+      stopPolling()
     }
   } catch (e: any) {
     notify.error(e?.response?.data?.detail || e.message || '加载失败')
@@ -129,7 +141,7 @@ onMounted(() => {
   load()
   timer = window.setInterval(load, 3000)
 })
-onUnmounted(() => timer && clearInterval(timer))
+onUnmounted(() => stopPolling())
 </script>
 
 <style scoped>

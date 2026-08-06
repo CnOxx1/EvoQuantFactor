@@ -18,7 +18,7 @@ fi
 
 if [[ ! -f .env ]]; then
   cp .env.example .env
-  echo "[factor-agent] 已生成 .env，请编辑并填写 LLM_API_KEY 后重新执行本脚本。"
+  echo "[factor-agent] 已生成 .env，请编辑并填写 API_TOKEN / LLM_API_KEY 后重新执行本脚本。"
   echo "  编辑文件: $ROOT/.env"
   exit 2
 fi
@@ -35,13 +35,14 @@ fi
 mkdir -p data/saved data/runs
 
 PROFILE_ARGS=()
-if [[ "${BOOTSTRAP_PROFILE:-}" == "full" ]]; then
-  PROFILE_ARGS=(--profile full)
-  echo "[factor-agent] 使用 full profile（mcp + redis）"
+if [[ "${BOOTSTRAP_PROFILE:-}" == "split" ]]; then
+  PROFILE_ARGS=(--profile split)
+  export WORKER_ENABLED=false
+  echo "[factor-agent] 使用 split profile：API + 独立 worker/collector"
 fi
 
 echo "[factor-agent] building & starting..."
-docker compose "${PROFILE_ARGS[@]}" up -d --build
+WORKER_ENABLED="${WORKER_ENABLED:-true}" docker compose "${PROFILE_ARGS[@]}" up -d --build
 
 echo "[factor-agent] waiting health..."
 for i in {1..30}; do
