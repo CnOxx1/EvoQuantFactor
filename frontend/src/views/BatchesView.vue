@@ -91,11 +91,17 @@ const columns: DataTableColumns<BatchSummary> = [
   },
 ]
 
+function hasActiveBatches(list: BatchSummary[]) {
+  return list.some((b) => b.status === 'queued' || b.status === 'running')
+}
+
 async function load() {
   loading.value = true
   try {
     const { data } = await listBatches(50)
     batches.value = data
+    if (timer) clearInterval(timer)
+    timer = window.setInterval(load, hasActiveBatches(data) ? 4000 : 15000)
   } catch (e: any) {
     notify.error(e?.response?.data?.detail || e.message || '加载失败')
   } finally {
@@ -127,9 +133,10 @@ async function submit() {
 
 onMounted(() => {
   load()
-  timer = window.setInterval(load, 4000)
 })
-onUnmounted(() => timer && clearInterval(timer))
+onUnmounted(() => {
+  if (timer) clearInterval(timer)
+})
 </script>
 
 <style scoped>

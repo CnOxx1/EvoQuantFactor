@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import threading
+import time
 from typing import Any
 
 from factor_backend.db.models import PromptOverrideRow, get_session_factory, utcnow
@@ -9,12 +11,33 @@ from factor_backend.services.prompt_loader import ROLE_FILES, PromptLoader
 
 PROMPT_KEYS = ["step1_extract", "step1_optimize", *ROLE_FILES.keys(), "_shared_mcp", "news_summarize"]
 
+_cache_lock = threading.Lock()
+_file_cache: dict[str, tuple[float, dict[str, Any]]] = {}
+_merged_cache: dict[str, tuple[float, dict[str, Any]]] = {}
+_CACHE_TTL_SEC = 30.0
+
+
+def invalidate_prompt_cache(key: str | None = None) -> None:
+    with _cache_lock:
+        if key is None:
+            _file_cache.clear()
+            _merged_cache.clear()
+        else:
+            _file_cache.pop(key, None)
+            _merged_cache.pop(key, None)
+
 
 def _file_default(key: str) -> dict[str, Any]:
+    now = time.monotonic()
+    with _cache_lock:
+        hit = _file_cache.get(key)
+        if hit and now - hit[0] < _CACHE_TTL_SEC:
+            return dict(hit[1])
+
     loader = PromptLoader()
     if key in ("step1_extract", "step1_optimize", "news_summarize"):
         data = loader.load(f"{key}.json")
-        return {
+        out = {
             "key": key,
             "name": data.get("name", key),
             "system": data.get("system", ""),
@@ -24,9 +47,9 @@ def _file_default(key: str) -> dict[str, Any]:
             "mcp": data.get("mcp") or {},
             "source": "file",
         }
-    if key == "_shared_mcp":
+    elif key == "_shared_mcp":
         data = loader.load("_shared_mcp.json")
-        return {
+        out = {
             "key": key,
             "name": data.get("name", key),
             "system": data.get("system_append", ""),
@@ -36,9 +59,9 @@ def _file_default(key: str) -> dict[str, Any]:
             "mcp": {"planned_tools": data.get("planned_tools", [])},
             "source": "file",
         }
-    if key in ROLE_FILES:
+    elif key in ROLE_FILES:
         data = loader.load(ROLE_FILES[key])
-        return {
+        out = {
             "key": key,
             "name": data.get("name", key),
             "system": data.get("system", ""),
@@ -48,30 +71,46 @@ def _file_default(key: str) -> dict[str, Any]:
             "mcp": data.get("mcp") or {},
             "source": "file",
         }
-    raise KeyError(key)
+    else:
+        raise KeyError(key)
+
+    with _cache_lock:
+        _file_cache[key] = (now, out)
+    return dict(out)
 
 
 def get_prompt_config(key: str) -> dict[str, Any]:
+    now = time.monotonic()
+    with _cache_lock:
+        hit = _merged_cache.get(key)
+        if hit and now - hit[0] < _CACHE_TTL_SEC:
+            return dict(hit[1])
+
     base = _file_default(key)
     Session = get_session_factory()
     with Session() as db:
         row = db.get(PromptOverrideRow, key)
         if not row or not row.enabled:
-            return base
-        scoring = json.loads(row.scoring_json or "{}")
-        weights = json.loads(row.weights_json or "{}") or (scoring.get("weights") or {})
-        mcp = json.loads(row.mcp_json or "{}")
-        return {
-            "key": key,
-            "name": row.name or base["name"],
-            "system": row.system if row.system is not None else base["system"],
-            "user_template": row.user_template if row.user_template is not None else base["user_template"],
-            "weights": weights or base["weights"],
-            "scoring": {**base["scoring"], **scoring, "weights": weights or base["weights"]},
-            "mcp": mcp or base["mcp"],
-            "source": "db_override",
-            "updated_at": row.updated_at.isoformat() if row.updated_at else None,
-        }
+            out = base
+        else:
+            scoring = json.loads(row.scoring_json or "{}")
+            weights = json.loads(row.weights_json or "{}") or (scoring.get("weights") or {})
+            mcp = json.loads(row.mcp_json or "{}")
+            out = {
+                "key": key,
+                "name": row.name or base["name"],
+                "system": row.system if row.system is not None else base["system"],
+                "user_template": row.user_template if row.user_template is not None else base["user_template"],
+                "weights": weights or base["weights"],
+                "scoring": {**base["scoring"], **scoring, "weights": weights or base["weights"]},
+                "mcp": mcp or base["mcp"],
+                "source": "db_override",
+                "updated_at": row.updated_at.isoformat() if row.updated_at else None,
+            }
+
+    with _cache_lock:
+        _merged_cache[key] = (now, out)
+    return dict(out)
 
 
 def list_prompt_configs() -> list[dict[str, Any]]:
@@ -128,6 +167,7 @@ def upsert_prompt_config(key: str, payload: dict[str, Any]) -> dict[str, Any]:
             row.enabled = bool(payload["enabled"])
         row.updated_at = utcnow()
         db.commit()
+    invalidate_prompt_cache(key)
     return get_prompt_config(key)
 
 
@@ -138,6 +178,7 @@ def reset_prompt_config(key: str) -> dict[str, Any]:
         if row:
             db.delete(row)
             db.commit()
+    invalidate_prompt_cache(key)
     return get_prompt_config(key)
 
 

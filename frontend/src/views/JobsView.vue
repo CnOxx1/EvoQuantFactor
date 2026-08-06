@@ -213,11 +213,18 @@ async function onRerun(row: JobSummary) {
   }
 }
 
+function hasActiveJobs(list: JobSummary[]) {
+  return list.some((j) => j.status === 'queued' || j.status === 'running')
+}
+
 async function load() {
   loading.value = true
   try {
     const { data } = await listJobs(50)
     jobs.value = data
+    // 无进行中任务时降低轮询频率（仍保留慢轮询以便新建后可见）
+    if (timer) clearInterval(timer)
+    timer = window.setInterval(load, hasActiveJobs(data) ? 4000 : 15000)
   } catch (e: any) {
     notify.error(e?.response?.data?.detail || e.message || '加载失败')
   } finally {
@@ -263,9 +270,10 @@ async function submit() {
 
 onMounted(() => {
   load()
-  timer = window.setInterval(load, 4000)
 })
-onUnmounted(() => timer && clearInterval(timer))
+onUnmounted(() => {
+  if (timer) clearInterval(timer)
+})
 </script>
 
 <style scoped>

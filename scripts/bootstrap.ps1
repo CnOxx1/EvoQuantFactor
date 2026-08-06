@@ -17,7 +17,7 @@ if ($LASTEXITCODE -ne 0) {
 
 if (-not (Test-Path ".env")) {
     Copy-Item ".env.example" ".env"
-    Write-Host "[factor-agent] 已生成 .env，请编辑并填写 LLM_API_KEY 后重新执行本脚本。"
+    Write-Host "[factor-agent] 已生成 .env，请编辑并填写 API_TOKEN / LLM_API_KEY 后重新执行本脚本。"
     Write-Host "  编辑文件: $Root\.env"
     exit 2
 }
@@ -37,9 +37,10 @@ if (-not $env:LLM_API_KEY) {
 New-Item -ItemType Directory -Force -Path "data\saved", "data\runs" | Out-Null
 
 $profileArgs = @()
-if ($env:BOOTSTRAP_PROFILE -eq "full") {
-    $profileArgs = @("--profile", "full")
-    Write-Host "[factor-agent] 使用 full profile（mcp + redis）"
+if ($env:BOOTSTRAP_PROFILE -eq "split") {
+    $profileArgs = @("--profile", "split")
+    $env:WORKER_ENABLED = "false"
+    Write-Host "[factor-agent] 使用 split profile：API + 独立 worker/collector"
 }
 
 Write-Host "[factor-agent] building & starting..."

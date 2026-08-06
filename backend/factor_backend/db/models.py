@@ -131,6 +131,25 @@ _engine = None
 _SessionLocal = None
 
 
+def _configure_sqlite(engine) -> None:
+    """多线程/多进程读写下启用 WAL，并设置 busy_timeout 降低 lock 失败。"""
+    url = str(engine.url)
+    if not url.startswith("sqlite"):
+        return
+    from sqlalchemy import event
+
+    @event.listens_for(engine, "connect")
+    def _on_connect(dbapi_conn, _connection_record):  # noqa: ANN001
+        cursor = dbapi_conn.cursor()
+        try:
+            cursor.execute("PRAGMA journal_mode=WAL")
+            cursor.execute("PRAGMA synchronous=NORMAL")
+            cursor.execute("PRAGMA busy_timeout=5000")
+            cursor.execute("PRAGMA foreign_keys=ON")
+        finally:
+            cursor.close()
+
+
 def get_engine():
     global _engine, _SessionLocal
     if _engine is None:
@@ -138,6 +157,7 @@ def get_engine():
         url = settings.database_url
         connect_args = {"check_same_thread": False} if url.startswith("sqlite") else {}
         _engine = create_engine(url, future=True, connect_args=connect_args)
+        _configure_sqlite(_engine)
         _SessionLocal = sessionmaker(bind=_engine, autoflush=False, autocommit=False, future=True)
     return _engine
 
@@ -198,6 +218,7 @@ def reset_engine_for_tests(database_url: str) -> None:
         _engine.dispose()
     connect_args = {"check_same_thread": False} if database_url.startswith("sqlite") else {}
     _engine = create_engine(database_url, future=True, connect_args=connect_args)
+    _configure_sqlite(_engine)
     _SessionLocal = sessionmaker(bind=_engine, autoflush=False, autocommit=False, future=True)
     Base.metadata.create_all(bind=_engine)
     _sqlite_migrate(_engine)

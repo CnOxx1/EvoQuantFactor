@@ -29,6 +29,7 @@ dev = [
 
 [project.scripts]
 factor-agent = "factor_backend.main:run"
+factor-backend = "factor_backend.__main__:main"
 
 [build-system]
 requires = ["setuptools>=68"]

@@ -1,4 +1,8 @@
-# 业务默认配置（可用环境变量覆盖同名项）
+# 参考文档：描述推荐默认值。
+# 注意：factor_backend 运行时不加载本文件。
+# 生效配置来源：
+#   1) 环境变量 / .env → factor_backend.config.Settings
+#   2) SQLite llm_config / prompt_overrides（前端「LLM 配置」「提示词」页）
 
 app:
   name: factor-agent
@@ -7,7 +11,7 @@ app:
 
 pipeline:
   max_round: 3
-  parallel_roles: 6
+  review_concurrency: 3
   save:
     mean_min: 80
     median_min: 75
@@ -18,10 +22,9 @@ pipeline:
     anti_noop_drop: true
 
 models:
-  # 实际以环境变量 LLM_MODEL_STEP1 / LLM_MODEL_REVIEW 为准
+  # 实际以环境变量 LLM_MODEL_STEP1 / LLM_MODEL_REVIEW 或 DB 为准
   step1: gpt-4o
   review: gpt-4o-mini
-  # step3 计分为代码节点，不调用模型
 
 llm:
   api_key_env: LLM_API_KEY
@@ -29,20 +32,24 @@ llm:
 
 mcp:
   enabled: false
-  market_url: http://market-mcp:8100/sse
-  tools:
-    - get_kline
-    - get_volume
-    - get_turnover
-    - get_quote
-    - get_financials
-    - get_index
+  note: stub only; do not treat evidence as real market data
 
 prompts:
   dir: prompts
   index: prompts/index.json
-  append_shared_mcp: true
 
 storage:
   saved_factors_dir: data/saved
   runs_dir: data/runs
+
+collector:
+  enabled_by_default: false
+  default_sources:
+    - eastmoney_report
+    - eastmoney_news
+  optional_sources:
+    - wallstreetcn
+    - sina
+    - ths
+    - jin10
+    - luobo
