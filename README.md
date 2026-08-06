@@ -35,6 +35,7 @@ uvicorn factor_backend.main:app --host 127.0.0.1 --port 18081
 ```
 
 - 健康检查：http://127.0.0.1:18081/health  
+- 进程指标：http://127.0.0.1:18081/metrics  
 - API 文档：http://127.0.0.1:18081/docs  
 
 独立进程（可选）：

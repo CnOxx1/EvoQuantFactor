@@ -254,6 +254,11 @@ async def _review_one_role_live(
         + "请输出 JSON：{role_code, role_name, reviews:[{factor_id, subscores:{...}, comment, suggestions, veto, veto_reason, info_insufficient}]}。"
         + f"\n可选 MCP 观察（勿编造）：{json.dumps(mcp_evidence, ensure_ascii=False)}"
     )
+    import time
+
+    from factor_backend.services import metrics
+
+    t0 = time.perf_counter()
     try:
         async def _once() -> Any:
             return await client.chat_json(system=system, user=user, model=model)
@@ -264,7 +269,11 @@ async def _review_one_role_live(
             label=f"{role_code} 评审",
             retryable=is_retryable_llm_error,
         )
+        metrics.incr("llm_review_calls_total")
+        metrics.observe_ms("llm_review_latency", (time.perf_counter() - t0) * 1000)
     except Exception as e:  # noqa: BLE001
+        metrics.incr("llm_review_errors_total")
+        metrics.observe_ms("llm_review_latency", (time.perf_counter() - t0) * 1000)
         raise LlmError(f"{role_code} 评审调用失败: {e}") from e
     reviews = raw.get("reviews") if isinstance(raw, dict) else None
     if not isinstance(reviews, list):

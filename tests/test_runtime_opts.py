@@ -131,3 +131,40 @@ def test_steps_include_payload_flag(db_env, monkeypatch):
         assert full and light
         assert any(s.get("payload") for s in full)
         assert all(s.get("payload") == {} for s in light)
+
+
+def test_list_reports_job_count_batch(db_env):
+    from fastapi.testclient import TestClient
+    from factor_backend.main import app
+
+    with TestClient(app) as client:
+        rids = []
+        for i in range(3):
+            rid = client.post(
+                "/api/v1/reports/text",
+                json={"title": f"r{i}", "content": f"换手率因子研究样本 {i}"},
+            ).json()["report_id"]
+            rids.append(rid)
+        client.post("/api/v1/jobs", json={"report_id": rids[0], "max_round": 1})
+        client.post("/api/v1/jobs", json={"report_id": rids[0], "max_round": 1})
+        client.post("/api/v1/jobs", json={"report_id": rids[1], "max_round": 1})
+        items = client.get("/api/v1/reports", params={"limit": 20}).json()["items"]
+        by_id = {x["report_id"]: x["job_count"] for x in items}
+        assert by_id[rids[0]] == 2
+        assert by_id[rids[1]] == 1
+        assert by_id[rids[2]] == 0
+
+
+def test_metrics_endpoint(db_env):
+    from fastapi.testclient import TestClient
+    from factor_backend.main import app
+    from factor_backend.services import metrics
+
+    metrics.reset_for_tests()
+    metrics.incr("jobs_claimed_total", 2)
+    with TestClient(app) as client:
+        body = client.get("/metrics").json()
+        assert body["counters"]["jobs_claimed_total"] == 2
+        assert "worker" in body
+        assert "news_summarize" in body
+        assert body["config"]["review_concurrency"] >= 1

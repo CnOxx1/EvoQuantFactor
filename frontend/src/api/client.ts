@@ -79,9 +79,10 @@ export const metaApi = () => api.get('/api/v1/meta')
 export const listJobs = (limit = 50) => api.get<JobSummary[]>('/api/v1/jobs', { params: { limit } })
 export const getJob = (id: string) => api.get<JobSummary>(`/api/v1/jobs/${id}`)
 export const getFactors = (id: string) => api.get<FactorFormula[]>(`/api/v1/jobs/${id}/factors`)
-export const getSteps = (id: string) => api.get<StepDetail[]>(`/api/v1/jobs/${id}/steps`)
-export const getStepDetail = (jobId: string, stepId: string) =>
-  api.get<StepDetail>(`/api/v1/jobs/${jobId}/steps/${stepId}`)
+export const getSteps = (id: string, opts?: { include_payload?: boolean }) =>
+  api.get<StepDetail[]>(`/api/v1/jobs/${id}/steps`, {
+    params: opts?.include_payload === false ? { include_payload: false } : undefined,
+  })
 export const createJobText = (payload: { title?: string; content: string; max_round?: number }) =>
   api.post<JobSummary>('/api/v1/jobs', payload)
 export const createJobFromReport = (payload: { report_id: string; title?: string; max_round?: number }) =>
@@ -263,7 +264,6 @@ export const listReports = (params?: {
   source?: string
   suitability?: string
 }) => api.get<ReportListResponse>('/api/v1/reports', { params })
-export const getReport = (id: string) => api.get<ReportItem>(`/api/v1/reports/${id}`)
 export const getReportContent = (id: string) => api.get<ReportContent>(`/api/v1/reports/${id}/content`)
 export const summarizeReport = (id: string, force = true) =>
   api.post<{ report_id: string; status: string; summary?: Record<string, unknown>; error?: string }>(
@@ -281,7 +281,6 @@ export const backfillReportTitles = (limit = 300) =>
     params: { limit },
     timeout: 120000,
   })
-export const getSummarizeStatus = () => api.get<SummarizeStatus>('/api/v1/reports/summarize/status')
 export const refetchReportPdf = (id: string) =>
   api.post<{ report_id: string; size_bytes: number; pdf_bytes: number }>(
     `/api/v1/reports/${id}/refetch-pdf`,
@@ -290,7 +289,6 @@ export const refetchReportPdf = (id: string) =>
   )
 export const collectReportsRun = () => api.post<CollectStatus>('/api/v1/reports/collect/run', {}, { timeout: 600000 })
 export const collectReportsStatus = () => api.get<CollectStatus>('/api/v1/reports/collect/status')
-export const listLibraryPacks = () => api.get<LibraryPack[]>('/api/v1/factor-library/packs')
 export const getLibraryFactors = (
   packId: string,
   params?: { q?: string; limit?: number; offset?: number },

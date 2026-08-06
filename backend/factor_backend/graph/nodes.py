@@ -759,6 +759,9 @@ def node_persist(state: GraphState) -> dict[str, Any]:
     except Exception as e:  # noqa: BLE001
         library_ok = False
         library_error = f"{type(e).__name__}: {e}"
+        from factor_backend.services import metrics
+
+        metrics.incr("factor_library_write_errors_total")
         logger.exception("factor library upsert failed for job %s", job_id)
 
     if not library_ok:

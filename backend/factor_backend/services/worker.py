@@ -6,6 +6,7 @@ import threading
 import uuid
 
 from factor_backend.config import get_settings
+from factor_backend.services import metrics
 from factor_backend.services.pipeline import PipelineRunner
 from factor_backend.services.storage import get_storage
 
@@ -101,14 +102,27 @@ def _run_loop(worker_id: str) -> None:
                 storage.mark_cancelled(job_id, "cancelled before run")
                 continue
             timeout_sec = int(job.get("timeout_sec") or settings.job_timeout_sec)
+            metrics.incr("jobs_claimed_total")
             logger.info("claimed job %s by %s timeout=%s", job_id, worker_id, timeout_sec)
             try:
                 asyncio.run(_run_with_guards(job_id, timeout_sec))
+                # 成功路径由 pipeline/persist 写 succeeded；此处按最终状态计数
+                try:
+                    st = storage.get_job(job_id).get("status")
+                except Exception:  # noqa: BLE001
+                    st = None
+                if st == "succeeded":
+                    metrics.incr("jobs_succeeded_total")
+                elif st == "failed":
+                    metrics.incr("jobs_failed_total")
             except JobCancelled:
+                metrics.incr("jobs_cancelled_total")
                 logger.info("job cancelled: %s", job_id)
             except JobTimedOut:
+                metrics.incr("jobs_timed_out_total")
                 logger.warning("job timed out: %s", job_id)
             except Exception:  # noqa: BLE001
+                metrics.incr("jobs_failed_total")
                 logger.exception("job failed: %s", job_id)
         except Exception:  # noqa: BLE001
             logger.exception("worker loop error (%s)", worker_id)
