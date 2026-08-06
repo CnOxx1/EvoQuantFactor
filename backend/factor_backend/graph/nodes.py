@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from factor_backend.models.schemas import JobProgress, StepType
@@ -14,6 +15,8 @@ from factor_backend.services.router_logic import decide_action, merge_scorecards
 from factor_backend.services.step_recorder import StepRecorder
 from factor_backend.services.storage import get_storage
 from factor_backend.graph.state import GraphState
+
+logger = logging.getLogger(__name__)
 
 
 def _recorder(state: GraphState) -> StepRecorder:
@@ -743,11 +746,25 @@ def node_persist(state: GraphState) -> dict[str, Any]:
 
     storage = get_storage()
     storage.save_result(job_id, result)
+
+    library_ok = True
+    library_error: str | None = None
+    library_workspace_count = 0
+    library_dropped_count = 0
     try:
-        upsert_job_factors_to_workspace(job_id=job_id, saved=saved_factors)
-        upsert_job_factors_to_dropped(job_id=job_id, dropped=dropped_factors)
-    except Exception:  # noqa: BLE001
-        pass
+        workspace_pack = upsert_job_factors_to_workspace(job_id=job_id, saved=saved_factors)
+        dropped_pack = upsert_job_factors_to_dropped(job_id=job_id, dropped=dropped_factors)
+        library_workspace_count = int((workspace_pack or {}).get("count") or 0)
+        library_dropped_count = int((dropped_pack or {}).get("count") or 0)
+    except Exception as e:  # noqa: BLE001
+        library_ok = False
+        library_error = f"{type(e).__name__}: {e}"
+        logger.exception("factor library upsert failed for job %s", job_id)
+
+    if not library_ok:
+        summary_parts.append(f"因子库写入失败：{library_error}")
+
+    done_message = "完成" if library_ok else f"完成（因子库写入失败：{library_error}）"
     _recorder(state).record(
         StepType.persist,
         title="结果落盘",
@@ -799,7 +816,12 @@ def node_persist(state: GraphState) -> dict[str, Any]:
             ],
             "engine": "langgraph",
             "library_packs": ["workspace", "dropped"],
+            "library_write_ok": library_ok,
+            "library_write_error": library_error,
+            "library_workspace_count": library_workspace_count,
+            "library_dropped_count": library_dropped_count,
         },
+        status="succeeded" if library_ok else "warning",
     )
     storage.update_job(
         job_id,
@@ -807,8 +829,14 @@ def node_persist(state: GraphState) -> dict[str, Any]:
         rounds_used=rounds_used,
         saved_count=len(saved_factors),
         dropped_count=len(dropped),
-        progress=JobProgress(phase="done", round=rounds_used, message="完成", percent=100).model_dump(),
-        error=None,
+        progress=JobProgress(
+            phase="done",
+            round=rounds_used,
+            message=done_message,
+            percent=100,
+        ).model_dump(),
+        # 任务结果已落 DB；因子库失败记入 error 便于 UI/运维发现，不改 succeeded 状态
+        error=None if library_ok else f"library_write_failed: {library_error}",
     )
     return {"saved_factors": saved_factors, "result": result}
 

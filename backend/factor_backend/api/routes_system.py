@@ -6,6 +6,7 @@ from factor_backend import __version__
 from factor_backend.config import get_settings
 from factor_backend.services.llm_config import llm_config_public_dict
 from factor_backend.services.prompt_loader import PromptLoader, ROLE_FILES
+from factor_backend.services.worker import worker_status
 
 router = APIRouter(tags=["system"])
 
@@ -18,15 +19,22 @@ def health() -> dict:
         llm = llm_config_public_dict()
     except Exception:  # noqa: BLE001
         llm = {"error": "llm_config_unavailable"}
+    warnings = settings.security_warnings()
+    workers = worker_status()
+    status = "ok"
+    if settings.is_production() and warnings:
+        status = "degraded"
     return {
-        "status": "ok",
+        "status": status,
         "version": __version__,
         "env": settings.app_env,
         "engine": "langgraph",
         "storage": "sqlalchemy",
         "auth_disabled": settings.auth_disabled,
         "worker_enabled": settings.worker_enabled,
+        "worker": workers,
         "mcp_enabled": settings.mcp_enabled,
+        "warnings": warnings,
         "llm": {
             "use_mock": llm.get("use_mock"),
             "should_call_llm": llm.get("should_call_llm"),
@@ -63,6 +71,8 @@ def meta() -> dict:
         "prompt_index": loader.index(),
         "llm": llm_config_public_dict(),
         "mcp_enabled": settings.mcp_enabled,
+        "warnings": settings.security_warnings(),
+        "worker": worker_status(),
         "endpoints": {
             "llm_config": "/api/v1/llm/config",
             "llm_test": "/api/v1/llm/test",

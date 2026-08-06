@@ -13,6 +13,7 @@ logger = logging.getLogger(__name__)
 
 _worker_threads: list[threading.Thread] = []
 _stop = threading.Event()
+_wake = threading.Event()
 
 
 class JobCancelled(Exception):
@@ -24,7 +25,28 @@ class JobTimedOut(Exception):
 
 
 def enqueue_job(job_id: str) -> None:
-    logger.info("job enqueued: %s", job_id)
+    """任务已写入 DB 为 queued；唤醒空闲 worker，避免空等 poll 间隔。"""
+    if not job_id:
+        raise ValueError("job_id required")
+    try:
+        job = get_storage().get_job(job_id)
+    except FileNotFoundError:
+        logger.error("enqueue_job: job not found: %s", job_id)
+        raise
+    status = job.get("status")
+    logger.info("job enqueued: %s status=%s", job_id, status)
+    _wake.set()
+
+
+def worker_status() -> dict:
+    alive = [t.name for t in _worker_threads if t.is_alive()]
+    return {
+        "enabled": bool(get_settings().worker_enabled),
+        "configured": max(1, int(get_settings().worker_concurrency)),
+        "alive": len(alive),
+        "threads": alive,
+        "stopping": _stop.is_set(),
+    }
 
 
 async def _run_with_guards(job_id: str, timeout_sec: int) -> None:
@@ -70,7 +92,9 @@ def _run_loop(worker_id: str) -> None:
             storage.reclaim_stale_jobs()
             job = storage.claim_next_job(worker_id)
             if not job:
-                _stop.wait(poll)
+                # 无任务时等待 poll，或被 enqueue_job 唤醒
+                _wake.clear()
+                _wake.wait(timeout=poll)
                 continue
             job_id = job["job_id"]
             if job.get("cancel_requested"):
@@ -97,6 +121,7 @@ def start_worker() -> None:
     if _worker_threads and any(t.is_alive() for t in _worker_threads):
         return
     _stop.clear()
+    _wake.clear()
     settings = get_settings()
     n = max(1, int(settings.worker_concurrency))
     _worker_threads = []
@@ -110,3 +135,4 @@ def start_worker() -> None:
 
 def stop_worker() -> None:
     _stop.set()
+    _wake.set()
