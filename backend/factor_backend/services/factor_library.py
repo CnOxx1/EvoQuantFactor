@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import json
+import logging
+import os
+import tempfile
 import threading
 from datetime import datetime, timezone
 from functools import lru_cache
@@ -8,6 +11,8 @@ from pathlib import Path
 from typing import Any
 
 from factor_backend.config import repo_root
+
+logger = logging.getLogger(__name__)
 
 _pack_lock = threading.Lock()
 
@@ -61,7 +66,8 @@ def _load_mutable_pack(
         return empty
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+    except (OSError, json.JSONDecodeError) as e:
+        logger.warning("corrupt factor pack %s at %s: %s; using empty pack", pack_id, path, e)
         return empty
     if not isinstance(data, dict):
         return empty
@@ -74,11 +80,26 @@ def _load_mutable_pack(
 
 
 def _save_mutable_pack(pack_id: str, data: dict[str, Any]) -> dict[str, Any]:
+    """原子写入因子库 JSON，避免进程中断导致半截文件。"""
     path = _pack_path(pack_id)
     data = dict(data)
     data["count"] = len(data.get("factors") or [])
     data["updated_at"] = datetime.now(timezone.utc).isoformat()
-    path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    payload = json.dumps(data, ensure_ascii=False, indent=2)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    fd, tmp_name = tempfile.mkstemp(prefix=f".{pack_id}.", suffix=".tmp", dir=str(path.parent))
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            fh.write(payload)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(tmp_name, path)
+    except Exception:
+        try:
+            os.unlink(tmp_name)
+        except OSError:
+            pass
+        raise
     return data
 
 

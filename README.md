@@ -100,4 +100,5 @@ scripts/                 # 一键脚本
 ## 安全说明
 
 - 不要提交 `.env` 与 `data/factor.db`
-- 生产请关闭 `AUTH_DISABLED`，并设置 `API_TOKEN`
+- 生产（`APP_ENV=production`）启动时会校验：必须 `AUTH_DISABLED=false`、设置非占位 `API_TOKEN`；可用 `STRICT_PRODUCTION=false` 显式跳过
+- `/health` 会返回 `warnings`（鉴权关闭、CORS `*`、MCP stub 等）与 worker 存活信息

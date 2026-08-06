@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import logging
 from functools import lru_cache
 from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+logger = logging.getLogger(__name__)
 
 
 def repo_root() -> Path:
@@ -18,9 +21,11 @@ class Settings(BaseSettings):
     app_env: str = "development"
     cors_origins: str = "*"
 
-    # 鉴权：生产请 AUTH_DISABLED=false 并设置 API_TOKEN
+    # 鉴权：本地开发默认可关；生产启动校验会强制 AUTH_DISABLED=false + API_TOKEN
     auth_disabled: bool = True
     api_token: str = ""
+    # 生产环境配置不当时是否拒绝启动（默认 true）
+    strict_production: bool = True
 
     # 存储：sqlite 默认；生产可改为 postgresql+psycopg://...
     database_url: str = f"sqlite:///{(repo_root() / 'data' / 'factor.db').as_posix()}"
@@ -131,6 +136,45 @@ class Settings(BaseSettings):
 
     def luobo_configured(self) -> bool:
         return bool((self.luobo_cloud_sso_token or "").strip() or (self.luobo_cookie or "").strip())
+
+    def is_production(self) -> bool:
+        return (self.app_env or "").strip().lower() in {"production", "prod", "staging"}
+
+    def security_warnings(self) -> list[str]:
+        """返回当前配置的安全/运维告警（不抛错）。"""
+        warnings: list[str] = []
+        if self.auth_disabled:
+            warnings.append("AUTH_DISABLED=true：API 未鉴权")
+        elif not (self.api_token or "").strip():
+            warnings.append("AUTH_DISABLED=false 但未设置 API_TOKEN")
+        if (self.cors_origins or "").strip() == "*":
+            warnings.append("CORS_ORIGINS=*：允许任意来源")
+        if self.llm_mock and self.is_production():
+            warnings.append("LLM_MOCK=true：生产环境默认走 mock（运行时仍以 DB 配置为准）")
+        if self.mcp_enabled:
+            warnings.append("MCP_ENABLED=true：行情 MCP 仍为 stub，评审证据勿当真实数据")
+        return warnings
+
+
+def validate_runtime_settings(settings: Settings | None = None) -> list[str]:
+    """启动时校验配置。生产+strict 时对危险配置抛错；其余记 warning。"""
+    settings = settings or get_settings()
+    warnings = settings.security_warnings()
+    for w in warnings:
+        logger.warning("config: %s", w)
+
+    if settings.is_production() and settings.strict_production:
+        hard_errors: list[str] = []
+        if settings.auth_disabled:
+            hard_errors.append("生产环境禁止 AUTH_DISABLED=true（或设 STRICT_PRODUCTION=false 显式跳过）")
+        if not (settings.api_token or "").strip():
+            hard_errors.append("生产环境必须设置 API_TOKEN")
+        if (settings.api_token or "").strip() in {"please-change-me", "changeme", "secret"}:
+            hard_errors.append("生产环境 API_TOKEN 仍为占位值，请更换为强随机串")
+        if hard_errors:
+            msg = "; ".join(hard_errors)
+            raise RuntimeError(f"不安全的生产配置: {msg}")
+    return warnings
 
 
 @lru_cache

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 import uvicorn
 from fastapi import FastAPI
@@ -14,7 +15,7 @@ from factor_backend.api.routes_llm import router as llm_router
 from factor_backend.api.routes_prompts import router as prompts_router
 from factor_backend.api.routes_reports import router as reports_router
 from factor_backend.api.routes_system import router as system_router
-from factor_backend.config import get_settings
+from factor_backend.config import get_settings, validate_runtime_settings
 from factor_backend.db.models import init_db
 from factor_backend.services.news_summarize import start_news_summarize_workers, stop_news_summarize_workers
 from factor_backend.services.report_ingest.collector import start_report_collector, stop_report_collector
@@ -24,7 +25,7 @@ from factor_backend.services.worker import start_worker, stop_worker
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     settings = get_settings()
-    Path = __import__("pathlib").Path
+    validate_runtime_settings(settings)
     Path(settings.data_dir).mkdir(parents=True, exist_ok=True)
     init_db()
     if settings.worker_enabled:
@@ -46,10 +47,12 @@ app = FastAPI(
 
 settings = get_settings()
 origins = [o.strip() for o in settings.cors_origins.split(",") if o.strip()]
+# 浏览器不允许 credentials + Access-Control-Allow-Origin:*；通配时关闭 credentials
+_wildcard_cors = origins == ["*"] or not origins
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins if origins != ["*"] else ["*"],
-    allow_credentials=True,
+    allow_origins=["*"] if _wildcard_cors else origins,
+    allow_credentials=not _wildcard_cors,
     allow_methods=["*"],
     allow_headers=["*"],
 )
