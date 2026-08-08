@@ -287,7 +287,8 @@ export const refetchReportPdf = (id: string) =>
     null,
     { timeout: 120000 },
   )
-export const collectReportsRun = () => api.post<CollectStatus>('/api/v1/reports/collect/run', {}, { timeout: 600000 })
+export const collectReportsRun = () =>
+  api.post<CollectStatus & { accepted?: boolean }>('/api/v1/reports/collect/run', {}, { timeout: 30000 })
 export const collectReportsStatus = () => api.get<CollectStatus>('/api/v1/reports/collect/status')
 export const getLibraryFactors = (
   packId: string,

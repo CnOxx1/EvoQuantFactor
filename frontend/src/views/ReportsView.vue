@@ -147,6 +147,7 @@ import type { DataTableColumns, PaginationProps } from 'naive-ui'
 import {
   backfillReportTitles,
   collectReportsRun,
+  collectReportsStatus,
   createJobFromReport,
   getReportContent,
   listReports,
@@ -449,10 +450,32 @@ async function onFixTitles() {
   }
 }
 
+async function sleep(ms: number) {
+  await new Promise((r) => setTimeout(r, ms))
+}
+
+async function waitCollectFinished(timeoutMs = 600_000) {
+  const started = Date.now()
+  let last: Awaited<ReturnType<typeof collectReportsStatus>>['data'] | null = null
+  while (Date.now() - started < timeoutMs) {
+    const { data } = await collectReportsStatus()
+    last = data
+    if (!data.running) return data
+    await sleep(2000)
+  }
+  throw new Error(last?.last_error || '采集超时，请稍后刷新查看')
+}
+
 async function onSync() {
   syncing.value = true
   try {
-    const { data } = await collectReportsRun()
+    const { data: started } = await collectReportsRun()
+    if (started.accepted === false && started.running) {
+      notify.info('已有采集在进行中，等待完成…')
+    } else {
+      notify.info('采集已在后台开始，完成后自动刷新')
+    }
+    const data = await waitCollectFinished()
     notifyCollectorStatus(data, { forcePopup: true })
     await load()
   } catch (e: any) {

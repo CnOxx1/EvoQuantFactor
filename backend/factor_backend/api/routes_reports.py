@@ -13,7 +13,7 @@ from factor_backend.services.report_ingest.collector import (
     backfill_bad_titles,
     get_collector_status,
     refetch_eastmoney_pdf,
-    run_collect_once,
+    start_collect_once_async,
 )
 from factor_backend.services.storage import get_storage
 from factor_backend.services.text_extract import decode_upload
@@ -50,8 +50,8 @@ def collect_status() -> dict:
 
 @router.post("/collect/run")
 def collect_run() -> dict:
-    """手动触发一轮采集（只入库，不自动因子分析；入库后会入队资讯摘要）。"""
-    return run_collect_once()
+    """手动触发一轮采集（后台执行，立即返回；轮询 /collect/status 直到 running=false）。"""
+    return start_collect_once_async()
 
 
 @router.post("/titles/backfill")

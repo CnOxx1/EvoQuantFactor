@@ -28,6 +28,7 @@ logger = logging.getLogger(__name__)
 
 _stop = threading.Event()
 _thread: threading.Thread | None = None
+_manual_thread: threading.Thread | None = None
 _lock = threading.Lock()
 _status: dict[str, Any] = {
     "enabled": False,
@@ -351,6 +352,52 @@ def _auto_refetch_incomplete_pdfs(
             errors.append(f"pdf_refetch:{rid}: {e}"[:240])
             logger.warning("auto pdf refetch failed %s: %s", rid, e)
     return ok
+
+
+def _collect_busy() -> bool:
+    """Whether a collect run is already in progress (manual or scheduled)."""
+    if bool(_status.get("running")):
+        return True
+    if _manual_thread is not None and _manual_thread.is_alive():
+        return True
+    return False
+
+
+def start_collect_once_async() -> dict[str, Any]:
+    """Kick off one collect run in a background thread; return status immediately.
+
+    Manual sync used to block the HTTP request for minutes (PDF downloads), which
+    starved the API and made the frontend feel frozen. Callers should poll
+    ``/collect/status`` until ``running`` becomes false.
+    """
+    global _manual_thread
+    accepted = False
+    with _lock:
+        if not _collect_busy():
+            # Optimistic running flag so UI/status see sync-in-progress immediately.
+            _status["running"] = True
+            _status["last_started_at"] = datetime.now(timezone.utc).isoformat()
+            _status["last_error"] = None
+            _status["last_errors"] = []
+
+            def _target() -> None:
+                try:
+                    run_collect_once()
+                except Exception:  # noqa: BLE001
+                    logger.exception("manual collect failed")
+                    with _lock:
+                        _status["running"] = False
+                        if not _status.get("last_error"):
+                            _status["last_error"] = "manual collect crashed"
+
+            _manual_thread = threading.Thread(
+                target=_target, name="report-collect-once", daemon=True
+            )
+            _manual_thread.start()
+            accepted = True
+    out = get_collector_status()
+    out["accepted"] = accepted
+    return out
 
 
 def run_collect_once(storage: Storage | None = None, settings: Settings | None = None) -> dict[str, Any]:
