@@ -1,0 +1,26 @@
+name: overnight_c60_164135_4146
+version: 0.1.0
+status: screened
+family: price_volume
+category: overnight
+universe: csi100
+frequency: daily
+required_fields:
+- close
+- open
+- high
+- low
+lookback: 60
+horizon: 5
+neutralize: []
+params: {}
+tags:
+- dsl
+- loop
+- langgraph
+- compose
+hypothesis: 跳空/隔夜；compose div(overnight,ma(overnight,60))
+entry_gate: research
+expression: div(overnight,ma(overnight,60))
+mechanism: overnight
+expr_hash: c3cd4d1da04b5f49

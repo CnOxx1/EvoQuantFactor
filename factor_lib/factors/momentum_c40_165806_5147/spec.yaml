@@ -1,0 +1,26 @@
+name: momentum_c40_165806_5147
+version: 0.1.0
+status: screened
+family: price_volume
+category: momentum
+universe: csi100
+frequency: daily
+required_fields:
+- close
+- open
+- high
+- low
+lookback: 40
+horizon: 5
+neutralize: []
+params: {}
+tags:
+- dsl
+- loop
+- langgraph
+- compose
+hypothesis: 中期动量；compose div(std(open,40),ma(abs(open),40))
+entry_gate: research
+expression: div(std(open,40),ma(abs(open),40))
+mechanism: momentum
+expr_hash: 1bb697b79c9dcc71

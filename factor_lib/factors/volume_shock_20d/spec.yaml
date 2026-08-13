@@ -1,0 +1,21 @@
+name: volume_shock_20d
+version: 0.1.0
+status: draft
+family: price_volume
+category: liquidity
+universe: csi100
+frequency: daily
+required_fields:
+- vol
+lookback: 20
+horizon: 5
+neutralize: []
+params:
+  window: 20
+tags:
+- seed
+hypothesis: 成交量相对20日均值的冲击
+entry_gate: research
+expression: null
+mechanism: null
+expr_hash: null

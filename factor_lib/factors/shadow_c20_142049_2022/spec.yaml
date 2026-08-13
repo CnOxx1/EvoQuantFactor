@@ -1,0 +1,26 @@
+name: shadow_c20_142049_2022
+version: 0.1.0
+status: draft
+family: price_volume
+category: shadow
+universe: csi100
+frequency: daily
+required_fields:
+- close
+- open
+- high
+- low
+lookback: 20
+horizon: 5
+neutralize: []
+params: {}
+tags:
+- dsl
+- loop
+- langgraph
+- compose
+hypothesis: 影线结构；compose sub(ma(upper_shadow,20),ma(lower_shadow,20))
+entry_gate: research
+expression: sub(ma(upper_shadow,20),ma(lower_shadow,20))
+mechanism: shadow
+expr_hash: c81cec536fd9e814

@@ -1,0 +1,26 @@
+name: volume_price_c5_141223_3552
+version: 0.1.0
+status: draft
+family: price_volume
+category: volume_price
+universe: csi100
+frequency: daily
+required_fields:
+- close
+- open
+- high
+- low
+lookback: 5
+horizon: 5
+neutralize: []
+params: {}
+tags:
+- dsl
+- loop
+- langgraph
+- compose
+hypothesis: 量价配合；compose div(rank(roc(close_adj,5)),rank(roc(vol,5)))
+entry_gate: research
+expression: div(rank(roc(close_adj,5)),rank(roc(vol,5)))
+mechanism: volume_price
+expr_hash: f0a6edf22d6228ea

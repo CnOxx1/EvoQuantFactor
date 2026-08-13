@@ -1,0 +1,26 @@
+name: volatility_c60_161944_8290
+version: 0.1.0
+status: screened
+family: price_volume
+category: volatility
+universe: csi100
+frequency: daily
+required_fields:
+- close
+- open
+- high
+- low
+lookback: 60
+horizon: 5
+neutralize: []
+params: {}
+tags:
+- dsl
+- loop
+- langgraph
+- compose
+hypothesis: 波动率；compose div(std(ret_1d,60),std(overnight,60))
+entry_gate: research
+expression: div(std(ret_1d,60),std(overnight,60))
+mechanism: volatility
+expr_hash: c326ecd535fb8cd7

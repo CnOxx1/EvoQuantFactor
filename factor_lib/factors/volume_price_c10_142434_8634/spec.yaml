@@ -1,0 +1,26 @@
+name: volume_price_c10_142434_8634
+version: 0.1.0
+status: draft
+family: price_volume
+category: volume_price
+universe: csi100
+frequency: daily
+required_fields:
+- close
+- open
+- high
+- low
+lookback: 10
+horizon: 5
+neutralize: []
+params: {}
+tags:
+- dsl
+- loop
+- langgraph
+- compose
+hypothesis: 量价配合；compose mul(rank(roc(close_adj,10)),rank(roc(amount,10)))
+entry_gate: research
+expression: mul(rank(roc(close_adj,10)),rank(roc(amount,10)))
+mechanism: volume_price
+expr_hash: 477d04d4646903d4

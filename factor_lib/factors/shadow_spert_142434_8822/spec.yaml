@@ -1,0 +1,27 @@
+name: shadow_spert_142434_8822
+version: 0.1.0
+status: draft
+family: price_volume
+category: shadow
+universe: csi100
+frequency: daily
+required_fields:
+- close
+- open
+- high
+- low
+lookback: 40
+horizon: 5
+neutralize: []
+params: {}
+tags:
+- dsl
+- loop
+- langgraph
+- structure_perturb
+hypothesis: 影线结构；compose sub(ma(upper_shadow,40),ma(lower_shadow,40)) | structure
+  perturb
+entry_gate: research
+expression: sub(std(upper_shadow,40),ma(lower_shadow,40))
+mechanism: shadow
+expr_hash: 5b314492bea75361

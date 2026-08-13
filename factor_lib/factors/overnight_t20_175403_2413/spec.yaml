@@ -1,0 +1,25 @@
+name: overnight_t20_175403_2413
+version: 0.1.0
+status: draft
+family: price_volume
+category: overnight
+universe: csi100
+frequency: daily
+required_fields:
+- close
+- open
+- high
+- low
+lookback: 20
+horizon: 5
+neutralize: []
+params:
+  expression: ma(overnight,20)
+tags:
+- dsl
+- loop
+hypothesis: 跳空/隔夜；模板启发表达式 ma(overnight,20)
+entry_gate: research
+expression: ma(overnight,20)
+mechanism: overnight
+expr_hash: null

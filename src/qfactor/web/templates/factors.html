@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+{% block title %}因子列表 · qfactor{% endblock %}
+{% block content %}
+<div class="card">
+  <h1>因子库</h1>
+  <p class="sub">按状态筛选；点名称看报告。</p>
+  <p>
+    <a href="/ui/factors">全部</a> |
+    <a href="/ui/factors?status=screened">screened</a> |
+    <a href="/ui/factors?status=candidate">candidate</a> |
+    <a href="/ui/factors?status=approved">approved</a> |
+    <a href="/ui/factors?status=draft">draft</a> |
+    <a href="/ui/factors?status=deprecated">deprecated</a>
+  </p>
+  <table>
+    <thead>
+      <tr><th>name</th><th>status</th><th>category</th><th>source</th><th>IC</th><th>ICIR</th><th>corr</th></tr>
+    </thead>
+    <tbody>
+      {% for f in factors %}
+      <tr>
+        <td><a href="/ui/factors/{{ f.name }}">{{ f.name }}</a></td>
+        <td><span class="pill">{{ f.status }}</span></td>
+        <td>{{ f.category }}</td>
+        <td>{{ f.source }}</td>
+        <td>{{ '%.4f'|format(f.summary.rank_ic_mean) if f.summary and f.summary.rank_ic_mean is not none else '-' }}</td>
+        <td>{{ '%.3f'|format(f.summary.icir) if f.summary and f.summary.icir is not none else '-' }}</td>
+        <td>{{ '%.2f'|format(f.summary.max_corr) if f.summary and f.summary.max_corr is not none else '-' }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="7">暂无因子</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endblock %}

@@ -1,0 +1,26 @@
+name: overnight_c60_165300_7444
+version: 0.1.0
+status: screened
+family: price_volume
+category: overnight
+universe: csi100
+frequency: daily
+required_fields:
+- close
+- open
+- high
+- low
+lookback: 60
+horizon: 5
+neutralize: []
+params: {}
+tags:
+- dsl
+- loop
+- langgraph
+- compose
+hypothesis: 跳空/隔夜；compose max(overnight,60)
+entry_gate: research
+expression: max(overnight,60)
+mechanism: overnight
+expr_hash: 701dea0488a233d8

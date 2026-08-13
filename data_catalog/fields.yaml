@@ -1,0 +1,174 @@
+universe: csi100
+frequency: daily
+family: price_volume
+
+rules:
+  signal_timing: "EOD fields available after close; trade_lag=1 by default"
+  no_lookahead: true
+  llm_allowed_fields_only: true
+
+fields:
+  - name: trade_date
+    table: daily_bar
+    dtype: date
+    availability: eod
+    trade_lag: 0
+    desc: 交易日
+
+  - name: ts_code
+    table: daily_bar
+    dtype: str
+    availability: static
+    trade_lag: 0
+    desc: 股票代码
+
+  - name: open
+    table: daily_bar
+    dtype: float
+    availability: eod
+    trade_lag: 1
+    family: price_volume
+    desc: 开盘价
+
+  - name: high
+    table: daily_bar
+    dtype: float
+    availability: eod
+    trade_lag: 1
+    family: price_volume
+    desc: 最高价
+
+  - name: low
+    table: daily_bar
+    dtype: float
+    availability: eod
+    trade_lag: 1
+    family: price_volume
+    desc: 最低价
+
+  - name: close
+    table: daily_bar
+    dtype: float
+    availability: eod
+    trade_lag: 1
+    family: price_volume
+    desc: 收盘价（未复权）
+
+  - name: pre_close
+    table: daily_bar
+    dtype: float
+    availability: eod
+    trade_lag: 1
+    family: price_volume
+    desc: 昨收
+
+  - name: vol
+    table: daily_bar
+    dtype: float
+    availability: eod
+    trade_lag: 1
+    family: price_volume
+    desc: 成交量（手）
+
+  - name: amount
+    table: daily_bar
+    dtype: float
+    availability: eod
+    trade_lag: 1
+    family: price_volume
+    desc: 成交额（千元）
+
+  - name: adj_factor
+    table: adj_factor
+    dtype: float
+    availability: eod
+    trade_lag: 1
+    family: price_volume
+    desc: 复权因子
+
+  - name: close_adj
+    table: daily_bar
+    dtype: float
+    availability: eod
+    trade_lag: 1
+    family: price_volume
+    desc: 前复权收盘价
+
+  - name: ret_1d
+    table: daily_bar
+    dtype: float
+    availability: eod
+    trade_lag: 1
+    family: price_volume
+    desc: 前复权日收益
+
+  - name: turnover_rate
+    table: daily_basic
+    dtype: float
+    availability: eod
+    trade_lag: 1
+    family: price_volume
+    optional: true
+    desc: 换手率（%）
+
+  - name: circ_mv
+    table: daily_basic
+    dtype: float
+    availability: eod
+    trade_lag: 1
+    family: style
+    optional: true
+    desc: 流通市值（预留中性化）
+
+  - name: industry
+    table: industry
+    dtype: str
+    availability: daily
+    trade_lag: 0
+    family: style
+    optional: true
+    desc: 行业（预留中性化）
+
+  - name: amplitude
+    table: derived
+    dtype: float
+    availability: eod
+    trade_lag: 1
+    family: price_volume
+    desc: (high-low)/close
+
+  - name: overnight
+    table: derived
+    dtype: float
+    availability: eod
+    trade_lag: 1
+    family: price_volume
+    desc: open/pre_close - 1
+
+  - name: upper_shadow
+    table: derived
+    dtype: float
+    availability: eod
+    trade_lag: 1
+    family: price_volume
+    desc: upper shadow ratio
+
+  - name: lower_shadow
+    table: derived
+    dtype: float
+    availability: eod
+    trade_lag: 1
+    family: price_volume
+    desc: lower shadow ratio
+
+# Reserved families (not used by LLM in phase-1)
+reserved_fields:
+  - name: pe_ttm
+    family: fundamental
+    status: reserved
+  - name: net_profit_ttm
+    family: fundamental
+    status: reserved
+  - name: news_sentiment
+    family: text
+    status: reserved

@@ -1,0 +1,59 @@
+# Lightweight mechanism families to guide generation diversity.
+# Not a full research taxonomy clone — just coverage hints for our miner.
+mechanisms:
+  - id: reversal
+    desc: 短期反转
+    hints:
+      - "neg(roc(close_adj,n))"
+      - "neg(delta(close_adj,n))"
+      - "neg(ma(ret_1d,n))"
+      - "neg(roc(open,n))"
+  - id: momentum
+    desc: 中期动量
+    hints:
+      - "roc(close_adj,n)"
+      - "ma(roc(close_adj,5),n)"
+      - "sub(roc(close_adj,n),roc(close_adj,60))"
+      - "ma(roc(open,n),n)"
+  - id: volatility
+    desc: 波动率
+    hints:
+      - "std(ret_1d,n)"
+      - "ma(amplitude,n)"
+      - "div(std(ret_1d,n),ma(abs(ret_1d),n))"
+      - "std(overnight,n)"
+  - id: liquidity
+    desc: 流动性/成交
+    hints:
+      - "ma(div(abs(ret_1d),amount),n)"
+      - "roc(vol,n)"
+      - "ma(turnover_rate,n)"
+      - "div(vol,ma(vol,n))"
+  - id: overnight
+    desc: 跳空/隔夜
+    hints:
+      - "ma(overnight,n)"
+      - "sub(ma(overnight,n),ma(amplitude,n))"
+      - "ma(abs(overnight),n)"
+      - "div(overnight,ma(amplitude,n))"
+  - id: amplitude
+    desc: 振幅结构
+    hints:
+      - "ma(amplitude,n)"
+      - "delta(amplitude,n)"
+      - "div(amplitude,ma(amplitude,n))"
+      - "std(amplitude,n)"
+  - id: volume_price
+    desc: 量价配合
+    hints:
+      - "mul(rank(roc(close_adj,n)),rank(roc(vol,n)))"
+      - "sub(rank(roc(close_adj,n)),rank(roc(vol,n)))"
+      - "div(rank(roc(close_adj,n)),rank(roc(vol,n)))"
+      - "sub(rank(delta(close_adj,n)),rank(roc(amount,n)))"
+  - id: shadow
+    desc: 影线结构
+    hints:
+      - "ma(lower_shadow,n)"
+      - "ma(upper_shadow,n)"
+      - "sub(ma(upper_shadow,n),ma(lower_shadow,n))"
+      - "div(lower_shadow,ma(amplitude,n))"

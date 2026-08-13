@@ -1,0 +1,26 @@
+name: momentum_c40_164934_3466
+version: 0.1.0
+status: screened
+family: price_volume
+category: momentum
+universe: csi100
+frequency: daily
+required_fields:
+- close
+- open
+- high
+- low
+lookback: 40
+horizon: 5
+neutralize: []
+params: {}
+tags:
+- dsl
+- loop
+- langgraph
+- compose
+hypothesis: 中期动量；compose rank(delta(open,40))
+entry_gate: research
+expression: rank(delta(open,40))
+mechanism: momentum
+expr_hash: b97654b5beb2d6c6

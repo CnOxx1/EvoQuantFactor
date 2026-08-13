@@ -1,0 +1,26 @@
+name: reversal_t5_140942_6854
+version: 0.1.0
+status: draft
+family: price_volume
+category: reversal
+universe: csi100
+frequency: daily
+required_fields:
+- close
+- open
+- high
+- low
+lookback: 5
+horizon: 5
+neutralize: []
+params: {}
+tags:
+- dsl
+- loop
+- langgraph
+- template
+hypothesis: 短期反转；模板启发表达式 neg(roc(open,5))
+entry_gate: research
+expression: neg(roc(open,5))
+mechanism: reversal
+expr_hash: 2a9462db8e1f2f6b

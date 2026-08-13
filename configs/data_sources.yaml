@@ -1,0 +1,22 @@
+primary: tushare
+fallback: baostock
+
+# Recommended no-Tushare stack:
+#   members: CSIndex official xls (000903)
+#   bars/industry/turnover: Baostock
+tushare:
+  index_code: "000903.SH"
+  sleep_seconds: 0.35
+
+baostock:
+  index_code: "sh.000903"
+
+csindex:
+  index_code: "000903"
+
+akshare:
+  index_symbol: "sh000903"
+
+cache:
+  enable: true
+  format: parquet

@@ -1,0 +1,26 @@
+name: shadow_c20_163029_8078
+version: 0.1.0
+status: screened
+family: price_volume
+category: shadow
+universe: csi100
+frequency: daily
+required_fields:
+- close
+- open
+- high
+- low
+lookback: 20
+horizon: 5
+neutralize: []
+params: {}
+tags:
+- dsl
+- loop
+- langgraph
+- compose
+hypothesis: 影线结构；compose std(lower_shadow,20)
+entry_gate: research
+expression: std(lower_shadow,20)
+mechanism: shadow
+expr_hash: acd6952a809cbe03

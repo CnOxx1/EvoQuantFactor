@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}同步状态 · qfactor{% endblock %}
+{% block content %}
+<div class="card">
+  <h1>数据同步</h1>
+  <p class="sub">无 Tushare 时：中证官网成分 + Baostock 行情/行业/换手（流通市值由成交额/换手估算）</p>
+  <div class="grid">
+    <div class="metric"><span>bars</span><b class="{% if status.has_bars %}ok{% else %}err{% endif %}">{{ 'yes' if status.has_bars else 'no' }}</b></div>
+    <div class="metric"><span>universe</span><b>{{ 'yes' if status.has_universe else 'no' }}</b></div>
+    <div class="metric"><span>industry</span><b>{{ 'yes' if status.has_industry else 'no' }}</b></div>
+    <div class="metric"><span>version</span><b>{{ status.data_version or '-' }}</b></div>
+  </div>
+  {% if status.database %}
+  <p class="sub">SQLite：{{ status.database.path }} · bars={{ status.database.n_bars }} · codes={{ status.database.n_codes }} · factors={{ status.database.n_factors }}</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <form method="post" action="/ui/sync">
+    <label>start</label>
+    <input name="start" value="20240101" />
+    <label>end</label>
+    <input name="end" value="20260630" />
+    <label>source</label>
+    <select name="source">
+      <option value="baostock" selected>baostock + csindex</option>
+      <option value="auto">auto</option>
+      <option value="akshare">akshare</option>
+      <option value="tushare">tushare</option>
+    </select>
+    <label>max_names（可空=全样本）</label>
+    <input name="max_names" placeholder="e.g. 100" />
+    <div><button type="submit">开始同步</button></div>
+  </form>
+  {% if job %}
+  <p>任务状态：<span class="pill">{{ job.state }}</span></p>
+  {% if job.error %}<p class="err">{{ job.error }}</p>{% endif %}
+  {% if job.meta %}<pre>{{ job.meta | tojson(indent=2) }}</pre>{% endif %}
+  {% endif %}
+  {% if status.meta %}
+  <h3>当前 data_version 摘要</h3>
+  <pre>{{ status.meta | tojson(indent=2) }}</pre>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,25 @@
+name: overnight_t10_175401_5274
+version: 0.1.0
+status: draft
+family: price_volume
+category: overnight
+universe: csi100
+frequency: daily
+required_fields:
+- close
+- open
+- high
+- low
+lookback: 20
+horizon: 5
+neutralize: []
+params:
+  expression: sub(ma(overnight,10),ma(amplitude,10))
+tags:
+- dsl
+- loop
+hypothesis: 跳空/隔夜；模板启发表达式 sub(ma(overnight,10),ma(amplitude,10))
+entry_gate: research
+expression: sub(ma(overnight,10),ma(amplitude,10))
+mechanism: overnight
+expr_hash: null

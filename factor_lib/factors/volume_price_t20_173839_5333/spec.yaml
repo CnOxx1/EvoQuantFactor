@@ -1,0 +1,25 @@
+name: volume_price_t20_173839_5333
+version: 0.1.0
+status: draft
+family: price_volume
+category: volume_price
+universe: csi100
+frequency: daily
+required_fields:
+- close
+- open
+- high
+- low
+lookback: 20
+horizon: 5
+neutralize: []
+params:
+  expression: sub(rank(roc(close_adj,20)),rank(roc(vol,20)))
+tags:
+- dsl
+- loop
+hypothesis: 量价配合；模板启发表达式 sub(rank(roc(close_adj,20)),rank(roc(vol,20)))
+entry_gate: research
+expression: sub(rank(roc(close_adj,20)),rank(roc(vol,20)))
+mechanism: volume_price
+expr_hash: null

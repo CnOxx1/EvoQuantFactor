@@ -1,0 +1,26 @@
+name: momentum_c10_163407_4493
+version: 0.1.0
+status: screened
+family: price_volume
+category: momentum
+universe: csi100
+frequency: daily
+required_fields:
+- close
+- open
+- high
+- low
+lookback: 10
+horizon: 5
+neutralize: []
+params: {}
+tags:
+- dsl
+- loop
+- langgraph
+- compose
+hypothesis: 中期动量；compose std(roc(close_adj,10),20)
+entry_gate: research
+expression: std(roc(close_adj,10),20)
+mechanism: momentum
+expr_hash: ae436935ec09a52b

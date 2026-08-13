@@ -1,0 +1,75 @@
+# Hard gates. research = mining -> screened; production = candidate pool (strict).
+# trade_lag is read from project.yaml defaults (1 = T-day signal, T+1 trade).
+#
+# min_icir is ANNUALIZED (daily ICIR * sqrt(252)) when icir_annualized: true.
+# Production holdout uses window ICIR (mean/std over the freeze window), not *sqrt(252).
+# 1.5 annualized ≈ 0.095 window ICIR.
+
+default:
+  min_rank_ic_mean: 0.02
+  min_abs_rank_ic_mean: 0.02
+  min_icir: 1.0
+  min_coverage: 0.70
+  max_corr_existing: 0.70
+  min_years_consistent: 2
+  max_daily_turnover: 1.50
+  require_no_lookahead: true
+  min_layered_monotonic_score: 0.5
+  require_recent_ic_positive: false
+  require_oos: false
+  require_cost_ls_positive: false
+  require_years_same_sign: false
+
+research:
+  min_rank_ic_mean: 0.01
+  min_abs_rank_ic_mean: 0.01
+  min_icir: 1.0
+  min_coverage: 0.60
+  max_corr_existing: 0.85
+  min_years_consistent: 2
+  max_daily_turnover: 2.00
+  require_no_lookahead: true
+  min_layered_monotonic_score: 0.5
+  require_recent_ic_positive: false
+  require_oos: true
+  min_oos_ic_mean: 0.0
+  min_oos_pos_folds: 1
+  require_cost_ls_positive: false
+  require_years_same_sign: false
+
+production:
+  min_rank_ic_mean: 0.02
+  min_abs_rank_ic_mean: 0.02
+  min_icir: 1.5
+  icir_annualized: false
+  min_holdout_icir: 0.10   # window ICIR; 0.10 ≈ 1.5 annualized
+  min_coverage: 0.70
+  max_corr_existing: 0.70
+  min_years_consistent: 2
+  max_daily_turnover: 1.20
+  require_no_lookahead: true
+  min_layered_monotonic_score: 0.75
+  require_recent_ic_positive: true
+  require_oos: true
+  oos_mode: freeze_sign    # train orientation must not flip on holdout
+  min_oos_ic_mean: 0.01
+  min_oos_pos_folds: 1
+  require_cost_ls_positive: true
+  require_years_same_sign: true
+  require_residual_ic: true
+  min_resid_ic_mean: 0.01
+  min_resid_icir: 0.10     # window ICIR, same units as min_holdout_icir
+
+eval:
+  forward_horizon: 5
+  trade_lag: 1          # override project.defaults.trade_lag if set
+  train_end: "20251231" # research/mining window; production scores dates after this
+  n_quantiles: 5
+  cost_bps: 10
+  min_obs_per_day: 30
+  recent_days: 120
+  oos_folds: 4
+  oos_min_days: 40
+  neutralize_industry: true
+  neutralize_size: true   # circ_mv only; never OLS on amount if circ_mv missing
+  signal_hold_days: 5     # production: 5-day hold — IC, layered, and cost all use this horizon

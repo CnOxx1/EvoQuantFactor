@@ -1,0 +1,26 @@
+name: reversal_c5_140934_4601
+version: 0.1.0
+status: draft
+family: price_volume
+category: reversal
+universe: csi100
+frequency: daily
+required_fields:
+- close
+- open
+- high
+- low
+lookback: 5
+horizon: 5
+neutralize: []
+params: {}
+tags:
+- dsl
+- loop
+- langgraph
+- compose
+hypothesis: 短期反转；compose delta(neg(roc(close_adj,5)),20)
+entry_gate: research
+expression: delta(neg(roc(close_adj,5)),20)
+mechanism: reversal
+expr_hash: 660a72136c9327f6

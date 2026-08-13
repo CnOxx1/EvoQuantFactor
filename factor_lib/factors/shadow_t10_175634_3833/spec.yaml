@@ -1,0 +1,25 @@
+name: shadow_t10_175634_3833
+version: 0.1.0
+status: draft
+family: price_volume
+category: shadow
+universe: csi100
+frequency: daily
+required_fields:
+- close
+- open
+- high
+- low
+lookback: 20
+horizon: 5
+neutralize: []
+params:
+  expression: ma(lower_shadow,10)
+tags:
+- dsl
+- loop
+hypothesis: 影线结构；模板启发表达式 ma(lower_shadow,10)
+entry_gate: research
+expression: ma(lower_shadow,10)
+mechanism: shadow
+expr_hash: null

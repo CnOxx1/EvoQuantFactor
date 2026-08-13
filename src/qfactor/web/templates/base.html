@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{% block title %}qfactor{% endblock %}</title>
+  <style>
+    :root {
+      --bg: #f3efe6;
+      --ink: #1c2430;
+      --muted: #5c6775;
+      --accent: #0f6b5c;
+      --card: #fffdf8;
+      --line: #d7d0c3;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      background:
+        radial-gradient(circle at top left, #e7f2ee, transparent 40%),
+        linear-gradient(180deg, #f7f3ea, #efe8dc);
+      color: var(--ink);
+      min-height: 100vh;
+    }
+    header {
+      display: flex;
+      gap: 1rem;
+      align-items: center;
+      justify-content: space-between;
+      padding: 1rem 1.5rem;
+      border-bottom: 1px solid var(--line);
+      backdrop-filter: blur(8px);
+      position: sticky;
+      top: 0;
+      background: rgba(243,239,230,.9);
+    }
+    .brand { font-weight: 700; letter-spacing: .04em; color: var(--accent); }
+    nav a {
+      color: var(--muted);
+      text-decoration: none;
+      margin-right: 1rem;
+      font-size: .95rem;
+    }
+    nav a.active { color: var(--accent); font-weight: 600; }
+    main { max-width: 1100px; margin: 0 auto; padding: 1.5rem; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      padding: 1.1rem 1.2rem;
+      margin-bottom: 1rem;
+      box-shadow: 0 10px 30px rgba(28,36,48,.04);
+    }
+    h1 { font-size: 1.4rem; margin: 0 0 .4rem; }
+    p.sub { color: var(--muted); margin: 0 0 1rem; }
+    label { display:block; font-size:.85rem; color:var(--muted); margin:.5rem 0 .2rem; }
+    input, select, button {
+      font: inherit;
+      padding: .55rem .7rem;
+      border-radius: 8px;
+      border: 1px solid var(--line);
+      background: white;
+    }
+    button {
+      background: var(--accent);
+      color: white;
+      border: none;
+      cursor: pointer;
+      margin-top: .8rem;
+    }
+    table { width: 100%; border-collapse: collapse; font-size: .92rem; }
+    th, td { text-align: left; padding: .55rem .4rem; border-bottom: 1px solid var(--line); }
+    .pill {
+      display: inline-block;
+      padding: .15rem .5rem;
+      border-radius: 999px;
+      background: #e7f2ee;
+      color: var(--accent);
+      font-size: .8rem;
+    }
+    .err { color: #9b2c2c; }
+    .ok { color: var(--accent); }
+    pre {
+      white-space: pre-wrap;
+      background: #f7f4ee;
+      padding: .8rem;
+      border-radius: 8px;
+      overflow: auto;
+      font-size: .82rem;
+    }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(180px,1fr)); gap: .8rem; }
+    .metric { background:#f7f4ee; border-radius:10px; padding:.8rem; }
+    .metric b { display:block; font-size:1.1rem; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">qfactor</div>
+    <nav>
+      <a href="/ui/sync" class="{% if request.url.path.startswith('/ui/sync') %}active{% endif %}">同步状态</a>
+      <a href="/ui/loop" class="{% if request.url.path.startswith('/ui/loop') %}active{% endif %}">Loop 进度</a>
+      <a href="/ui/factors" class="{% if request.url.path.startswith('/ui/factors') %}active{% endif %}">因子列表</a>
+    </nav>
+  </header>
+  <main>
+    {% block content %}{% endblock %}
+  </main>
+</body>
+</html>

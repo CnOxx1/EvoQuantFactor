@@ -1,0 +1,26 @@
+name: volume_price_c40_164332_8694
+version: 0.1.0
+status: screened
+family: price_volume
+category: volume_price
+universe: csi100
+frequency: daily
+required_fields:
+- close
+- open
+- high
+- low
+lookback: 40
+horizon: 5
+neutralize: []
+params: {}
+tags:
+- dsl
+- loop
+- langgraph
+- compose
+hypothesis: 量价配合；compose div(ma(close_adj,40),ma(vol,40))
+entry_gate: research
+expression: div(ma(close_adj,40),ma(vol,40))
+mechanism: volume_price
+expr_hash: abcdadef576f0288

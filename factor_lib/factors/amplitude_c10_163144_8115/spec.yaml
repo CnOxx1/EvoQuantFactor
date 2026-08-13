@@ -1,0 +1,26 @@
+name: amplitude_c10_163144_8115
+version: 0.1.0
+status: candidate
+family: price_volume
+category: amplitude
+universe: csi100
+frequency: daily
+required_fields:
+- close
+- open
+- high
+- low
+lookback: 10
+horizon: 5
+neutralize: []
+params: {}
+tags:
+- dsl
+- loop
+- langgraph
+- compose
+hypothesis: 振幅结构；compose div(std(high,10),std(low,10))
+entry_gate: research
+expression: div(std(high,10),std(low,10))
+mechanism: amplitude
+expr_hash: 2198ee7dd719dd40

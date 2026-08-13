@@ -1,0 +1,21 @@
+name: ret_momentum_60d
+version: 0.1.0
+status: draft
+family: price_volume
+category: momentum
+universe: csi100
+frequency: daily
+required_fields:
+- close_adj
+lookback: 60
+horizon: 5
+neutralize: []
+params:
+  window: 60
+tags:
+- seed
+hypothesis: 中期动量
+entry_gate: research
+expression: null
+mechanism: null
+expr_hash: null

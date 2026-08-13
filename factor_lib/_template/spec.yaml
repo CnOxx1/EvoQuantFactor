@@ -1,0 +1,16 @@
+name: example_factor
+version: 0.1.0
+status: draft
+family: price_volume
+category: reversal
+universe: csi100
+frequency: daily
+required_fields: [close_adj]
+lookback: 5
+horizon: 5
+neutralize: []
+params:
+  window: 5
+tags: [template]
+hypothesis: template only
+entry_gate: research

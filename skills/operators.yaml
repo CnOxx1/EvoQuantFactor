@@ -1,0 +1,24 @@
+# Whitelisted DSL operators (inspired by research practice; keep small)
+operators:
+  ts:
+    - {name: ma, args: [x, n], desc: rolling mean}
+    - {name: std, args: [x, n], desc: rolling std}
+    - {name: delta, args: [x, n], desc: x - delay(x,n)}
+    - {name: delay, args: [x, n], desc: lag n days}
+    - {name: sum, args: [x, n], desc: rolling sum}
+    - {name: max, args: [x, n], desc: rolling max}
+    - {name: min, args: [x, n], desc: rolling min}
+    - {name: roc, args: [x, n], desc: pct change over n}
+  cs:
+    - {name: rank, args: [x], desc: cross-section rank pct}
+    - {name: zscore, args: [x], desc: cross-section zscore}
+  elem:
+    - {name: abs, args: [x]}
+    - {name: neg, args: [x]}
+    - {name: log, args: [x]}
+    - {name: add, args: [x, y]}
+    - {name: sub, args: [x, y]}
+    - {name: mul, args: [x, y]}
+    - {name: div, args: [x, y]}
+
+windows_allowed: [3, 5, 10, 20, 40, 60]

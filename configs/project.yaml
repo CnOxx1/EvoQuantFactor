@@ -1,0 +1,48 @@
+project_name: qfactor
+universe: csi100
+frequency: daily
+timezone: Asia/Shanghai
+
+paths:
+  data_raw: data/raw
+  data_processed: data/processed
+  data_catalog: data_catalog
+  factor_lib: factor_lib
+  runs: runs
+  database: data/qfactor.sqlite3
+
+defaults:
+  adj_type: qfq          # forward-adjusted close
+  trade_lag: 1           # signal on T, trade on T+1
+  family: price_volume
+
+# Factor production loop (keep lean; do not stack more frameworks)
+production:
+  llm:
+    llm_ratio: 0.45          # keep templates/mechanism coverage meaningful
+    llm_mutate_share: 1.0    # when LLM runs, mutate library parents only
+    llm_batch_size: 4
+    llm_retries: 3
+    perturb_ratio: 0.15
+    llm_review_ratio: 0      # no LLM veto; parser + apply_gate decide
+    llm_decide_theme: false   # local rotator already covers themes; saves one LLM call/round
+    llm_library_mutate_slots: 2  # even while catalog unused, mutate vs candidate/approved
+  diversity:
+    fsa_ratio: 0.12
+    max_corr_ban: 0.90
+    max_per_skeleton: 2
+    soft_switch_after: 2
+    hard_rotate: true
+    prefer_undercovered: true
+
+library_ops:
+  archive_draft_days: 14
+  archive_reject_days: 7
+  auto_demote_corr: 0.85
+
+# Reserved for later expansion (do not remove)
+expansion:
+  universes_future: [csi300, csi500, csi1000]
+  families_future: [fundamental, analyst, text, alternative]
+  frequencies_future: [minute, weekly]
+  web_ui: true

@@ -1,0 +1,24 @@
+csi100:
+  name: 中证100
+  tushare_code: "000903.SH"
+  akshare_symbol: "sh000903"
+  description: CSI 100 constituents, daily research universe
+
+# Reserved
+csi300:
+  name: 沪深300
+  tushare_code: "000300.SH"
+  akshare_symbol: "sh000300"
+  description: reserved
+
+csi500:
+  name: 中证500
+  tushare_code: "000905.SH"
+  akshare_symbol: "sh000905"
+  description: reserved
+
+csi1000:
+  name: 中证1000
+  tushare_code: "000852.SH"
+  akshare_symbol: "sh000852"
+  description: reserved

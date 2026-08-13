@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}{{ name }} · qfactor{% endblock %}
+{% block content %}
+<div class="card">
+  <h1>{{ name }}</h1>
+  <p class="sub">{{ spec.hypothesis or '' }}</p>
+  <p>
+    <span class="pill">{{ spec.status }}</span>
+    <span class="pill">{{ spec.category }}</span>
+    {% if spec.expression %}<span class="pill">{{ spec.expression }}</span>{% endif %}
+  </p>
+</div>
+<div class="card">
+  <h3>Spec</h3>
+  <pre>{{ spec | tojson(indent=2) }}</pre>
+</div>
+<div class="card">
+  <h3>Latest report</h3>
+  {% if report %}
+  <pre>{{ report | tojson(indent=2) }}</pre>
+  {% else %}
+  <p>暂无报告</p>
+  {% endif %}
+</div>
+<p><a href="/ui/factors">← 返回列表</a></p>
+{% endblock %}
