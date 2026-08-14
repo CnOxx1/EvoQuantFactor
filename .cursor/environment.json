@@ -1,0 +1,17 @@
+{
+  "name": "qfactor",
+  "install": "sudo apt-get update && sudo apt-get install -y --no-install-recommends python3-venv && python3 -m venv .venv && .venv/bin/python -m pip install --upgrade pip && .venv/bin/pip install -e \".[dev]\"",
+  "terminals": [
+    {
+      "name": "qfactor web",
+      "command": ".venv/bin/qfactor serve --host 127.0.0.1 --port 8000",
+      "description": "FastAPI + Web UI for qfactor at http://127.0.0.1:8000/ui/{sync,loop,factors}"
+    }
+  ],
+  "ports": [
+    {
+      "name": "web server",
+      "port": 8000
+    }
+  ]
+}
