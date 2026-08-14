@@ -25,6 +25,10 @@ now_epoch() { date +%s; }
 log() { printf '%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" | tee -a "$MONITOR_LOG"; }
 is_pid_alive() { [ -n "${1:-}" ] && kill -0 "$1" 2>/dev/null; }
 read_pid() { [ -f "$1" ] && tr -dc '0-9' < "$1" || true; }
+worker_cpu_ticks() {
+  local pid="${1:-}"
+  [ -r "/proc/$pid/stat" ] && awk '{print $14 + $15}' "/proc/$pid/stat" || echo 0
+}
 
 health_json() {
   local mpid wpid status_age state
@@ -65,22 +69,29 @@ supervise() {
   local restarts=0 backoff=10
   log "monitor_started pid=$$"
   while [ ! -f "$STOP_FILE" ]; do
-    local worker start_ts stale=0
+    local worker start_ts stale=0 last_ticks
     worker="$(run_worker)"
     start_ts="$(now_epoch)"
+    last_ticks="$(worker_cpu_ticks "$worker")"
     while is_pid_alive "$worker" && [ ! -f "$STOP_FILE" ]; do
       sleep 30
       if [ -f "$STATUS_FILE" ]; then
-        local age
+        local age current_ticks
         age=$(( $(now_epoch) - $(stat -c %Y "$STATUS_FILE") ))
+        current_ticks="$(worker_cpu_ticks "$worker")"
         if [ "$age" -gt "$MAX_STALE_SECONDS" ]; then
-          stale=1
-          log "worker_stalled pid=$worker status_age=$age max_stale=$MAX_STALE_SECONDS"
-          kill -TERM "$worker" 2>/dev/null || true
-          sleep 10
-          is_pid_alive "$worker" && kill -KILL "$worker" 2>/dev/null || true
-          break
+          if [ "$current_ticks" -gt "$last_ticks" ]; then
+            log "worker_busy_heartbeat_stale pid=$worker status_age=$age cpu_ticks=$current_ticks"
+          else
+            stale=1
+            log "worker_stalled pid=$worker status_age=$age max_stale=$MAX_STALE_SECONDS cpu_ticks=$current_ticks"
+            kill -TERM "$worker" 2>/dev/null || true
+            sleep 10
+            is_pid_alive "$worker" && kill -KILL "$worker" 2>/dev/null || true
+            break
+          fi
         fi
+        last_ticks="$current_ticks"
       fi
     done
     wait "$worker" 2>/dev/null || true

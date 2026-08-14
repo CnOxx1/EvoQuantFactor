@@ -27,7 +27,7 @@ scripts/factor_factory_monitor.sh status
 scripts/factor_factory_monitor.sh stop
 ```
 
-监控器使用 `runs/factory_monitor/monitor.pid` 保存自身 PID，使用 `worker.pid` 保存生产 worker PID。每 30 秒检查子进程是否存活；若子进程退出，或 `status.json` 的心跳超过最大陈旧时间，监控器会按 10、20、40 秒直至 300 秒封顶的退避策略重启 worker。全部重启记录写入 `runs/factory_monitor/restarts.jsonl`。
+监控器使用 `runs/factory_monitor/monitor.pid` 保存自身 PID，使用 `worker.pid` 保存生产 worker PID。每 30 秒检查子进程是否存活；若子进程退出会立即按 10、20、40 秒直至 300 秒封顶的退避策略重启。若 `status.json` 心跳超过最大陈旧时间，监控器还会检查 worker 的 CPU tick 是否持续增长：仍在计算的长耗时因子评估不会被中断，只有**心跳陈旧且无 CPU 进展**时才会被认定为卡死并重启。全部重启记录写入 `runs/factory_monitor/restarts.jsonl`。
 
 | 环境变量 | 默认值 | 含义 |
 |---|---:|---|
