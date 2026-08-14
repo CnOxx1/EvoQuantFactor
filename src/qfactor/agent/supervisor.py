@@ -118,10 +118,26 @@ class FactoryRuntime:
         except Exception as exc:
             return {"state": "blocked", "reason": str(exc)}
 
+    def _write_progress(self, cycle: int, stage: str, started_at: str) -> None:
+        """Refresh the heartbeat before each potentially expensive stage."""
+        _write_json_atomic(
+            self.status_path,
+            {
+                "schema_version": STATUS_VERSION,
+                "cycle": int(cycle),
+                "state": "running",
+                "stage": stage,
+                "started_at": started_at,
+                "updated_at": utc_now(),
+            },
+        )
+
     def run_cycle(self, cycle: int) -> dict[str, Any]:
         """Run exactly one auditable lifecycle pass; exceptions are captured."""
         started = utc_now()
+        self._write_progress(cycle, "data_status", started)
         data_status = self.data.status()
+        self._write_progress(cycle, "discovery_contract", started)
         contract = self._discovery_contract()
         result: dict[str, Any] = {
             "schema_version": STATUS_VERSION,
@@ -137,6 +153,7 @@ class FactoryRuntime:
         # Discovery may execute only when complete PIT/time evidence is present,
         # and only on its configured cadence. It remains research-only.
         if contract["state"] == "passed" and cycle % self.discovery_every == 0:
+            self._write_progress(cycle, "research_discovery", started)
             try:
                 result["actions"]["research_discovery"] = FactorLoop(self.cfg).run(
                     rounds=1,
@@ -156,6 +173,7 @@ class FactoryRuntime:
 
         # Re-score the small candidate book every cycle. A larger screened book is
         # intentionally revisited much less often to avoid recurrent search bias.
+        self._write_progress(cycle, "refresh_candidates", started)
         try:
             result["actions"]["refresh_candidates"] = self.ops.refresh_production(
                 include_screened=False
@@ -164,6 +182,7 @@ class FactoryRuntime:
             result["actions"]["refresh_candidates"] = {"state": "error", "error": str(exc)}
             result["errors"].append({"stage": "refresh_candidates", "error": str(exc)})
         if cycle % self.screened_every == 0:
+            self._write_progress(cycle, "recheck_screened", started)
             try:
                 result["actions"]["recheck_screened"] = self.ops.promote_screened()
             except Exception as exc:
@@ -172,6 +191,7 @@ class FactoryRuntime:
         else:
             result["actions"]["recheck_screened"] = {"state": "skipped", "reason": "cadence"}
 
+        self._write_progress(cycle, "export_inventories", started)
         try:
             result["actions"]["trading_releases"] = self.release.export_active()
             result["actions"]["multifactor_inventory"] = self.ops.multifactor_inventory()
