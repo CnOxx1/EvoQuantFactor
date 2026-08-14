@@ -52,7 +52,8 @@ production:
 library_ops:
   archive_draft_days: 14
   archive_reject_days: 7
-  auto_demote_corr: 0.85
+  auto_demote_corr: 0.70          # same bar as production max_corr_existing
+  cap_usable_per_mechanism: 1     # USABLE keeps one factor per mechanism
 
 # Reserved for later expansion (do not remove)
 expansion:

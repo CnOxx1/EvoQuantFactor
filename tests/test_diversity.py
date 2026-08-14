@@ -185,7 +185,9 @@ def test_factor_card_is_metrics_not_name_list():
             "mechanism": "overnight",
             "status": "candidate",
             "summary": {
+                "train_rank_ic_mean": 0.037,
                 "rank_ic_mean": 0.037,
+                "eval_split": "train",
                 "resid_ic_mean": 0.02,
                 "max_corr": 0.4,
                 "cost_adjusted_ls": 0.001,
@@ -195,10 +197,71 @@ def test_factor_card_is_metrics_not_name_list():
     )
     assert card is not None
     assert "name" not in card
+    assert "holdout_ic" not in card
+    assert "resid_ic" not in card
+    assert "cost_ls" not in card
     assert card["expression"] == "max(overnight,60)"
-    assert card["holdout_ic"] == 0.037
-    assert card["resid_ic"] == 0.02
-    assert card["cost_ls"] == 0.001
+    assert card["train_ic"] == 0.037
+    assert card["max_corr"] == 0.4
+
+
+def test_factor_card_drops_holdout_metrics_from_production_summary():
+    gen = CandidateGenerator(llm=LLMClient(api_key="x"))
+    card = gen._factor_card(
+        {
+            "expression": "ma(turnover_rate,20)",
+            "mechanism": "liquidity",
+            "status": "candidate",
+            "summary": {
+                "rank_ic_mean": 0.049,
+                "train_rank_ic_mean": 0.021,
+                "eval_split": "holdout",
+                "resid_ic_mean": 0.03,
+                "cost_adjusted_ls": 0.002,
+                "icir": 0.18,
+            },
+        }
+    )
+    assert card is not None
+    assert "holdout_ic" not in card
+    assert card["train_ic"] == 0.021
+    assert "resid_ic" not in card
+    assert "cost_ls" not in card
+
+
+def test_mutate_failure_modes_omit_holdout_numbers(monkeypatch):
+    gen = CandidateGenerator(llm=LLMClient(api_key="x"))
+
+    class _Reg:
+        def list_factors(self):
+            return [
+                {
+                    "name": "liq_c",
+                    "status": "candidate",
+                    "summary": {
+                        "eval_split": "holdout",
+                        "resid_ic_mean": 0.03,
+                        "cost_adjusted_ls": -0.01,
+                        "max_corr": 0.8,
+                    },
+                }
+            ]
+
+        def load_spec(self, name):
+            from types import SimpleNamespace
+
+            return SimpleNamespace(
+                expression="div(abs(ret_1d),ma(turnover_rate,60))",
+                mechanism="liquidity",
+            )
+
+    monkeypatch.setattr("qfactor.factor.registry.FactorRegistry", lambda cfg=None: _Reg())
+    modes = gen._mutate_failure_modes([])
+    blob = " ".join(modes)
+    assert "resid" not in blob
+    assert "cost_ls" not in blob
+    assert "-0.01" not in blob
+    assert "0.03" not in blob
 
 
 def test_generate_skips_llm_while_catalog_thick_without_usable(monkeypatch):
@@ -664,5 +727,86 @@ def test_llm_item_drops_blocked_fields():
         bans,
     )
     assert out is None
+
+
+def test_validate_idea_rejects_blocked_fields():
+    gen = CandidateGenerator(llm=LLMClient(api_key="x"))
+    gen._blocked_mechs = {"liquidity"}
+    mech = {"id": "shadow", "desc": "影线结构"}
+    bad = gen._validate_idea(
+        {
+            "claim": "长上影且高换手未来5日收益偏低",
+            "why_t1": "T日收盘后可见",
+            "fields": ["upper_shadow", "turnover_rate"],
+            "not_like": "不是隔夜/振幅的std比",
+            "mechanism": "shadow",
+        },
+        mech,
+    )
+    assert bad is None
+    ok = gen._validate_idea(
+        {
+            "claim": "长上影相对下影扩张后收益偏低",
+            "why_t1": "T日收盘后可见",
+            "fields": ["upper_shadow", "lower_shadow"],
+            "not_like": "不是隔夜/振幅的std比",
+            "mechanism": "shadow",
+        },
+        mech,
+    )
+    assert ok is not None
+    assert ok["fields"] == ["upper_shadow", "lower_shadow"]
+
+
+def test_crossover_trees_swaps_inner_unaries():
+    gen = CandidateGenerator(llm=LLMClient(api_key="x"))
+    gen._blocked_mechs = {"amplitude", "liquidity", "overnight"}
+    child = gen._crossover_trees(
+        "std(roc(upper_shadow,10),5)",
+        "div(std(close_adj,10), std(close_adj,20))",
+    )
+    assert child is not None
+    assert child not in {
+        "std(roc(upper_shadow,10),5)",
+        "div(std(close_adj,10), std(close_adj,20))",
+    }
+    fields, _ = collect_fields_windows(child)
+    assert not fields & {
+        "amount",
+        "amplitude",
+        "high",
+        "low",
+        "overnight",
+        "turnover_rate",
+        "vol",
+    }
+
+
+def test_crossover_shallow_keep_parents_not_none():
+    gen = CandidateGenerator(llm=LLMClient(api_key="x"))
+    gen._blocked_mechs = {"amplitude", "liquidity", "overnight"}
+    bans: dict[str, set[str]] = {"hashes": set(), "skeletons": set()}
+    parents = [
+        {"expression": "std(roc(upper_shadow,10),5)", "mechanism": "shadow"},
+        {
+            "expression": "div(std(close_adj,10), std(close_adj,20))",
+            "mechanism": "volatility",
+        },
+        {"expression": "ma(roc(ret_1d,20),10)", "mechanism": "reversal"},
+        {"expression": "std(roc(open,20),10)", "mechanism": "momentum"},
+    ]
+    cand = gen._crossover_one(parents, bans, theme="volatility")
+    assert cand is not None
+    assert cand["source"] == "crossover"
+    fields, _ = collect_fields_windows(cand["expression"])
+    assert not fields & {
+        "amount",
+        "amplitude",
+        "high",
+        "low",
+        "overnight",
+        "turnover_rate",
+        "vol",
+    }
 
 

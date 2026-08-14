@@ -60,7 +60,7 @@
     {
       "name": "amplitude_c10_105336_3673",
       "version": "0.1.0",
-      "status": "candidate",
+      "status": "screened",
       "family": "price_volume",
       "category": "amplitude",
       "source": "compose",
@@ -446,7 +446,7 @@
     {
       "name": "amplitude_c40_171144_1084",
       "version": "0.1.0",
-      "status": "candidate",
+      "status": "screened",
       "family": "price_volume",
       "category": "amplitude",
       "source": "compose",
@@ -1507,7 +1507,7 @@
     {
       "name": "momentum_llm_143848_8537",
       "version": "0.1.0",
-      "status": "candidate",
+      "status": "screened",
       "family": "price_volume",
       "category": "liquidity",
       "source": "llm",
@@ -1524,7 +1524,7 @@
         "resid_ic_mean": 0.029789001623376866,
         "oos_ic_mean": 0.048919211739312206,
         "cost_adjusted_ls": 0.001736247729297333,
-        "status": "candidate",
+        "status": "screened",
         "trade_lag": 1,
         "eval_split": "holdout",
         "orientation_source": "train",
@@ -4348,5 +4348,5 @@
       }
     }
   ],
-  "updated_at": "2026-08-14T07:41:47.242778+00:00"
+  "updated_at": "2026-08-14T08:30:19.507855+00:00"
 }

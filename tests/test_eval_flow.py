@@ -181,15 +181,25 @@ def test_slice_eval_index_train_holdout():
     assert list(slice_eval_index(idx, None, "full").astype(str)) == list(idx.astype(str))
 
 
-def test_holdout_oos_is_single_window():
+def test_apply_signal_hold_smooths():
+    from qfactor.eval.timing import apply_signal_hold
+
+    panel = pd.DataFrame({"a": [1.0, 3.0, 5.0, 7.0, 9.0]})
+    out = apply_signal_hold(panel, 3)
+    assert abs(float(out.iloc[2, 0]) - 3.0) < 1e-12
+    assert apply_signal_hold(panel, 1).equals(panel)
+
+
+def test_holdout_oos_splits_two_folds():
     ic = pd.Series(
-        [0.02] * 80 + [-0.01] * 50,
-        index=[f"{i:04d}" for i in range(130)],
+        [0.02] * 80 + [0.04] * 50 + [-0.03] * 50,
+        index=[f"{i:04d}" for i in range(180)],
     )
-    oos = holdout_oos(ic, after="0079", orientation=1, min_days=40)
-    assert oos["n_folds"] == 1
-    assert oos["pos_folds"] == 0
-    assert oos["oos_ic_mean"] < 0
+    oos = holdout_oos(ic, after="0079", orientation=1, min_days=40, n_folds=2)
+    assert oos["n_folds"] == 2
+    assert oos["pos_folds"] == 1
+    assert oos["oos_min_fold_ic"] < 0
+    assert oos["oos_ic_mean"] > -0.01
     assert str(oos["folds"][0]["start"]) > "0079"
 
 

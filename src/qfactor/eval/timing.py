@@ -12,6 +12,14 @@ def apply_trade_lag(panel: pd.DataFrame, lag: int) -> pd.DataFrame:
     return panel.shift(lag)
 
 
+def apply_signal_hold(panel: pd.DataFrame, hold: int) -> pd.DataFrame:
+    """H-day holding signal: rolling mean so research and production share one contract."""
+    if hold <= 1:
+        return panel
+    minp = max(2, int(hold) // 2)
+    return panel.rolling(int(hold), min_periods=minp).mean()
+
+
 def forward_close_returns(close: pd.DataFrame, horizon: int) -> pd.DataFrame:
     """Return from close[T] to close[T+horizon]. Align with a lag-shifted signal."""
     if horizon <= 0:

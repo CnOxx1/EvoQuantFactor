@@ -194,6 +194,7 @@ def _node_generate(ctx: ProductionContext):
             "llm_fresh_empty": gen_stats.get("llm_fresh_empty"),
             "llm_mutate_ok": gen_stats.get("llm_mutate_ok"),
             "llm_mutate_empty": gen_stats.get("llm_mutate_empty"),
+            "llm_compile_empty": gen_stats.get("llm_compile_empty"),
             "llm_errors": gen_stats.get("llm_errors"),
             "hint_fallback": gen_stats.get("hint_fallback"),
             "compose_fallback": gen_stats.get("compose_fallback"),
@@ -445,6 +446,7 @@ def _maybe_expand_catalog(
         last_i,
         every=int(llm_cfg.get("catalog_expand_every", 20)),
         unused_lt=int(llm_cfg.get("catalog_expand_unused_lt", 0)),
+        empty_every=int(llm_cfg.get("catalog_expand_empty_every", 5)),
     )
     if not due:
         return {"attempted": False, "reason": "not_due"}, last_i
@@ -609,15 +611,15 @@ def run_production_graph(
     produced = list(final_state.get("produced") or [])
     saved = list(final_state.get("saved_factors") or [])
     screened_names = [p["name"] for p in produced if p.get("status") == "screened"]
-    promo: dict[str, Any] = {"promoted": [], "held_screened": [], "errors": []}
+    promo: dict[str, Any] = {
+        "promoted": [],
+        "held_screened": screened_names,
+        "errors": [],
+        "auto_promote": False,
+    }
     if screened_names:
         from qfactor.factor.ops import LibraryOps
 
-        promo = LibraryOps(ctx.cfg).promote_screened(names=screened_names)
-        promo_set = set(promo.get("promoted") or [])
-        for p in produced:
-            if p.get("name") in promo_set:
-                p["status"] = "candidate"
         prune = LibraryOps(ctx.cfg).prune_redundant_screened()
         promo["pruned_screened"] = prune.get("demoted") or []
     result = {

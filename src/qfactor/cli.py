@@ -134,8 +134,13 @@ def library_archive(force_rejects: bool = typer.Option(False, help="archive reje
 
 
 @app.command("library-demote-corr")
-def library_demote_corr(max_corr: float = typer.Option(0.85)):
+def library_demote_corr(max_corr: float = typer.Option(0.70)):
     print(LibraryOps().demote_high_corr(max_corr=max_corr))
+
+
+@app.command("library-cap-usable")
+def library_cap_usable(max_per: int = typer.Option(1, help="max candidate/approved per mechanism")):
+    print(LibraryOps().cap_usable_per_mechanism(max_per=max_per))
 
 
 @app.command("library-reeval-screened")

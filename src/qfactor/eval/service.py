@@ -11,7 +11,7 @@ from qfactor.eval.corr import max_corr_with_library
 from qfactor.eval.gate import KEEP_STATUSES, USABLE_STATUSES, apply_gate, route_library_status
 from qfactor.eval.ic import rank_ic, summarize_ic, yearly_ic_sign_consistency
 from qfactor.eval.layered import layered_returns
-from qfactor.eval.timing import apply_trade_lag, drop_tail, forward_close_returns, slice_eval_index
+from qfactor.eval.timing import apply_signal_hold, apply_trade_lag, drop_tail, forward_close_returns, slice_eval_index
 from qfactor.eval.turnover import approx_daily_turnover
 from qfactor.factor.base import Factor
 from qfactor.factor.context import FactorContext
@@ -113,8 +113,7 @@ class EvalService:
                     raw = fac.compute(self._context())
                     prepared, _ = self._prepare_eval_panel(raw)
                     if hold > 1:
-                        minp = max(2, hold // 2)
-                        prepared = prepared.rolling(hold, min_periods=minp).mean()
+                        prepared = apply_signal_hold(prepared, hold)
                     self._peer_cache[key] = apply_trade_lag(prepared, lag)
                 except Exception:
                     continue
@@ -150,6 +149,18 @@ class EvalService:
             pass
         return "unknown"
 
+    def _circ_mv_source(self, neutralized: list[str]) -> str:
+        if "circ_mv" not in neutralized:
+            return "none"
+        try:
+            meta = (self.data.status() or {}).get("meta") or {}
+            src = str(meta.get("circ_mv_source") or "").strip()
+            if src:
+                return src
+        except Exception:
+            pass
+        return "estimated"
+
     def _slice_panel(self, panel: pd.DataFrame, split: str) -> pd.DataFrame:
         idx = slice_eval_index(panel.index, self._train_end() or None, split)
         return panel.loc[idx]
@@ -170,10 +181,9 @@ class EvalService:
         is_prod = gate_name == "production"
         hold = int(ev.get("signal_hold_days", 0) or 0)
         horizon = int(ev.get("forward_horizon", 5))
-        if is_prod and hold > 1:
+        if hold > 1:
             horizon = hold
-            minp = max(2, hold // 2)
-            factor_panel = factor_panel.rolling(hold, min_periods=minp).mean()
+            factor_panel = apply_signal_hold(factor_panel, hold)
             neutralized = list(neutralized) + [f"hold{hold}"]
         tradable_full = apply_trade_lag(factor_panel, lag)
         no_lookahead = lag >= 1
@@ -209,7 +219,16 @@ class EvalService:
         ic = ic_raw * orient
         nw_lags = max(0, int(horizon) - 1) if is_prod else 0
         ic_summary = summarize_ic(ic, nw_lags=nw_lags)
-        freeze_sign_ok = (not ic.empty) and float(ic.mean()) > 0
+        train_raw_mean = float(ic_train_raw.mean()) if not ic_train_raw.empty else 0.0
+        hold_raw_mean = float(ic_raw.mean()) if not ic_raw.empty else 0.0
+        if is_prod and train_end and not ic_train_raw.empty:
+            freeze_sign_ok = bool(train_raw_mean * hold_raw_mean > 0)
+        else:
+            freeze_sign_ok = (not ic.empty) and float(ic.mean()) > 0
+        train_ic_oriented = ic_train_raw * orient if not ic_train_raw.empty else ic_train_raw
+        train_rank_ic_mean = (
+            float(train_ic_oriented.mean()) if not train_ic_oriented.empty else 0.0
+        )
 
         recent_days = int(ev.get("recent_days", 120))
         min_years = int(thresholds.get("min_years_consistent", 2))
@@ -232,7 +251,7 @@ class EvalService:
 
         min_abs = float(thresholds.get("min_abs_rank_ic_mean", 0.0))
         peer_status = USABLE_STATUSES if is_prod else KEEP_STATUSES
-        peer_hold = hold if is_prod else 0
+        peer_hold = hold if hold > 1 else 0
         others_full = {}
         corr = {"max_corr": 0.0, "max_corr_with": None, "skipped": True}
         if abs(float(ic_summary.get("rank_ic_mean", 0.0))) >= max(0.005, min_abs * 0.5):
@@ -261,7 +280,7 @@ class EvalService:
             }
 
         cost_bps = float(ev.get("cost_bps", 10))
-        cost_horizon = hold if is_prod and hold > 1 else 1
+        cost_horizon = hold if hold > 1 else 1
         cost_layered_src = layered_h if cost_horizon > 1 else layered_1d
         layered_cost = cost_layered(
             cost_layered_src, turnover, cost_bps, horizon=cost_horizon
@@ -276,6 +295,7 @@ class EvalService:
                 orientation=orient,
                 min_days=int(ev.get("oos_min_days", 40)),
                 nw_lags=nw_lags,
+                n_folds=2,
             )
         else:
             oos = walk_forward_ic(
@@ -312,19 +332,21 @@ class EvalService:
             "oos_ic_mean": oos.get("oos_ic_mean", 0.0),
             "oos_icir": oos.get("oos_icir", 0.0),
             "oos_pos_folds": oos.get("pos_folds", 0),
+            "oos_min_fold_ic": oos.get("oos_min_fold_ic", oos.get("oos_ic_mean", 0.0)),
             "oos": oos,
             "freeze_sign_ok": freeze_sign_ok,
+            "train_rank_ic_mean": train_rank_ic_mean,
             "period_stability": oos.get("period_stability", {}),
             "orientation": orient,
             "orientation_source": "train" if train_end and not ic_train_raw.empty else "eval_window",
             "no_lookahead": no_lookahead,
             "trade_lag": lag,
             "horizon": horizon,
-            "signal_hold_days": hold if is_prod else 0,
+            "signal_hold_days": hold if hold > 1 else 0,
             "cost_horizon": cost_horizon,
             "recent_window": recent_n,
             "neutralized": neutralized,
-            "circ_mv_source": "estimated" if "circ_mv" in neutralized else "none",
+            "circ_mv_source": self._circ_mv_source(neutralized),
             "eval_split": split,
             "train_end": train_end or None,
             "train_trim_days": train_trim_days,
@@ -340,6 +362,7 @@ class EvalService:
         gate = apply_gate(metrics, thresholds, mode=gate_mode)
         summary = {
             "rank_ic_mean": metrics["rank_ic_mean"],
+            "train_rank_ic_mean": train_rank_ic_mean,
             "icir": metrics["icir"],
             "icir_ann": metrics.get("icir_ann", 0.0),
             "icir_nw": metrics.get("icir_nw", 0.0),
@@ -349,6 +372,7 @@ class EvalService:
             "max_corr": corr["max_corr"],
             "resid_ic_mean": metrics["resid_ic_mean"],
             "oos_ic_mean": metrics["oos_ic_mean"],
+            "oos_min_fold_ic": metrics.get("oos_min_fold_ic"),
             "cost_adjusted_ls": cost_ret,
             "status": gate["status"],
             "trade_lag": lag,
@@ -358,7 +382,7 @@ class EvalService:
             "circ_mv_source": metrics.get("circ_mv_source"),
             "freeze_sign_ok": freeze_sign_ok,
             "horizon": horizon,
-            "signal_hold_days": hold if is_prod else 0,
+            "signal_hold_days": hold if hold > 1 else 0,
             "cost_horizon": cost_horizon,
         }
         return {
@@ -392,11 +416,14 @@ class EvalService:
 
         raw = evaluate_expression(parse_expression(expression), self._context())
         panel = zscore(winsorize(raw))
+        ev = self.cfg.eval.get("eval", {}) or {}
+        hold = int(ev.get("signal_hold_days", 0) or 0)
+        if hold > 1:
+            panel = apply_signal_hold(panel, hold)
         lag = self.trade_lag()
         tradable = apply_trade_lag(panel, lag)
         train_end = self._train_end()
-        ev = self.cfg.eval.get("eval", {}) or {}
-        horizon = int(ev.get("forward_horizon", 5))
+        horizon = hold if hold > 1 else int(ev.get("forward_horizon", 5))
         min_obs = int(ev.get("min_obs_per_day", 30))
         fwd = self._forward_returns(horizon)
         if train_end:
@@ -424,6 +451,9 @@ class EvalService:
         report = self.evaluate_factor(factor, gate_name=gate_name)
         code = (self.registry.factor_dir(name) / "factor.py").read_text(encoding="utf-8")
         spec = self.registry.load_spec(name)
+        hold = int(self.cfg.eval.get("eval", {}).get("signal_hold_days", 0) or 0)
+        if hold > 0:
+            spec.signal_hold_days = hold
         if promote:
             spec.status = route_library_status(
                 gate_name, report["gate"]["status"], current=spec.status
@@ -445,12 +475,10 @@ class EvalService:
             try:
                 prepared, _ = self._prepare_eval_panel(factor.compute(self._context()))
                 self._peer_cache[name] = apply_trade_lag(prepared, lag)
-                if spec.status in USABLE_STATUSES:
-                    hold = int(self.cfg.eval.get("eval", {}).get("signal_hold_days", 0) or 0)
-                    if hold > 1:
-                        minp = max(2, hold // 2)
-                        held = prepared.rolling(hold, min_periods=minp).mean()
-                        self._peer_cache[f"{name}:h{hold}"] = apply_trade_lag(held, lag)
+                hold = int(self.cfg.eval.get("eval", {}).get("signal_hold_days", 0) or 0)
+                if hold > 1:
+                    held = apply_signal_hold(prepared, hold)
+                    self._peer_cache[f"{name}:h{hold}"] = apply_trade_lag(held, lag)
             except Exception:
                 pass
         return report

@@ -21,6 +21,11 @@ def test_should_expand_compose_catalog_gates():
     # unused_lt>0 remains an opt-in "only when empty" switch
     assert should_expand_compose_catalog(80, 30, 10, unused_lt=5) is False
     assert should_expand_compose_catalog(0, 30, 10, unused_lt=5) is True
+    # empty catalog uses empty_every=5 instead of waiting 20 rounds
+    assert should_expand_compose_catalog(0, 4, None) is False
+    assert should_expand_compose_catalog(0, 5, None) is True
+    assert should_expand_compose_catalog(0, 14, 10) is False
+    assert should_expand_compose_catalog(0, 15, 10) is True
 
 
 def test_validate_rejects_catalog_clone_and_unknown_mech():

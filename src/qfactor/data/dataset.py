@@ -17,7 +17,51 @@ from qfactor.data.tushare_adapter import TushareAdapter, adapter_kwargs_from_con
 from qfactor.settings import ProjectConfig, get_project_config, get_settings
 
 
-def _universe_limitations(umeta: dict, existing: list | None = None) -> list[str]:
+def overlay_daily_basic(panel: pd.DataFrame, basic: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
+    """Prefer Tushare daily_basic circ_mv / turnover; keep bar estimates as fallback."""
+    out = panel.copy()
+    if "circ_mv" not in out.columns:
+        out["circ_mv"] = np.nan
+    if "turnover_rate" not in out.columns:
+        out["turnover_rate"] = np.nan
+    info = {
+        "circ_mv_source": "estimated" if out["circ_mv"].notna().any() else "none",
+        "daily_basic_coverage": 0.0,
+    }
+    if basic is None or basic.empty:
+        return out, info
+    use = basic.copy()
+    use["trade_date"] = use["trade_date"].astype(str).str.replace("-", "", regex=False).str[:8]
+    use["ts_code"] = use["ts_code"].astype(str)
+    cols = [c for c in ("trade_date", "ts_code", "circ_mv", "turnover_rate") if c in use.columns]
+    use = use[cols].drop_duplicates(["trade_date", "ts_code"])
+    renamed = use.rename(
+        columns={"circ_mv": "circ_mv_ts", "turnover_rate": "turnover_rate_ts"}
+    )
+    out["trade_date"] = out["trade_date"].astype(str)
+    out["ts_code"] = out["ts_code"].astype(str)
+    out = out.merge(renamed, on=["trade_date", "ts_code"], how="left")
+    vendor = float(out["circ_mv_ts"].notna().mean()) if "circ_mv_ts" in out.columns else 0.0
+    if "circ_mv_ts" in out.columns:
+        out["circ_mv"] = out["circ_mv_ts"].fillna(out["circ_mv"])
+    if "turnover_rate_ts" in out.columns:
+        out["turnover_rate"] = out["turnover_rate_ts"].fillna(out["turnover_rate"])
+    out = out.drop(columns=["circ_mv_ts", "turnover_rate_ts"], errors="ignore")
+    info["daily_basic_coverage"] = vendor
+    if vendor >= 0.3:
+        info["circ_mv_source"] = "tushare_daily_basic"
+    elif out["circ_mv"].notna().any():
+        info["circ_mv_source"] = "estimated"
+    else:
+        info["circ_mv_source"] = "none"
+    return out, info
+
+
+def _universe_limitations(
+    umeta: dict,
+    existing: list | None = None,
+    circ_mv_source: str | None = None,
+) -> list[str]:
     mode = str(umeta.get("universe_mode") or "")
     notes = [str(umeta.get("note") or "").strip()] if umeta.get("note") else []
     if mode == "pit":
@@ -26,8 +70,18 @@ def _universe_limitations(umeta: dict, existing: list | None = None) -> list[str
         notes.append("Universe frozen at first reconstitution on/before window start")
     elif mode == "snapshot":
         notes.append("CSIndex file is latest snapshot (not full historical reconstitution)")
-    circ = "circ_mv estimated from amount/turnover when vendor cap unavailable"
-    extra = [x for x in (existing or []) if "snapshot" not in str(x).lower() and "reconstitution" not in str(x).lower()]
+    src = str(circ_mv_source or "").strip()
+    if src == "tushare_daily_basic":
+        circ = "circ_mv from Tushare daily_basic"
+    else:
+        circ = "circ_mv estimated from amount/turnover when vendor cap unavailable"
+    extra = [
+        x
+        for x in (existing or [])
+        if "snapshot" not in str(x).lower()
+        and "reconstitution" not in str(x).lower()
+        and "circ_mv" not in str(x).lower()
+    ]
     out: list[str] = []
     for n in notes + extra:
         if n and n not in out:
@@ -222,14 +276,36 @@ class DataService:
         if max_names is not None:
             codes = codes[:max_names]
 
+        have: set[str] = set()
+        existing_panel: pd.DataFrame | None = None
+        if self.bars_path.exists():
+            try:
+                prev = pd.read_parquet(self.bars_path)
+                prev = prev[
+                    prev["ts_code"].astype(str).isin(codes)
+                    & prev["trade_date"].astype(str).between(str(start), str(end))
+                ]
+                if not prev.empty:
+                    existing_panel = prev
+                    have = set(prev["ts_code"].astype(str).unique())
+            except Exception as e:
+                print(f"[sync] reuse existing bars failed: {e}", flush=True)
+        need = [c for c in codes if c not in have]
+        print(
+            f"[sync] union={len(codes)} reuse={len(have)} fetch={len(need)}",
+            flush=True,
+        )
+
         frames: list[pd.DataFrame] = []
+        if existing_panel is not None and not existing_panel.empty:
+            frames.append(existing_panel)
         failed: list[str] = []
-        for i, code in enumerate(codes, 1):
+        for i, code in enumerate(need, 1):
             try:
                 bars = adapter.fetch_daily_bars(code, start, end)
                 if bars.empty:
                     failed.append(code)
-                    print(f"[sync] {i}/{len(codes)} {code} empty", flush=True)
+                    print(f"[sync] {i}/{len(need)} {code} empty", flush=True)
                     continue
                 if "adj_factor" not in bars.columns:
                     bars["adj_factor"] = 1.0
@@ -238,10 +314,10 @@ class DataService:
                 if "circ_mv" not in bars.columns:
                     bars["circ_mv"] = np.nan
                 frames.append(bars)
-                print(f"[sync] {i}/{len(codes)} {code} rows={len(bars)}", flush=True)
+                print(f"[sync] {i}/{len(need)} {code} rows={len(bars)}", flush=True)
             except Exception as e:
                 failed.append(code)
-                print(f"[sync] {i}/{len(codes)} {code} FAILED: {e}", flush=True)
+                print(f"[sync] {i}/{len(need)} {code} FAILED: {e}", flush=True)
 
         if not frames:
             raise RuntimeError("No daily bars downloaded")
@@ -259,6 +335,26 @@ class DataService:
             g["ret_1d"] = g["close_adj"].pct_change()
             parts.append(g)
         panel = pd.concat(parts, ignore_index=True)
+
+        basic_info = {"circ_mv_source": "estimated", "daily_basic_coverage": 0.0}
+        ts = self._tushare_universe_adapter()
+        if ts is not None:
+            basic_frames: list[pd.DataFrame] = []
+            for i, code in enumerate(codes, 1):
+                try:
+                    basic = ts.fetch_daily_basic(code, start, end)
+                    if basic is not None and not basic.empty:
+                        basic_frames.append(basic)
+                    print(f"[sync] daily_basic {i}/{len(codes)} {code}", flush=True)
+                except Exception as e:
+                    print(f"[sync] daily_basic {code} FAILED: {e}", flush=True)
+            stacked = (
+                pd.concat(basic_frames, ignore_index=True) if basic_frames else pd.DataFrame()
+            )
+            panel, basic_info = overlay_daily_basic(panel, stacked)
+        else:
+            panel, basic_info = overlay_daily_basic(panel, pd.DataFrame())
+            print("[sync] no TUSHARE_TOKEN; circ_mv stays estimated", flush=True)
 
         # Industry map for diagnostics / future neutralize
         industry = pd.DataFrame(columns=["ts_code", "industry", "industry_source"])
@@ -287,16 +383,22 @@ class DataService:
             "universe": self.cfg.universe,
             "n_codes_requested": len(codes),
             "n_codes_ok": int(panel["ts_code"].nunique()),
+            "n_codes_reused": len(have),
+            "n_codes_fetched": len(need),
             "n_codes_failed": len(failed),
             "failed_codes": failed[:50],
             "has_industry": bool(len(industry)),
             "has_circ_mv": bool(panel["circ_mv"].notna().any())
             if "circ_mv" in panel.columns
             else False,
+            "circ_mv_source": basic_info.get("circ_mv_source"),
+            "daily_basic_coverage": basic_info.get("daily_basic_coverage"),
             "quality": report.to_dict(),
             "data_version": datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"),
             "universe_mode": umeta.get("universe_mode"),
-            "limitations": _universe_limitations(umeta),
+            "limitations": _universe_limitations(
+                umeta, circ_mv_source=str(basic_info.get("circ_mv_source") or "")
+            ),
         }
         meta_path = self.cfg.path("data_processed") / "data_version.json"
         meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")

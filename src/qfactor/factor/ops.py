@@ -90,8 +90,8 @@ class LibraryOps:
         return {"name": name, "status": to}
 
     def demote(self, name: str, to: Status = "draft", reason: str = "") -> dict[str, str]:
-        if to not in {"draft", "deprecated", "archived"}:
-            raise ValueError("demote target must be draft|deprecated|archived")
+        if to not in {"draft", "screened", "deprecated", "archived"}:
+            raise ValueError("demote target must be draft|screened|deprecated|archived")
         if to == "archived":
             self.archive_named(name)
         else:
@@ -120,7 +120,7 @@ class LibraryOps:
     def demote_high_corr(self, max_corr: float | None = None) -> dict[str, Any]:
         """If two candidates/approved are too correlated, keep higher |IC| and demote the other."""
         max_corr = max_corr if max_corr is not None else float(
-            self.ops_cfg.get("auto_demote_corr", 0.85)
+            self.ops_cfg.get("auto_demote_corr", 0.70)
         )
         kept = [
             f
@@ -148,8 +148,8 @@ class LibraryOps:
             loser = name if my_ic < peer_ic else peer
             if any(d["name"] == loser for d in demoted):
                 continue
-            self.registry.update_status(loser, "deprecated")
-            self._log_op(loser, "auto_demote_corr", "deprecated", reason=f"corr={corr:.3f} vs {peer}")
+            self.registry.update_status(loser, "screened")
+            self._log_op(loser, "auto_demote_corr", "screened", reason=f"corr={corr:.3f} vs {peer}")
             demoted.append({"name": loser, "corr": corr, "peer": peer if loser == name else name})
         return {"demoted": demoted, "threshold": max_corr}
 
@@ -187,7 +187,15 @@ class LibraryOps:
                     held.append(name)
             except Exception as e:
                 errors.append({"name": name, "error": str(e)})
-        return {"promoted": promoted, "held_screened": held, "errors": errors}
+        corr = self.demote_high_corr()
+        cap = self.cap_usable_per_mechanism()
+        return {
+            "promoted": promoted,
+            "held_screened": held,
+            "errors": errors,
+            "corr_demoted": corr.get("demoted") or [],
+            "mech_capped": cap.get("demoted") or [],
+        }
 
     def refresh_production(self, include_screened: bool = False) -> dict[str, Any]:
         """Re-score candidates under the current production gate.
@@ -215,20 +223,69 @@ class LibraryOps:
             except Exception as e:
                 errors.append({"name": name, "error": str(e)})
         prune = self.prune_redundant_screened()
+        corr = self.demote_high_corr()
+        cap = self.cap_usable_per_mechanism()
         promo: dict[str, Any] = {"promoted": [], "held_screened": [], "errors": []}
         if include_screened:
             promo = self.promote_screened()
+            cap2 = self.cap_usable_per_mechanism()
+            cap["demoted"] = list(cap.get("demoted") or []) + list(cap2.get("demoted") or [])
         promo["errors"] = (promo.get("errors") or []) + errors
         rerank = self.rerank_candidates_by_resid()
         return {
             "kept_candidates": kept,
             "demoted_candidates": demoted,
             "pruned_screened": prune.get("demoted") or [],
+            "corr_demoted": corr.get("demoted") or [],
+            "mech_capped": cap.get("demoted") or [],
             "promoted": promo.get("promoted") or [],
             "held_screened": promo.get("held_screened") or [],
             "resid_rerank": rerank,
             "errors": promo.get("errors") or [],
         }
+
+    def cap_usable_per_mechanism(self, max_per: int | None = None) -> dict[str, Any]:
+        """Keep at most N candidate/approved factors per mechanism; rest → screened."""
+        max_per = int(
+            max_per
+            if max_per is not None
+            else self.ops_cfg.get("cap_usable_per_mechanism", 1)
+        )
+        if max_per <= 0:
+            return {"demoted": [], "max_per": max_per, "skipped": True}
+
+        def _score(item: dict[str, Any]) -> tuple[float, float, float]:
+            summary = item.get("summary") if isinstance(item.get("summary"), dict) else {}
+            train = abs(float(summary.get("train_rank_ic_mean") or 0))
+            resid = abs(float(summary.get("resid_ic_mean") or 0))
+            ic = abs(float(summary.get("rank_ic_mean") or 0))
+            return (train, resid, ic)
+
+        buckets: dict[str, list[tuple[float, str]]] = {}
+        for item in self.registry.list_factors():
+            if item.get("status") not in {"candidate", "approved"}:
+                continue
+            name = str(item["name"])
+            mid = str(item.get("category") or "").strip()
+            try:
+                spec = self.registry.load_spec(name)
+                mid = str(spec.mechanism or spec.category or mid).strip()
+            except Exception:
+                pass
+            if not mid:
+                mid = "unknown"
+            buckets.setdefault(mid, []).append((_score(item), name))
+        demoted: list[dict[str, str]] = []
+        kept: list[dict[str, str]] = []
+        for mid, rows in buckets.items():
+            rows.sort(reverse=True)
+            for _score, name in rows[:max_per]:
+                kept.append({"name": name, "mechanism": mid})
+            for _score, name in rows[max_per:]:
+                self.registry.update_status(name, "screened")
+                self._log_op(name, "cap_usable_mechanism", "screened", reason=f"mech={mid}")
+                demoted.append({"name": name, "mechanism": mid})
+        return {"kept": kept, "demoted": demoted, "max_per": max_per}
 
     def rerank_candidates_by_resid(self) -> dict[str, Any]:
         """Leave-one-out residual IC vs other candidates; demote those that fail.

@@ -263,6 +263,7 @@ for _mech, _tmpl in _COMPOSE_CATALOG:
 
 _CATALOG_EXPAND_EVERY = 20
 _CATALOG_EXPAND_UNUSED_LT = 0
+_CATALOG_EXPAND_EMPTY_EVERY = 5
 _CATALOG_EXPAND_MAX = 10
 _WIN_NUM_RE = re.compile(r"\b(?:3|5|10|20|40|60)\b")
 
@@ -306,15 +307,23 @@ def should_expand_compose_catalog(
     *,
     every: int = _CATALOG_EXPAND_EVERY,
     unused_lt: int = _CATALOG_EXPAND_UNUSED_LT,
+    empty_every: int = _CATALOG_EXPAND_EMPTY_EVERY,
 ) -> bool:
-    """Periodic catalog refill while mining. unused_lt<=0 means do not wait for empty."""
+    """Periodic catalog refill while mining. unused_lt<=0 means do not wait for empty.
+
+    When unused_compose==0, use empty_every (shorter) so mining does not sit
+    through 20 empty generate rounds waiting to refill ammo.
+    """
     if int(unused_lt) > 0 and int(unused_compose) >= int(unused_lt):
         return False
     if int(rounds_done) < 1:
         return False
+    interval = int(every)
+    if int(unused_compose) <= 0 and int(empty_every) > 0:
+        interval = min(interval, int(empty_every))
     if last_expand_round is None or int(last_expand_round) < 0:
-        return int(rounds_done) >= int(every)
-    return int(rounds_done) - int(last_expand_round) >= int(every)
+        return int(rounds_done) >= interval
+    return int(rounds_done) - int(last_expand_round) >= interval
 
 
 def normalize_compose_template(tmpl: str) -> str | None:
@@ -457,6 +466,9 @@ def _production_llm_cfg(cfg: ProjectConfig) -> dict[str, Any]:
         "catalog_expand_every": int(llm.get("catalog_expand_every", _CATALOG_EXPAND_EVERY)),
         "catalog_expand_max": int(llm.get("catalog_expand_max", _CATALOG_EXPAND_MAX)),
         "catalog_expand_unused_lt": int(llm.get("catalog_expand_unused_lt", _CATALOG_EXPAND_UNUSED_LT)),
+        "catalog_expand_empty_every": int(
+            llm.get("catalog_expand_empty_every", _CATALOG_EXPAND_EMPTY_EVERY)
+        ),
         "hard_rotate": bool(div.get("hard_rotate", True)),
         "soft_switch_after": int(div.get("soft_switch_after", 3)),
     }
@@ -787,6 +799,30 @@ class CandidateGenerator:
         blocked = getattr(self, "_blocked_mechs", set()) or set()
         return {f for f, m in _FIELD_MECH.items() if m in blocked}
 
+    def _allowed_field_set(self) -> set[str]:
+        return _DSL_FIELD_SET - self._blocked_field_set()
+
+    def _search_parents(
+        self,
+        parents: list[dict[str, Any]],
+        *,
+        exclude: set[str],
+        limit: int = 12,
+    ) -> list[dict[str, Any]]:
+        """Eligible parents for crossover/mutate: skip blocked mechs and fields."""
+        out: list[dict[str, Any]] = []
+        for p in parents:
+            mid = str(p.get("mechanism") or p.get("category") or "").strip()
+            expr = str(p.get("expression") or "")
+            if not mid or not expr or mid in exclude:
+                continue
+            if self._expr_has_blocked_fields(expr):
+                continue
+            out.append(p)
+            if len(out) >= limit:
+                break
+        return out
+
     def _expr_has_blocked_fields(self, expr: str) -> bool:
         skip = self._blocked_field_set()
         if not skip:
@@ -992,7 +1028,12 @@ class CandidateGenerator:
         return None
 
     def _crossover_trees(self, expr_a: str, expr_b: str) -> str | None:
-        """Replace one nested subtree of A with a subtree from B."""
+        """Replace a subtree of A with a subtree from B, including inner unaries.
+
+        Shallow catalog-shaped parents only nest at the root; swapping the whole
+        tree always yields a parent or catalog skeleton. Inner paths make field
+        mixes like div(roc(upper_shadow), std(close_adj)).
+        """
         from qfactor.dsl.validate import validate_expression
 
         try:
@@ -1000,8 +1041,11 @@ class CandidateGenerator:
             tree_b = parse_expression(expr_b)
         except Exception:
             return None
-        recv = nested_expr_paths(tree_a)
-        recv = [p for p in recv if p] or recv
+        all_recv = all_expr_paths(tree_a)
+        inner = [p for p in all_recv if p]
+        recv = inner + [p for p in all_recv if not p]
+        if not recv:
+            recv = nested_expr_paths(tree_a) or [()]
         donors = all_expr_paths(tree_b)
         if not recv or not donors:
             return None
@@ -1010,6 +1054,8 @@ class CandidateGenerator:
         random.shuffle(pairs)
         for path_a, path_b in pairs:
             try:
+                if path_a == () and path_b == ():
+                    continue
                 donor = expr_at(tree_b, path_b)
                 if not isinstance(donor, Expr):
                     continue
@@ -1017,6 +1063,8 @@ class CandidateGenerator:
                 if not isinstance(child, Expr):
                     continue
                 text = child.to_str()
+                if text in {expr_a, expr_b}:
+                    continue
                 sk = skel_of(child)
                 if sk in parent_sk or sk in _CATALOG_SKELETONS:
                     continue
@@ -1035,55 +1083,62 @@ class CandidateGenerator:
         theme: str | None = None,
     ) -> dict[str, Any] | None:
         """Swap a subtree across two different-mechanism parents. No LLM."""
-        by_mech: dict[str, dict[str, Any]] = {}
+        by_mech: dict[str, list[dict[str, Any]]] = {}
         blocked: set[str] = getattr(self, "_blocked_mechs", set()) or set()
         skip_fields = self._blocked_field_set()
         for p in parents:
             mid = str(p.get("mechanism") or p.get("category") or "").strip()
             expr = str(p.get("expression") or "")
-            if not mid or not expr or mid in by_mech or mid in blocked:
+            if not mid or not expr or mid in blocked:
                 continue
-            by_mech[mid] = p
-        mechs = list(by_mech)
+            rows = by_mech.setdefault(mid, [])
+            if len(rows) >= 4:
+                continue
+            rows.append(p)
+        mechs = [m for m, rows in by_mech.items() if rows]
         if len(mechs) < 2:
             return None
         random.shuffle(mechs)
         for i, m1 in enumerate(mechs):
             for m2 in mechs[i + 1 :]:
-                pa, pb = by_mech[m1], by_mech[m2]
-                child_expr = self._crossover_trees(str(pa["expression"]), str(pb["expression"]))
-                if not child_expr:
+                combos = [(a, b) for a in by_mech[m1] for b in by_mech[m2]]
+                random.shuffle(combos)
+                for pa, pb in combos:
                     child_expr = self._crossover_trees(
-                        str(pb["expression"]), str(pa["expression"])
+                        str(pa["expression"]), str(pb["expression"])
                     )
-                if not child_expr:
-                    continue
-                if skip_fields and self._expr_has_blocked_fields(child_expr):
-                    continue
-                banned, _ = is_banned_expression(child_expr, bans)
-                if banned:
-                    continue
-                try:
-                    sk = expression_fingerprint(child_expr)["skeleton"]
-                    pa_sk = expression_fingerprint(str(pa["expression"]))["skeleton"]
-                    pb_sk = expression_fingerprint(str(pb["expression"]))["skeleton"]
-                except Exception:
-                    continue
-                if sk in {pa_sk, pb_sk}:
-                    continue
-                child_mech = theme or m1
-                if child_mech in blocked:
-                    child_mech = m2 if m2 not in blocked else m1
-                if child_mech in blocked:
-                    continue
-                return {
-                    "name": unique_factor_name(str(child_mech), "xover"),
-                    "mechanism": child_mech,
-                    "expression": child_expr,
-                    "hypothesis": f"crossover {m1} x {m2}",
-                    "source": "crossover",
-                    "lookback": int(pa.get("lookback") or pb.get("lookback") or 20),
-                }
+                    if not child_expr:
+                        child_expr = self._crossover_trees(
+                            str(pb["expression"]), str(pa["expression"])
+                        )
+                    if not child_expr:
+                        continue
+                    if skip_fields and self._expr_has_blocked_fields(child_expr):
+                        continue
+                    banned, _ = is_banned_expression(child_expr, bans)
+                    if banned:
+                        continue
+                    try:
+                        sk = expression_fingerprint(child_expr)["skeleton"]
+                        pa_sk = expression_fingerprint(str(pa["expression"]))["skeleton"]
+                        pb_sk = expression_fingerprint(str(pb["expression"]))["skeleton"]
+                    except Exception:
+                        continue
+                    if sk in {pa_sk, pb_sk}:
+                        continue
+                    child_mech = theme or m1
+                    if child_mech in blocked:
+                        child_mech = m2 if m2 not in blocked else m1
+                    if child_mech in blocked:
+                        continue
+                    return {
+                        "name": unique_factor_name(str(child_mech), "xover"),
+                        "mechanism": child_mech,
+                        "expression": child_expr,
+                        "hypothesis": f"crossover {m1} x {m2}",
+                        "source": "crossover",
+                        "lookback": int(pa.get("lookback") or pb.get("lookback") or 20),
+                    }
         return None
 
     def _perturb_structure(
@@ -1214,15 +1269,40 @@ class CandidateGenerator:
         lessons: list[dict[str, Any]],
     ) -> list[dict[str, Any]]:
         del lessons
+        blocked = getattr(self, "_blocked_mechs", set()) or set()
         cards: list[dict[str, Any]] = []
+        seen_sk: set[str] = set()
+
+        def _add_card(item: dict[str, Any]) -> None:
+            if len(cards) >= 8:
+                return
+            card = self._factor_card(item)
+            if not card:
+                return
+            sk = str(card.get("skeleton") or "")
+            if sk and sk in seen_sk:
+                return
+            if sk:
+                seen_sk.add(sk)
+            cards.append(card)
+
         for e in existing:
-            if str(e.get("status") or "") not in USABLE_STATUSES:
-                continue
-            card = self._factor_card(e)
-            if card:
-                cards.append(card)
+            if str(e.get("status") or "") in USABLE_STATUSES:
+                _add_card(e)
+        for e in existing:
             if len(cards) >= 8:
                 break
+            if str(e.get("status") or "") not in KEEP_STATUSES:
+                continue
+            mid = str(e.get("mechanism") or e.get("category") or "")
+            if mid in blocked:
+                continue
+            expr = str(e.get("expression") or "")
+            if not expr and isinstance(e.get("summary"), dict):
+                expr = str(e["summary"].get("expression") or "")
+            if expr and self._expr_has_blocked_fields(expr):
+                continue
+            _add_card(e)
         compile_bans = {
             "hashes": set(bans.get("hashes") or []),
             "skeletons": set(bans.get("skeletons") or []) | set(_CATALOG_SKELETONS),
@@ -1230,10 +1310,11 @@ class CandidateGenerator:
         for c in cards:
             if c.get("skeleton"):
                 compile_bans["skeletons"].add(str(c["skeleton"]))
+        allowed = sorted(self._allowed_field_set())
         modes = [
             "not_like must name the candidate cards — not a window tweak",
             "do not reuse catalog_skeletons or candidate skeletons",
-            "prefer turnover/shadow/reversal/volume_price over amplitude",
+            f"fields must be subset of {allowed}",
         ]
         ideas = self._llm_idea_batch(mech, cards, n, modes)
         self._last_idea_n = len(ideas)
@@ -1256,17 +1337,20 @@ class CandidateGenerator:
             sk = expression_fingerprint(str(expr))["skeleton"]
         except Exception:
             sk = None
-        return {
+        train_ic = summary.get("train_rank_ic_mean")
+        if train_ic is None and str(summary.get("eval_split") or "") == "train":
+            train_ic = summary.get("rank_ic_mean")
+        card = {
             "expression": expr,
             "mechanism": parent.get("mechanism") or parent.get("category"),
             "skeleton": sk,
             "status": parent.get("status"),
-            "holdout_ic": summary.get("rank_ic_mean"),
-            "resid_ic": summary.get("resid_ic_mean"),
-            "max_corr": summary.get("max_corr"),
-            "cost_ls": summary.get("cost_adjusted_ls"),
-            "icir": summary.get("icir"),
+            "train_ic": train_ic,
         }
+        if str(summary.get("eval_split") or "") == "train":
+            if summary.get("max_corr") is not None:
+                card["max_corr"] = summary.get("max_corr")
+        return card
 
     def _mutate_failure_modes(self, parents: list[dict[str, Any]]) -> list[str]:
         """5–8 live failure notes from this library, not generic overnight lore."""
@@ -1294,15 +1378,11 @@ class CandidateGenerator:
                     sk = expression_fingerprint(str(expr))["skeleton"] if expr else ""
                 except Exception:
                     sk = ""
+                split = str(s.get("eval_split") or "")
                 corr = float(s.get("max_corr") or 0)
-                resid = float(s.get("resid_ic_mean") or 0)
-                cost = float(s.get("cost_adjusted_ls") or 0)
-                if corr >= 0.70 and sk:
-                    _add(f"high_corr skeleton {sk} corr={corr:.2f}")
-                if status in {"screened", "draft"} and abs(resid) < 0.005 and sk:
-                    _add(f"resid≈0 {sk}")
-                if cost < 0 and sk:
-                    _add(f"cost_ls_negative {sk}")
+                # Train-window notes only. Never quote holdout resid/cost/IC.
+                if split == "train" and corr >= 0.70 and sk:
+                    _add(f"high_corr skeleton {sk}")
                 if sk and sk in parent_skels and status == "screened":
                     _add(f"do_not_window_shop {sk}")
         except Exception:
@@ -1310,7 +1390,7 @@ class CandidateGenerator:
         if not modes:
             _add("change operator/field/subtree; never window-only")
             _add("child skeleton must differ from parents and banned_skeletons")
-            _add("avoid clones whose resid IC collapses to ~0 vs library")
+            _add("avoid near-duplicates of an existing candidate mechanism")
         return modes[:8]
 
     def _validate_idea(self, raw: dict[str, Any], mech: dict[str, Any]) -> dict[str, Any] | None:
@@ -1326,6 +1406,9 @@ class CandidateGenerator:
         if len(claim) < 8 or len(why_t1) < 4 or len(not_like) < 4 or not clean_fields:
             return None
         if any(f not in _DSL_FIELD_SET for f in clean_fields):
+            return None
+        blocked_fields = self._blocked_field_set()
+        if blocked_fields and any(f in blocked_fields for f in clean_fields):
             return None
         mid = str(raw.get("mechanism") or mech["id"]).strip() or mech["id"]
         return {
@@ -1349,6 +1432,8 @@ class CandidateGenerator:
             "mechanism": mech,
             "library_cards": cards,
             "catalog_skeletons": sorted(_CATALOG_SKELETONS)[:40],
+            "allowed_fields": sorted(self._allowed_field_set()),
+            "blocked_fields": sorted(self._blocked_field_set()),
             "failure_modes": failure_modes,
             "output_schema": {
                 "ideas": [
@@ -1693,18 +1778,10 @@ class CandidateGenerator:
         n_tmpl = int(plan["n_template"])
         thin = unused_compose < _CATALOG_SKIP_AT and not cold
         blocked_excl = set(self._blocked_mechs)
-        xover_parents = [
-            p
-            for p in self._parents_by_mechanism(parents, exclude=blocked_excl)
-            if not self._expr_has_blocked_fields(str(p.get("expression") or ""))
-        ]
-        mutate_parents = [
-            p
-            for p in self._parents_by_mechanism(
-                parents, exclude=blocked_excl | {"amplitude"}
-            )
-            if not self._expr_has_blocked_fields(str(p.get("expression") or ""))
-        ]
+        xover_parents = self._search_parents(parents, exclude=blocked_excl, limit=12)
+        mutate_parents = self._search_parents(
+            parents, exclude=blocked_excl | {"amplitude"}, limit=12
+        )
         candidate_skels: set[str] = set()
         for p in usable:
             try:
@@ -1724,6 +1801,7 @@ class CandidateGenerator:
             "llm_fresh_empty": 0,
             "llm_mutate_ok": 0,
             "llm_mutate_empty": 0,
+            "llm_compile_empty": 0,
             "crossover_ok": 0,
             "llm_errors": 0,
             "hint_fallback": 0,
@@ -1803,6 +1881,8 @@ class CandidateGenerator:
                 stats["llm_fresh_ok"] += 1
             else:
                 stats["llm_fresh_empty"] += 1
+                if int(getattr(self, "_last_idea_n", 0) or 0) > 0:
+                    stats["llm_compile_empty"] += 1
                 if thin:
                     filled += _fill_crossover(n_fresh - filled)
                 if unused_compose > 0:
@@ -1816,7 +1896,13 @@ class CandidateGenerator:
                             break
                         stats["compose_fallback"] += 1
                         filled += 1
+                stats["llm_ideas"] = int(stats.get("llm_ideas") or 0) + int(
+                    getattr(self, "_last_idea_n", 0) or 0
+                )
                 break
+            stats["llm_ideas"] = int(stats.get("llm_ideas") or 0) + int(
+                getattr(self, "_last_idea_n", 0) or 0
+            )
             for cand in got:
                 if _accept(cand):
                     filled += 1
@@ -1839,9 +1925,10 @@ class CandidateGenerator:
                 got = []
             if got:
                 stats["llm_mutate_ok"] += 1
-                stats["llm_ideas"] = int(getattr(self, "_last_idea_n", 0) or 0)
             else:
                 stats["llm_mutate_empty"] += 1
+                if int(getattr(self, "_last_idea_n", 0) or 0) > 0:
+                    stats["llm_compile_empty"] += 1
                 if not thin:
                     while filled_m < n_mutate:
                         accepted = _accept(
@@ -1853,7 +1940,13 @@ class CandidateGenerator:
                             break
                         stats["compose_fallback"] += 1
                         filled_m += 1
+                stats["llm_ideas"] = int(stats.get("llm_ideas") or 0) + int(
+                    getattr(self, "_last_idea_n", 0) or 0
+                )
                 break
+            stats["llm_ideas"] = int(stats.get("llm_ideas") or 0) + int(
+                getattr(self, "_last_idea_n", 0) or 0
+            )
             for cand in got:
                 if _accept(cand):
                     filled_m += 1

@@ -29,6 +29,7 @@ class FactorSpec(BaseModel):
     expression: str | None = None
     mechanism: str | None = None
     expr_hash: str | None = None
+    signal_hold_days: int = 5  # compute() is daily; gates score the H-day hold signal
 
 
 class Factor(ABC):

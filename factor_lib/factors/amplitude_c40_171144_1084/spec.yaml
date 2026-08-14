@@ -1,6 +1,6 @@
 name: amplitude_c40_171144_1084
 version: 0.1.0
-status: candidate
+status: screened
 family: price_volume
 category: amplitude
 universe: csi100
@@ -24,3 +24,4 @@ entry_gate: research
 expression: delay(roc(amplitude,40),60)
 mechanism: amplitude
 expr_hash: ae1bcc2335daaad4
+signal_hold_days: 5

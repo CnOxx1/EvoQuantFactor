@@ -127,7 +127,7 @@ python -m qfactor.cli data-status
 - Newey-West ICIR：全样本门槛与 holdout `min_holdout_icir: 0.07`
 - 残差 IC：`min_resid_ic_mean: 0.01`，残差 NW ICIR ≥ 0.07
 - 分层单调 ≥ 0.75；成本后多空为正
-- `freeze_sign`：训练窗方向在 holdout 上不得翻号
+- `freeze_sign`：训练窗与 holdout 同号，且 holdout IC ≥ `min_oos_ic_mean`
 - 年份同号；近期 IC 为正；日换手 ≤ 1.20
 
 ```bash
@@ -141,7 +141,7 @@ python -m qfactor.cli library-promote NAME --gate production
 
 ## 挖矿循环
 
-LangGraph：`decide → generate → review_validate → persist`，一轮结束再对**本轮新 screened** 跑 production 闸。LLM 无离线回退。
+LangGraph：`decide → generate → review_validate → persist`。循环只产 `screened`，**不会**在图结束时自动 `promote_screened`。晋升用 `library-reeval-screened` / `library-promote`。LLM 卡片只含训练窗 `train_ic`，不含 holdout。LLM 无离线回退。
 
 ```bash
 python -m qfactor.cli loop --rounds 5 --batch-size 8 --llm-ratio 0.45 --gate research
@@ -190,7 +190,7 @@ python runs/_hour_mine.py 1800 half_hour
 | `install-seeds` | 写入种子因子 |
 | `list-factors` / `eval-factor` / `promote` | 单因子 |
 | `mine` / `loop` | 挖矿（需 API key） |
-| `library-archive` / `library-demote-corr` | 归档与高相关降权 |
+| `library-archive` / `library-demote-corr` / `library-cap-usable` | 归档、高相关降权、每机制 1 条 candidate |
 | `library-reeval-screened` | screened 上生产闸 |
 | `library-refresh-production` | 重打 candidate |
 | `library-promote` / `library-demote` | 升降级 |
@@ -217,18 +217,15 @@ python runs/_hour_mine.py 1800 half_hour
 
 ## 当前库（2026-08-14）
 
-约 6 条 `candidate`，100+ 条 `screened`，无 `approved`。candidate 构成：振幅 3、流动性 2、隔夜 1。
+约 **3** 条 `candidate`（振幅 / 流动性 / 隔夜各 1），无 `approved`。同机制上限 1。PIT + `daily_basic` 重评后数字才会改口径。
 
 | 名称 | 机制 | 表达式 |
 |---|---|---|
 | `amplitude_c10_163144_8115` | amplitude | `div(std(high,10),std(low,10))` |
-| `amplitude_c40_171144_1084` | amplitude | `delay(roc(amplitude,40),60)` |
-| `amplitude_c10_105336_3673` | amplitude | `div(std(low,10),ma(abs(low),10))` |
 | `overnight_c40_164135_4925` | overnight | `div(std(overnight,40),std(amplitude,40))` |
 | `liquidity_c60_143458_3465` | liquidity | `div(abs(ret_1d),ma(turnover_rate,60))` |
-| `momentum_llm_143848_8537` | liquidity | `div(ma(turnover_rate,20),ma(abs(ret_1d),20))` |
 
-后两条过了 production holdout（IC / NW ICIR / 残差量级约 0.03–0.05 / 0.14–0.18）。名称带 `momentum_` 的那条机制是流动性。两条相关约 0.58（Amihud 与其倒数）。
+已降为 screened：`amplitude_c40_171144_1084`、`amplitude_c10_105336_3673`、`momentum_llm_143848_8537`。
 
 有 candidate 的族会被主题封锁，后续搜索应偏向 reversal / momentum / volatility / volume_price / shadow。
 

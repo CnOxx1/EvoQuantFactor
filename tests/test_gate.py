@@ -206,13 +206,26 @@ def test_production_freeze_sign_oos():
         "recent_rank_ic_mean": 0.03,
         "freeze_sign_ok": True,
         "oos_ic_mean": 0.04,
-        "oos_pos_folds": 1,
+        "oos_pos_folds": 2,
         "cost_adjusted_ls": 0.01,
     }
     assert apply_gate(ok, thresholds, mode="production")["status"] == "candidate"
     bad = dict(ok)
     bad["freeze_sign_ok"] = False
     out = apply_gate(bad, thresholds, mode="production")
+    assert out["checks"]["oos"] is False
+    assert out["status"] == "reject"
+    weak = dict(ok)
+    weak["oos_ic_mean"] = 0.0
+    weak["oos_pos_folds"] = 2
+    out = apply_gate(weak, thresholds, mode="production")
+    assert out["checks"]["oos"] is False
+    assert out["status"] == "reject"
+    mixed = dict(ok)
+    mixed["oos_ic_mean"] = 0.03
+    mixed["oos_min_fold_ic"] = -0.01
+    mixed["oos_pos_folds"] = 1
+    out = apply_gate(mixed, thresholds, mode="production")
     assert out["checks"]["oos"] is False
     assert out["status"] == "reject"
 

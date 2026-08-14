@@ -12,6 +12,7 @@ required_fields:
 - low
 lookback: 40
 horizon: 5
+signal_hold_days: 5
 neutralize: []
 params: {}
 tags:

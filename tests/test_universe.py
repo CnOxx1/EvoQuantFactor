@@ -133,3 +133,29 @@ def test_snapshot_mode_is_opt_in():
     assert meta["universe_mode"] == "snapshot"
     assert set(members["ts_code"]) == {"TODAY.SH"}
     assert set(members["trade_date"]) == {"20240102"}
+
+
+def test_overlay_daily_basic_prefers_vendor_circ_mv():
+    from qfactor.data.dataset import overlay_daily_basic
+
+    panel = pd.DataFrame(
+        {
+            "trade_date": ["20240102", "20240103"],
+            "ts_code": ["AAA.SH", "AAA.SH"],
+            "circ_mv": [1.0, 1.0],
+            "turnover_rate": [2.0, 2.0],
+        }
+    )
+    basic = pd.DataFrame(
+        {
+            "trade_date": ["20240102"],
+            "ts_code": ["AAA.SH"],
+            "circ_mv": [9.0],
+            "turnover_rate": [4.0],
+        }
+    )
+    out, info = overlay_daily_basic(panel, basic)
+    assert abs(float(out.loc[0, "circ_mv"]) - 9.0) < 1e-12
+    assert abs(float(out.loc[1, "circ_mv"]) - 1.0) < 1e-12
+    assert info["circ_mv_source"] == "tushare_daily_basic"
+    assert info["daily_basic_coverage"] == 0.5

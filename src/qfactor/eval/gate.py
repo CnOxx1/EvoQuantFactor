@@ -81,15 +81,21 @@ def apply_gate(metrics: dict[str, Any], thresholds: dict[str, Any], mode: str = 
         )
         checks["recent_ic"] = float(metrics.get("recent_rank_ic_mean", 0.0)) >= min_recent
     if thresholds.get("require_oos", False):
+        min_oos = float(thresholds.get("min_oos_ic_mean", 0.01))
+        min_folds = int(thresholds.get("min_oos_pos_folds", 1))
+        min_fold_ic = float(
+            metrics.get("oos_min_fold_ic", metrics.get("oos_ic_mean", 0.0))
+        )
+        oos_floor = (
+            int(metrics.get("oos_pos_folds", 0)) >= min_folds
+            and min_fold_ic >= min_oos
+        )
         if str(thresholds.get("oos_mode") or "") == "freeze_sign":
-            # Train-frozen sign must not flip on the holdout window.
-            checks["oos"] = bool(metrics.get("freeze_sign_ok", False))
+            # Same-sign vs train, plus every holdout fold clearing min_oos_ic_mean.
+            checks["oos"] = bool(metrics.get("freeze_sign_ok", False)) and oos_floor
         else:
             checks["oos"] = (
-                float(metrics.get("oos_ic_mean", 0.0))
-                >= float(thresholds.get("min_oos_ic_mean", 0.01))
-                and int(metrics.get("oos_pos_folds", 0))
-                >= int(thresholds.get("min_oos_pos_folds", 1))
+                float(metrics.get("oos_ic_mean", 0.0)) >= min_oos and oos_floor
             )
     if thresholds.get("require_cost_ls_positive", False):
         checks["cost_ls"] = float(metrics.get("cost_adjusted_ls", 0.0)) > 0

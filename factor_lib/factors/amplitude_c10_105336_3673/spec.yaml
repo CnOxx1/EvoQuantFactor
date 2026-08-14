@@ -1,6 +1,6 @@
 name: amplitude_c10_105336_3673
 version: 0.1.0
-status: candidate
+status: screened
 family: price_volume
 category: amplitude
 universe: csi100
@@ -24,3 +24,4 @@ entry_gate: research
 expression: div(std(low,10),ma(abs(low),10))
 mechanism: amplitude
 expr_hash: d764adf21e8a6b43
+signal_hold_days: 5

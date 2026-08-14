@@ -1,6 +1,6 @@
 name: momentum_llm_143848_8537
 version: 0.1.0
-status: candidate
+status: screened
 family: price_volume
 category: liquidity
 universe: csi100
@@ -12,6 +12,7 @@ required_fields:
 - low
 lookback: 20
 horizon: 5
+signal_hold_days: 5
 neutralize: []
 params: {}
 tags:

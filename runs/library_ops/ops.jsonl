@@ -1,2 +1,4 @@
 {"ts": "2026-08-12T09:51:50.658438+00:00", "name": "volatility_10_4285", "action": "auto_demote_corr", "to": "deprecated", "reason": "corr=0.798 vs volatility_10_4285"}
 {"ts": "2026-08-12T09:51:50.695220+00:00", "name": "shadow_20_7652", "action": "auto_demote_corr", "to": "deprecated", "reason": "corr=0.792 vs volatility_10_4285"}
+{"ts": "2026-08-14T08:30:19.499071+00:00", "name": "amplitude_c40_171144_1084", "action": "cap_usable_mechanism", "to": "screened", "reason": "mech=amplitude"}
+{"ts": "2026-08-14T08:30:19.513680+00:00", "name": "amplitude_c10_105336_3673", "action": "cap_usable_mechanism", "to": "screened", "reason": "mech=amplitude"}

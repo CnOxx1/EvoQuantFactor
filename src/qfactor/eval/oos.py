@@ -186,16 +186,18 @@ def holdout_oos(
     orientation: int = 1,
     min_days: int = 40,
     nw_lags: int = 0,
+    n_folds: int = 2,
 ) -> dict[str, Any]:
-    """Treat the entire window after `after` as one OOS fold (frozen sign).
+    """Holdout after `after`, frozen sign, split into contiguous folds.
 
-    Short holdouts should not be sliced into extra folds — that just adds noise
-    and invites lowering pos_folds to 1-of-2.
+    Two folds catch a first-half spike that reverses later. A single window
+    mean is not an extra OOS check beyond the production IC gate.
     """
     empty = {
         "folds": [],
         "oos_ic_mean": 0.0,
         "oos_icir": 0.0,
+        "oos_min_fold_ic": 0.0,
         "n_folds": 0,
         "pos_folds": 0,
         "period_stability": period_stability_ic(
@@ -205,24 +207,37 @@ def holdout_oos(
     if ic.empty:
         return empty
     hold = ic.loc[ic.index.astype(str) > str(after)] * int(orientation)
-    if hold.empty or len(hold) < min_days:
+    folds_n = max(2, int(n_folds or 2))
+    min_fold = max(20, int(min_days) // 2)
+    if hold.empty or len(hold) < min_days or len(hold) < folds_n * min_fold:
         return empty
-    s = summarize_ic(hold, nw_lags=nw_lags)
-    mean = float(s["rank_ic_mean"])
-    return {
-        "folds": [
+    fold_size = len(hold) // folds_n
+    folds: list[dict[str, Any]] = []
+    for i in range(folds_n):
+        start = i * fold_size
+        end = (i + 1) * fold_size if i < folds_n - 1 else len(hold)
+        part = hold.iloc[start:end]
+        if len(part) < min_fold:
+            return empty
+        s = summarize_ic(part, nw_lags=nw_lags)
+        folds.append(
             {
-                "fold": 1,
-                "start": str(hold.index[0]),
-                "end": str(hold.index[-1]),
+                "fold": i + 1,
+                "start": str(part.index[0]),
+                "end": str(part.index[-1]),
                 "orientation": int(orientation),
                 **s,
             }
-        ],
-        "oos_ic_mean": mean,
-        "oos_icir": float(s.get("icir_nw") if nw_lags else s["icir"]),
-        "n_folds": 1,
-        "pos_folds": 1 if mean > 0 else 0,
+        )
+    means = [float(f["rank_ic_mean"]) for f in folds]
+    overall = summarize_ic(hold, nw_lags=nw_lags)
+    return {
+        "folds": folds,
+        "oos_ic_mean": float(overall["rank_ic_mean"]),
+        "oos_icir": float(overall.get("icir_nw") if nw_lags else overall["icir"]),
+        "oos_min_fold_ic": float(min(means)),
+        "n_folds": len(folds),
+        "pos_folds": int(sum(1 for m in means if m > 0)),
         "period_stability": period_stability_ic(
             hold, n_folds=2, min_days=min_days, nw_lags=nw_lags
         ),
