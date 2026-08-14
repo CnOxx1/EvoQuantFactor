@@ -30,8 +30,30 @@ def rank(panel: pd.DataFrame) -> pd.DataFrame:
     return panel.rank(axis=1, pct=True)
 
 
-def neutralize_groups(panel: pd.DataFrame, groups: pd.Series) -> pd.DataFrame:
-    """Cross-sectional demean within groups (e.g. industry) for each date."""
+def neutralize_groups(panel: pd.DataFrame, groups: pd.Series | pd.DataFrame) -> pd.DataFrame:
+    """Cross-sectionally demean within groups, supporting PIT group matrices.
+
+    A Series remains supported for legacy/static classifications. A DataFrame must
+    be date x security and is neutralized separately on every date, which is the
+    required path for point-in-time industry classifications.
+    """
+    if isinstance(groups, pd.DataFrame):
+        g = groups.reindex(index=panel.index, columns=panel.columns)
+        out = panel.copy()
+        for date in out.index:
+            row_groups = g.loc[date]
+            valid = row_groups.dropna()
+            if int(valid.nunique()) < 2:
+                continue
+            row = out.loc[date].copy()
+            for _name, names in valid.groupby(valid).groups.items():
+                names = list(names)
+                if len(names) < 2:
+                    continue
+                mean = row.loc[names].mean()
+                row.loc[names] = row.loc[names] - mean
+            out.loc[date] = row
+        return out
     g = groups.reindex(panel.columns)
     valid = g.dropna()
     if int(valid.nunique()) < 2:

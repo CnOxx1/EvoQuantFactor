@@ -1,8 +1,27 @@
 primary: tushare
 fallback: baostock
 
-# Universe reconstitutions always prefer Tushare (even when bars come from Baostock).
-# Set project.yaml universe_policy.mode=snapshot to keep the old latest-file stamp.
+# PIT universe and vendor daily-basic evidence are independently selectable.
+# "auto" uses Tushare only when a token is configured; otherwise no silent
+# snapshot/estimated fallback is permitted for production.
+providers:
+  universe: auto          # tushare | archive | future: rqdata
+  daily_basic: auto       # tushare | archive | future: rqdata
+  security_status: archive  # PIT ST/停牌/涨跌停；无文件时 coverage=0，release 阻断
+  corporate_actions: archive # PIT 复权/除权除息/代码事件；无文件时 coverage=0
+  risk_exposures: archive  # 点时风险暴露，供后续多因子组合约束使用
+  industry: archive        # PIT 行业分类；静态行业图只能研究诊断，不可作为生产中性化证据
+# A vetted archive may be built from official reconstitution files and a
+# licensed data export. Files retain source provenance and must pass the PIT
+# data-version contract before production use.
+archive:
+  universe_history: data/raw/providers/csi100_members.parquet
+  daily_basic: data/raw/providers/daily_basic.parquet
+  security_status: data/raw/providers/security_status.parquet
+  corporate_actions: data/raw/providers/corporate_actions.parquet
+  risk_exposures: data/raw/providers/risk_exposures.parquet
+  industry_history: data/raw/providers/industry_history.parquet
+
 tushare:
   index_code: "000903.SH"
   sleep_seconds: 0.35

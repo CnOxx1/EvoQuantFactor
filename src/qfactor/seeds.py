@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from qfactor.factor.base import Factor, FactorSpec
+from qfactor.factor.base import FactorSpec
 from qfactor.factor.registry import FactorRegistry
-from qfactor.factor.transforms import winsorize, zscore
 
 
 def _code_reversal(window: int) -> str:

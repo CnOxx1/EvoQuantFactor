@@ -118,6 +118,19 @@ def apply_gate(metrics: dict[str, Any], thresholds: dict[str, Any], mode: str = 
             thresholds.get("min_daily_basic_coverage", 0.0)
         )
         checks["vendor_circ_mv"] = source_ok and coverage_ok
+    if thresholds.get("require_execution_data", False):
+        execution_thresholds = {
+            "security_status": ("security_status_coverage", "min_security_status_coverage"),
+            "limit_prices": ("limit_price_coverage", "min_limit_price_coverage"),
+            "adv_20d": ("adv_20d_coverage", "min_adv_20d_coverage"),
+            "corporate_actions": ("corporate_action_coverage", "min_corporate_action_coverage"),
+            "industry_pit": ("industry_pit_coverage", "min_industry_pit_coverage"),
+            "risk_exposures": ("risk_exposures_coverage", "min_risk_exposures_coverage"),
+        }
+        for check, (metric, threshold) in execution_thresholds.items():
+            checks[check] = float(metrics.get(metric, 0.0) or 0.0) >= float(
+                thresholds.get(threshold, 1.0)
+            )
     if "min_independent_observations" in thresholds:
         checks["independent_obs"] = int(metrics.get("n_independent", 0) or 0) >= int(
             thresholds["min_independent_observations"]

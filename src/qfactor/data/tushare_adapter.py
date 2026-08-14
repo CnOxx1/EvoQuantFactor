@@ -56,7 +56,7 @@ class TushareAdapter(DataAdapter):
 
     def fetch_index_members_history(self, start: str, end: str) -> pd.DataFrame:
         """CSI reconstitutions: prefer in/out roster, else monthly index_weight."""
-        from qfactor.data.universe import members_from_in_out, normalize_members
+        from qfactor.data.universe import members_from_in_out
 
         roster, roster_perm = self._fetch_index_member_roster()
         if roster is not None and not roster.empty:

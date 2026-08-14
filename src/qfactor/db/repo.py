@@ -118,6 +118,14 @@ class Database:
                 "pe_ttm",
                 "pb",
                 "industry",
+                "is_st",
+                "is_suspended",
+                "limit_up",
+                "limit_down",
+                "free_float_shares",
+                "adv_20d",
+                "corporate_action",
+                "adj_factor_vendor",
             ]
             if c in df.columns
         ]

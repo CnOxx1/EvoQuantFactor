@@ -31,6 +31,12 @@ def _production_metrics(**overrides):
         "universe_mode": "pit",
         "circ_mv_source": "tushare_daily_basic",
         "daily_basic_coverage": 0.9,
+        "security_status_coverage": 1.0,
+        "limit_price_coverage": 1.0,
+        "adv_20d_coverage": 1.0,
+        "corporate_action_coverage": 1.0,
+        "industry_pit_coverage": 1.0,
+        "risk_exposures_coverage": 1.0,
         "n_independent": 80,
     }
     metrics.update(overrides)
@@ -59,6 +65,12 @@ def test_live_production_contract_requires_data_quality():
     )
     assert too_short["checks"]["independent_obs"] is False
     assert too_short["status"] == "reject"
+
+    no_execution = apply_gate(
+        _production_metrics(security_status_coverage=0.0), thresholds, mode="production"
+    )
+    assert no_execution["checks"]["security_status"] is False
+    assert no_execution["status"] == "reject"
 
 
 def test_research_soft_pass_respects_turnover_when_enabled():
@@ -130,6 +142,19 @@ class _FakeEvalService:
         self.data = _FakeData()
 
 
+class _FakeDatabase:
+    def list_releases(self, state=None):
+        assert state == "active"
+        return [
+            {
+                "release_id": "rel_quality",
+                "name": "quality_factor",
+                "state": "active",
+                "data_version": "data-v1",
+            }
+        ]
+
+
 def test_multifactor_inventory_exports_only_contract_compliant_factor(tmp_path, monkeypatch):
     factor_dir = tmp_path / "quality_factor"
     report_dir = factor_dir / "reports"
@@ -141,6 +166,12 @@ def test_multifactor_inventory_exports_only_contract_compliant_factor(tmp_path, 
             "universe_mode": "pit",
             "circ_mv_source": "tushare_daily_basic",
             "daily_basic_coverage": 0.9,
+            "security_status_coverage": 1.0,
+            "limit_price_coverage": 1.0,
+            "adv_20d_coverage": 1.0,
+            "corporate_action_coverage": 1.0,
+            "industry_pit_coverage": 1.0,
+            "risk_exposures_coverage": 1.0,
             "n_independent": 80,
             "train_rank_ic_mean": 0.03,
             "rank_ic_mean": 0.04,
@@ -164,9 +195,11 @@ def test_multifactor_inventory_exports_only_contract_compliant_factor(tmp_path, 
     ops.cfg = cfg
     ops.registry = _FakeRegistry(tmp_path)
     monkeypatch.setattr("qfactor.factor.ops.EvalService", _FakeEvalService)
+    monkeypatch.setattr("qfactor.factor.ops.Database", _FakeDatabase)
 
     inventory = ops.multifactor_inventory()
     assert inventory["n_eligible"] == 1
     assert inventory["n_excluded"] == 0
     assert inventory["factors"][0]["name"] == "quality_factor"
     assert inventory["factors"][0]["data_version"] == "data-v1"
+    assert inventory["factors"][0]["release_id"] == "rel_quality"

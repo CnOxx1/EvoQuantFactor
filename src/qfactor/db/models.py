@@ -66,6 +66,15 @@ class DailyBar(Base):
     pe_ttm: Mapped[float | None] = mapped_column(Float, nullable=True)
     pb: Mapped[float | None] = mapped_column(Float, nullable=True)
     industry: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    # Nullable means the evidence was not supplied, never a tradable default.
+    is_st: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    is_suspended: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    limit_up: Mapped[float | None] = mapped_column(Float, nullable=True)
+    limit_down: Mapped[float | None] = mapped_column(Float, nullable=True)
+    free_float_shares: Mapped[float | None] = mapped_column(Float, nullable=True)
+    adv_20d: Mapped[float | None] = mapped_column(Float, nullable=True)
+    corporate_action: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    adj_factor_vendor: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     __table_args__ = (
         UniqueConstraint("ts_code", "trade_date", name="uq_bar_code_date"),
@@ -245,6 +254,26 @@ def init_db(db_url: str | None = None) -> Path:
     cfg = get_project_config()
     engine = get_engine(db_url)
     Base.metadata.create_all(engine)
+    # Additive, idempotent SQLite migration for already-created research databases.
+    if str(engine.url).startswith("sqlite"):
+        additions = {
+            "is_st": "BOOLEAN",
+            "is_suspended": "BOOLEAN",
+            "limit_up": "FLOAT",
+            "limit_down": "FLOAT",
+            "free_float_shares": "FLOAT",
+            "adv_20d": "FLOAT",
+            "corporate_action": "VARCHAR(64)",
+            "adj_factor_vendor": "FLOAT",
+        }
+        with engine.begin() as conn:
+            existing = {
+                row[1]
+                for row in conn.exec_driver_sql("PRAGMA table_info(daily_bars)").fetchall()
+            }
+            for name, ddl in additions.items():
+                if name not in existing:
+                    conn.exec_driver_sql(f"ALTER TABLE daily_bars ADD COLUMN {name} {ddl}")
     return db_path(cfg)
 
 

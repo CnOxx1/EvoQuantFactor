@@ -3,7 +3,6 @@ from qfactor.agent.generator import (
     CandidateGenerator,
     _CATALOG_SKELETONS,
     _COMPOSE_CATALOG,
-    rebuild_compose_catalog,
     should_expand_compose_catalog,
     validate_compose_template,
 )

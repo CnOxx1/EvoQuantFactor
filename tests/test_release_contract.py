@@ -110,6 +110,7 @@ def test_release_requires_sealed_and_tradability_evidence(monkeypatch, tmp_path)
         "definition_hash": d_hash,
         "data_version": "data_v1",
         "experiment_id": "exp_1",
+        "selection_bias_audit": {"passed": True, "state": "familywise_passed"},
     }
     tradability_payload = {
         "state": "tradability_passed",

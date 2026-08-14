@@ -265,3 +265,30 @@ python -m pytest tests -q
 5. **运行产物**：`runs/loop_*`、`*_mine.log`、SQLite `-wal/-shm`、`.env` 不入库。密钥用 `.env.example` 复制。
 
 更细的问题清单见 `项目缺点.md`（部分条目已落地，部分仍是研究债）。
+
+
+---
+
+## 生产级数据、实验与 release 合同
+
+生产因子工厂采用**数据能力合同**，而不是绑定某一个供应商。`configs/data_sources.yaml` 分别配置 `providers.universe` 与 `providers.daily_basic`：当 Tushare 不可用时，可以使用经审计的 `archive` 文件（例如官方历史调样文件与授权日频市值导出）。无论来源为何，production 必须同时验证 PIT 成分、允许的 `circ_mv_source`、日频市值覆盖率和版本化原始数据路径；快照或估算市值只能用于研究诊断。
+
+LLM discovery 现在在调用模型前验证 PIT 数据和冻结的 `eval.partitions.discovery_*` 窗口。未通过时循环会拒绝启动，而不是在快照数据上继续累积 `screened`。完成 PIT 长历史后，应依次冻结 discovery、selection、sealed OOS 三段互不重叠的日期区间。`sealed-accept` 只在定义冻结后执行显式区间评估，并把完整 experiment trial 数写入 Bonferroni 家族错误率审计。
+
+```bash
+# 使用经审核的 archive 数据提供方前，配置 data_sources.yaml 中的 paths/providers。
+qfactor sync-universe --start 20190101 --end 20260630
+qfactor sync-data --start 20190101 --end 20260630 --source baostock
+
+# 数据合同、日期分区和 LLM key 均通过后才允许 discovery。
+qfactor loop --rounds 5 --batch-size 8 --gate research
+qfactor freeze-factor NAME
+qfactor sealed-accept NAME --start YYYYMMDD --end YYYYMMDD
+qfactor simulate-tradability NAME
+qfactor publish-release NAME
+qfactor export-trading-releases
+```
+
+`simulate-tradability` 使用非重叠账本：T 日信号、T+1 开盘执行、固定持有期、开盘涨跌停/停牌掩码、成本和 ADV 参与率。若缺少点时 ST、完整涨跌停或容量输入，它会写出 `tradability_blocked`，而不是产生通过标签。下游多因子模块只能读取 `export-trading-releases` 生成的 `active` release；`candidate`、`approved` 和 legacy multifactor inventory 都不是交易模块的最终输入。
+
+> 当 `n_active = 0` 时，正确的动作是补齐 PIT 数据、密封样本与订单级约束，而不是放宽门槛或增加 LLM 搜索量。

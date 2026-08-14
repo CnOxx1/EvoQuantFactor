@@ -1,0 +1,59 @@
+import pytest
+
+from qfactor.agent.experiments import require_discovery_contract
+
+
+class _Cfg:
+    def __init__(self, meta, partitions):
+        self.project = {}
+        self.eval = {
+            "production": {
+                "allowed_universe_modes": ["pit"],
+                "allowed_circ_mv_sources": ["archive_daily_basic"],
+                "min_daily_basic_coverage": 0.8,
+            },
+            "eval": {"partitions": partitions},
+        }
+        self._meta = meta
+
+
+class _DataService:
+    def __init__(self, cfg):
+        self.cfg = cfg
+
+    def status(self):
+        return {"meta": self.cfg._meta}
+
+
+def _partitions():
+    return {
+        "discovery_start": "20190101",
+        "discovery_end": "20231231",
+        "selection_start": "20240101",
+        "selection_end": "20241231",
+        "sealed_start": "20250101",
+        "sealed_end": "20251231",
+    }
+
+
+def test_discovery_requires_pit_vendor_cap_and_frozen_windows(monkeypatch):
+    import qfactor.agent.experiments as experiments
+
+    monkeypatch.setattr(experiments, "DataService", _DataService)
+    cfg = _Cfg(
+        {
+            "start": "20190101",
+            "end": "20251231",
+            "universe_mode": "pit",
+            "circ_mv_source": "archive_daily_basic",
+            "daily_basic_coverage": 0.9,
+        },
+        _partitions(),
+    )
+    out = require_discovery_contract(cfg)
+    assert out["state"] == "configured"
+    assert out["sealed_oos"]["state"] == "configured"
+
+    cfg._meta["universe_mode"] = "snapshot"
+    with pytest.raises(RuntimeError, match="universe_not_pit"):
+        require_discovery_contract(cfg)

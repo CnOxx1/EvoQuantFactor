@@ -105,7 +105,7 @@ def test_resolve_freeze_start_locks_basket():
 
 
 def test_resolve_pit_without_history_raises():
-    with pytest.raises(RuntimeError, match="TUSHARE_TOKEN"):
+    with pytest.raises(RuntimeError, match="historical reconstitution provider"):
         resolve_universe(
             start="20240102",
             end="20241231",

@@ -6,7 +6,7 @@ import numpy as np
 import pandas as pd
 
 from qfactor.data.dataset import DataService
-from qfactor.eval.oos import cost_layered, holdout_oos, walk_forward_ic
+from qfactor.eval.oos import cost_layered, holdout_oos, holdout_window, walk_forward_ic
 from qfactor.eval.corr import max_corr_with_library
 from qfactor.eval.gate import KEEP_STATUSES, USABLE_STATUSES, apply_gate, route_library_status
 from qfactor.eval.ic import rank_ic, summarize_ic, yearly_ic_sign_consistency
@@ -32,7 +32,7 @@ class EvalService:
         self.registry = FactorRegistry(self.cfg)
         self._ctx: FactorContext | None = None
         self._peer_cache: dict[str, pd.DataFrame] = {}
-        self._industry_map: pd.Series | None = None
+        self._industry_map: pd.Series | pd.DataFrame | None = None
 
     def trade_lag(self) -> int:
         ev = self.cfg.eval.get("eval", {})
@@ -45,8 +45,17 @@ class EvalService:
             self._ctx = FactorContext.from_service(self.data)
         return self._ctx
 
-    def _industry_groups(self) -> pd.Series:
+    def _industry_groups(self) -> pd.Series | pd.DataFrame:
         if self._industry_map is None:
+            # The daily bar panel carries archive-backed PIT industry when present.
+            # Only use the legacy static map when no daily classification exists.
+            try:
+                panel = self._context().panel("industry")
+                if isinstance(panel, pd.DataFrame) and not panel.empty and panel.notna().any().any():
+                    self._industry_map = panel.where(panel.notna())
+                    return self._industry_map
+            except Exception:
+                pass
             try:
                 df = self.data.load_industry()
             except Exception:
@@ -122,7 +131,12 @@ class EvalService:
         return others
 
     def _train_end(self) -> str:
-        return str(self.cfg.eval.get("eval", {}).get("train_end") or "").strip()
+        ev = self.cfg.eval.get("eval", {}) or {}
+        partitions = ev.get("partitions") or {}
+        # Once the production date contract is configured, discovery code may
+        # only see dates through discovery_end; legacy train_end remains a
+        # backward-compatible placeholder while partitions are unconfigured.
+        return str(partitions.get("discovery_end") or ev.get("train_end") or "").strip()
 
     def _eval_split(self, gate_name: str) -> str:
         if not self._train_end():
@@ -163,15 +177,25 @@ class EvalService:
 
     def _daily_basic_coverage(self) -> float:
         """Return vendor daily-basic coverage recorded by the current data version."""
+        return self._data_contract_value("daily_basic_coverage")
+
+    def _data_contract_value(self, key: str) -> float:
         try:
             meta = (self.data.status() or {}).get("meta") or {}
-            return float(meta.get("daily_basic_coverage") or 0.0)
+            return float(meta.get(key) or 0.0)
         except Exception:
             return 0.0
 
-    def _slice_panel(self, panel: pd.DataFrame, split: str) -> pd.DataFrame:
-        idx = slice_eval_index(panel.index, self._train_end() or None, split)
+    def _slice_panel(
+        self, panel: pd.DataFrame, split: str, train_end: str | None = None
+    ) -> pd.DataFrame:
+        idx = slice_eval_index(panel.index, train_end or self._train_end() or None, split)
         return panel.loc[idx]
+
+    @staticmethod
+    def _slice_interval(panel: pd.DataFrame, start: str, end: str) -> pd.DataFrame:
+        mask = (panel.index.astype(str) >= str(start)) & (panel.index.astype(str) <= str(end))
+        return panel.loc[mask]
 
     def evaluate_panel(
         self,
@@ -179,6 +203,9 @@ class EvalService:
         name: str,
         gate_name: str = "default",
         exclude_names: set[str] | None = None,
+        interval_start: str | None = None,
+        interval_end: str | None = None,
+        sealed: bool = False,
     ) -> dict[str, Any]:
         ev = self.cfg.eval.get("eval", {})
         thresholds = self.cfg.eval.get(gate_name, self.cfg.eval["default"])
@@ -195,14 +222,16 @@ class EvalService:
             neutralized = list(neutralized) + [f"hold{hold}"]
         tradable_full = apply_trade_lag(factor_panel, lag)
         no_lookahead = lag >= 1
-        split = self._eval_split(gate_name)
-        train_end = self._train_end()
+        split = "sealed" if sealed else self._eval_split(gate_name)
+        train_end = str(interval_start or self._train_end())
+        if sealed and (not interval_start or not interval_end or interval_start > interval_end):
+            raise ValueError("sealed evaluation requires inclusive interval_start and interval_end")
 
         fwd_full = self._forward_returns(horizon)
         fwd_1d_full = self._forward_returns(1)
 
-        train_f = self._slice_panel(tradable_full, "train") if train_end else tradable_full
-        train_fwd = self._slice_panel(fwd_full, "train") if train_end else fwd_full
+        train_f = self._slice_panel(tradable_full, "train", train_end) if train_end else tradable_full
+        train_fwd = self._slice_panel(fwd_full, "train", train_end) if train_end else fwd_full
         train_trim_days = int(horizon) if train_end else 0
         if train_trim_days > 0:
             # Last H train days' H-day forward includes holdout (or post-sample) returns.
@@ -219,9 +248,18 @@ class EvalService:
         elif float(ic_train_raw.mean()) < 0:
             orient = -1
 
-        tradable = self._slice_panel(tradable_full, split)
-        fwd = self._slice_panel(fwd_full, split)
-        fwd_1d = self._slice_panel(fwd_1d_full, split)
+        tradable = self._slice_panel(tradable_full, split) if not sealed else tradable_full
+        fwd = self._slice_panel(fwd_full, split) if not sealed else fwd_full
+        fwd_1d = self._slice_panel(fwd_1d_full, split) if not sealed else fwd_1d_full
+        if sealed:
+            tradable = self._slice_interval(tradable, str(interval_start), str(interval_end))
+            fwd = fwd.reindex(tradable.index)
+            fwd_1d = fwd_1d.reindex(tradable.index)
+            # H-day returns at the end of an acceptance interval may use prices
+            # beyond that interval; remove them rather than letting sealed OOS peek.
+            tradable = drop_tail(tradable, horizon)
+            fwd = drop_tail(fwd, horizon)
+            fwd_1d = drop_tail(fwd_1d, 1)
         signed = tradable * orient
         ic_raw = rank_ic(tradable, fwd, min_obs=min_obs)
         ic = ic_raw * orient
@@ -269,7 +307,14 @@ class EvalService:
                 statuses=peer_status,
                 hold=peer_hold,
             )
-            others = {k: self._slice_panel(v, split) for k, v in others_full.items()}
+            others = {
+                k: (
+                    self._slice_interval(v, str(interval_start), str(interval_end))
+                    if sealed
+                    else self._slice_panel(v, split, train_end)
+                )
+                for k, v in others_full.items()
+            }
             corr = max_corr_with_library(signed, others, min_obs=min_obs)
             corr["skipped"] = False
         else:
@@ -296,7 +341,17 @@ class EvalService:
         layered_cost["horizon_layered"] = layered_h
         cost_ret = float(layered_cost.get("long_short_cost_adj", 0.0))
 
-        if is_prod and train_end:
+        if is_prod and sealed:
+            oos = holdout_window(
+                ic_raw,
+                start=str(interval_start),
+                end=str(interval_end),
+                orientation=orient,
+                min_days=int(ev.get("oos_min_days", 40)),
+                nw_lags=nw_lags,
+                n_folds=2,
+            )
+        elif is_prod and train_end:
             oos = holdout_oos(
                 ic_raw,
                 after=train_end,
@@ -356,8 +411,17 @@ class EvalService:
             "neutralized": neutralized,
             "circ_mv_source": self._circ_mv_source(neutralized),
             "daily_basic_coverage": self._daily_basic_coverage(),
+            "security_status_coverage": self._data_contract_value("security_status_coverage"),
+            "limit_price_coverage": self._data_contract_value("limit_price_coverage"),
+            "adv_20d_coverage": self._data_contract_value("adv_20d_coverage"),
+            "corporate_action_coverage": self._data_contract_value("corporate_action_coverage"),
+            "industry_pit_coverage": self._data_contract_value("industry_pit_coverage"),
+            "risk_exposures_coverage": self._data_contract_value("risk_exposures_coverage"),
             "eval_split": split,
             "train_end": train_end or None,
+            "interval_start": interval_start,
+            "interval_end": interval_end,
+            "sealed": bool(sealed),
             "train_trim_days": train_trim_days,
             "icir_nw": ic_summary.get("icir_nw", 0.0),
             "n_independent": ic_summary.get("n_independent", ic_summary.get("n", 0)),
@@ -446,11 +510,23 @@ class EvalService:
         return abs(float(tail.mean())) if len(tail) else 0.0
 
     def evaluate_factor(
-        self, factor: Factor, gate_name: str | None = None
+        self,
+        factor: Factor,
+        gate_name: str | None = None,
+        interval_start: str | None = None,
+        interval_end: str | None = None,
+        sealed: bool = False,
     ) -> dict[str, Any]:
         gate_name = gate_name or factor.spec.entry_gate or "research"
         panel = factor.compute(self._context())
-        report = self.evaluate_panel(panel, factor.spec.name, gate_name=gate_name)
+        report = self.evaluate_panel(
+            panel,
+            factor.spec.name,
+            gate_name=gate_name,
+            interval_start=interval_start,
+            interval_end=interval_end,
+            sealed=sealed,
+        )
         report["spec"] = factor.spec.model_dump()
         return report
 

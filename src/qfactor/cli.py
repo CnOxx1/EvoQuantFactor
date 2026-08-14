@@ -197,6 +197,23 @@ def assess_tradability(name: str):
     print({"name": name, "state": out["state"], "reasons": out["reasons"]})
 
 
+@app.command("simulate-tradability")
+def simulate_tradability(name: str):
+    """Run T+1, non-overlapping execution ledger; it remains fail-closed on missing PIT constraints."""
+    out = TradabilityService().simulate(name)
+    execution = out.get("execution") or {}
+    print(
+        {
+            "name": name,
+            "state": out["state"],
+            "reasons": out.get("reasons", []),
+            "n_filled": execution.get("n_filled"),
+            "fill_rate": execution.get("fill_rate"),
+            "net_long_short_mean": execution.get("net_long_short_mean"),
+        }
+    )
+
+
 @app.command("publish-release")
 def publish_release(name: str):
     """Publish a factor only after production, sealed OOS, and tradability evidence pass."""
