@@ -49,6 +49,17 @@ production:
     cheap_ic_min: 0.008         # skip full gate when |train IC| below this
     parent_top_screened: 12     # screened parent budget, split across unblocked mechanisms
 
+# Every discovery run receives an append-only experiment manifest and complete
+# trial ledger. Search outputs remain research-only until separately frozen,
+# sealed, tradability-tested, and released.
+experiment:
+  max_trials: 800
+  require_manifest: true
+  sealed_oos_state: unconfigured
+  release_requires_tradability: true
+  release_requires_sealed_oos: true
+  release_requires_data_contract: true
+
 library_ops:
   archive_draft_days: 14
   archive_reject_days: 7

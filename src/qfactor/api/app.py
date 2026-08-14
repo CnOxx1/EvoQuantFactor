@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 from typing import Any, Literal
 
 from fastapi import BackgroundTasks, FastAPI, Form, HTTPException, Request
@@ -10,9 +9,8 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
 from qfactor.agent.checkpoint import CheckpointStore
-from qfactor.agent.loop import FactorLoop, FactorMiningAgent
+from qfactor.agent.loop import FactorLoop
 from qfactor.data.dataset import DataService
-from qfactor.eval.service import EvalService
 from qfactor.factor.ops import LibraryOps
 from qfactor.factor.registry import FactorRegistry
 from qfactor.settings import get_project_config, get_settings
@@ -95,6 +93,11 @@ def create_app() -> FastAPI:
         gate: str = Form("research"),
         llm_ratio: float = Form(0.45),
     ):
+        if gate != "research":
+            raise HTTPException(
+                400,
+                "Mining loops are research-only; use library operations for production promotion.",
+            )
         jobs["loop"] = {"state": "running", "rounds": rounds, "batch_size": batch_size}
 
         def _run():
@@ -204,7 +207,7 @@ def create_app() -> FastAPI:
         rounds: int = 5
         batch_size: int = 8
         theme: str | None = None
-        gate_name: str = "research"
+        gate_name: Literal["research"] = "research"
         resume: bool = True
         llm_ratio: float = 0.45
         llm_review_ratio: float = 0.0

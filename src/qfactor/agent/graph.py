@@ -10,6 +10,7 @@ from langgraph.graph import END, START, StateGraph
 
 from qfactor.agent.checkpoint import CheckpointStore
 from qfactor.agent.coldstart import cold_start_cfg, ensure_dsl_seeds, is_cold_start
+from qfactor.agent.experiments import ExperimentLedger, build_date_partitions
 from qfactor.agent.diversity import (
     expression_fingerprint,
     is_banned_expression,
@@ -34,6 +35,16 @@ from qfactor.settings import ProjectConfig, get_project_config
 
 
 def _dsl_factor_code(name: str, expression: str, mechanism: str, hypothesis: str) -> str:
+    """Render trusted loader code using Python literals, never raw LLM text.
+
+    Expressions are DSL-validated before this point, but the LLM-provided hypothesis
+    remains free text.  Serializing every dynamic value with ``repr`` prevents quotes
+    or newlines in metadata from escaping into executable source.
+    """
+    name_lit = repr(name)
+    expression_lit = repr(expression)
+    mechanism_lit = repr(mechanism)
+    hypothesis_lit = repr(hypothesis)
     return f'''from __future__ import annotations
 
 import pandas as pd
@@ -47,20 +58,20 @@ from qfactor.factor.transforms import winsorize, zscore
 class DSLFactor(Factor):
     def __init__(self):
         self.spec = FactorSpec(
-            name="{name}",
+            name={name_lit},
             version="0.1.0",
             status="draft",
             family="price_volume",
-            category="{mechanism}",
+            category={mechanism_lit},
             required_fields=["close", "open", "high", "low"],
             lookback=20,
             horizon=5,
-            params={{"expression": """{expression}"""}},
+            params={{"expression": {expression_lit}}},
             tags=["dsl", "loop"],
-            hypothesis="""{hypothesis}""",
+            hypothesis={hypothesis_lit},
             entry_gate="research",
-            expression="""{expression}""",
-            mechanism="{mechanism}",
+            expression={expression_lit},
+            mechanism={mechanism_lit},
         )
 
     def compute(self, ctx) -> pd.DataFrame:
@@ -79,6 +90,7 @@ class ProductionState(TypedDict, total=False):
 
     run_id: str
     run_dir: str
+    experiment_id: str
     max_rounds: int
     rounds_done: int
     batch_size: int
@@ -116,6 +128,7 @@ class ProductionContext:
         self.generator = CandidateGenerator(self.cfg, self.llm)
         self.reviewer = CandidateReviewer(self.llm)
         self.checkpoint = CheckpointStore("loop_csi100", self.cfg)
+        self.experiment: ExperimentLedger | None = None
 
 
 def _node_decide(ctx: ProductionContext):
@@ -166,8 +179,17 @@ def _node_generate(ctx: ProductionContext):
         existing = ctx.registry.existing_summaries()
         coverage = keep_mechanism_coverage(existing)
         lessons = list(state.get("lessons") or [])
+        ledger = getattr(ctx, "experiment", None)
+        if ledger is None and state.get("experiment_id"):
+            raise RuntimeError("Discovery experiment ledger is required before candidate generation")
+        requested = int(state.get("batch_size") or 8)
+        remaining = (ledger.max_trials - ledger.trial_count) if ledger is not None else requested
+        if remaining <= 0:
+            raise RuntimeError(
+                f"Experiment {ledger.experiment_id} exhausted its trial budget ({ledger.max_trials})"
+            )
         cands = ctx.generator.generate_batch(
-            n=int(state.get("batch_size") or 8),
+            n=min(requested, remaining),
             theme=state.get("round_theme"),
             coverage=coverage,
             existing=existing,
@@ -180,14 +202,27 @@ def _node_generate(ctx: ProductionContext):
             round_idx=int(state.get("rounds_done") or 0),
         )
         src_counts: dict[str, int] = {}
-        for c in cands:
+        for ordinal, c in enumerate(cands, 1):
             src = str(c.get("source", "unknown"))
             src_counts[src] = src_counts.get(src, 0) + 1
+            if ledger is not None:
+                trial_id = f"{ledger.experiment_id}:r{int(state.get('rounds_done') or 0)}:{ordinal}"
+                c["_trial_id"] = trial_id
+                ledger.record_trial(
+                    trial_id=trial_id,
+                    stage="generated",
+                    outcome="generated",
+                    candidate=c,
+                    detail={"round": int(state.get("rounds_done") or 0), "theme": state.get("round_theme")},
+                )
         gen_stats = dict(getattr(ctx.generator, "last_stats", None) or {})
         round_stats = {
             "iteration": int(state.get("rounds_done") or 0),
             "theme": state.get("round_theme"),
             "generated": len(cands),
+            "experiment_id": ledger.experiment_id if ledger is not None else None,
+            "trial_count": ledger.trial_count if ledger is not None else 0,
+            "trial_budget": ledger.max_trials if ledger is not None else None,
             "sources": src_counts,
             "llm_ratio": state.get("llm_ratio"),
             "llm_fresh_ok": gen_stats.get("llm_fresh_ok"),
@@ -240,6 +275,9 @@ def _node_review_validate(ctx: ProductionContext):
         round_stats = dict(state.get("round_stats") or {})
         cands = list(state.get("candidates") or [])
         gate_name = str(state.get("gate_name") or "research")
+        ledger = getattr(ctx, "experiment", None)
+        if ledger is None and state.get("experiment_id"):
+            raise RuntimeError("Discovery experiment ledger is required before review")
         llm_review_ratio = float(state.get("llm_review_ratio") or 0)
         every = state.get("llm_spotcheck_every")
         use_every = every is not None and int(every) > 0
@@ -265,6 +303,14 @@ def _node_review_validate(ctx: ProductionContext):
             if banned:
                 round_stats["diversity_rejects"] = int(round_stats.get("diversity_rejects") or 0) + 1
                 round_stats["rejected"] = int(round_stats.get("rejected") or 0) + 1
+                if ledger is not None:
+                    ledger.record_trial(
+                        trial_id=str(cand.get("_trial_id") or cand.get("name")),
+                        stage="diversity",
+                        outcome="rejected",
+                        candidate=cand,
+                        detail={"reason": why},
+                    )
                 lessons = record_lesson(
                     lessons,
                     mechanism=str(cand.get("mechanism") or "unknown"),
@@ -288,6 +334,14 @@ def _node_review_validate(ctx: ProductionContext):
             if not rev["ok"]:
                 tested.add(str(rev.get("hash") or cand["expression"]))
                 round_stats["rejected"] = int(round_stats.get("rejected") or 0) + 1
+                if ledger is not None:
+                    ledger.record_trial(
+                        trial_id=str(cand.get("_trial_id") or cand.get("name")),
+                        stage="review",
+                        outcome="rejected",
+                        candidate=cand,
+                        detail={"errors": rev.get("errors")},
+                    )
                 lessons = record_lesson(
                     lessons,
                     mechanism=str(cand.get("mechanism") or "unknown"),
@@ -313,6 +367,14 @@ def _node_review_validate(ctx: ProductionContext):
                 if ic_abs is not None and ic_abs < cheap_min:
                     round_stats["rejected"] = int(round_stats.get("rejected") or 0) + 1
                     round_stats["cheap_rejects"] = int(round_stats.get("cheap_rejects") or 0) + 1
+                    if ledger is not None:
+                        ledger.record_trial(
+                            trial_id=str(cand.get("_trial_id") or cand.get("name")),
+                            stage="cheap_ic",
+                            outcome="rejected",
+                            candidate=cand,
+                            detail={"rank_ic_mean": ic_abs, "threshold": cheap_min},
+                        )
                     lessons = record_lesson(
                         lessons,
                         mechanism=str(cand.get("mechanism") or "unknown"),
@@ -352,7 +414,14 @@ def _node_review_validate(ctx: ProductionContext):
                     category=cand.get("mechanism", "unknown"),
                     required_fields=["close", "open", "high", "low"],
                     lookback=int(cand.get("lookback", 20)),
-                    tags=["dsl", "loop", "langgraph", cand.get("source", "gen")],
+                    tags=[
+                        "dsl",
+                        "loop",
+                        "langgraph",
+                        cand.get("source", "gen"),
+                        f"experiment:{state.get('experiment_id')}",
+                    ],
+                    params={"experiment_id": state.get("experiment_id")},
                     hypothesis=cand.get("hypothesis", ""),
                     entry_gate=gate_name,
                     expression=cand["expression"],
@@ -364,6 +433,14 @@ def _node_review_validate(ctx: ProductionContext):
                 )
                 saved.append(name)
                 round_stats.setdefault("saved", []).append(name)
+                if ledger is not None:
+                    ledger.record_trial(
+                        trial_id=str(cand.get("_trial_id") or name),
+                        stage="research_gate",
+                        outcome="screened",
+                        candidate=cand,
+                        detail={"status": status, "summary": report.get("summary") or {}},
+                    )
                 produced.append(item)
                 mid = cand.get("mechanism", "unknown")
                 coverage[mid] = coverage.get(mid, 0) + 1
@@ -377,6 +454,14 @@ def _node_review_validate(ctx: ProductionContext):
                     pass
             else:
                 round_stats["rejected"] = int(round_stats.get("rejected") or 0) + 1
+                if ledger is not None:
+                    ledger.record_trial(
+                        trial_id=str(cand.get("_trial_id") or name),
+                        stage="research_gate",
+                        outcome="rejected",
+                        candidate=cand,
+                        detail={"status": status, "summary": report.get("summary") or {}, "error": report.get("error")},
+                    )
                 run_dir = Path(str(state.get("run_dir") or ""))
                 if run_dir:
                     reject_dir = run_dir / "rejects"
@@ -545,6 +630,11 @@ def run_production_graph(
     llm_review_ratio: float | None = None,
     llm_spotcheck_every: int | None = None,
 ) -> dict[str, Any]:
+    if gate_name != "research":
+        raise RuntimeError(
+            "Mining loops are research-only. Run library-reeval-screened and "
+            "library-refresh-production for production promotion."
+        )
     ctx = ProductionContext(cfg, llm)
     ctx.llm.require_enabled()
     ensure_dsl_seeds(ctx.cfg)
@@ -572,6 +662,23 @@ def run_production_graph(
     run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     run_dir = ctx.cfg.path("runs") / f"loop_{run_id}"
     run_dir.mkdir(parents=True, exist_ok=True)
+    ctx.experiment = ExperimentLedger(ctx.cfg, run_dir=run_dir / "experiment")
+    date_partitions = build_date_partitions(ctx.cfg)
+    manifest = ctx.experiment.start(
+        run_id=run_id,
+        data_version=ctx.eval.data.status().get("data_version"),
+        llm=ctx.llm,
+        search_config={
+            "gate_name": gate_name,
+            "rounds": rounds,
+            "batch_size": batch_size,
+            "theme": theme,
+            "llm_ratio": llm_ratio,
+            "llm_review_ratio": llm_review_ratio,
+            "llm_config": llm_cfg,
+        },
+        date_partitions=date_partitions,
+    )
 
     # Resume continues from checkpoint iteration; `rounds` = additional rounds.
     start_done = int(cp.get("iteration") or 0) if resume else 0
@@ -579,6 +686,7 @@ def run_production_graph(
     initial: ProductionState = {
         "run_id": run_id,
         "run_dir": str(run_dir),
+        "experiment_id": manifest["experiment_id"],
         "max_rounds": start_done + rounds,
         "rounds_done": start_done,
         "batch_size": batch_size,
@@ -606,7 +714,14 @@ def run_production_graph(
     }
 
     graph = build_production_graph(ctx)
-    final_state = graph.invoke(initial)
+    try:
+        final_state = graph.invoke(initial)
+    except Exception as exc:
+        ctx.experiment.close(
+            state="error",
+            summary={"error": str(exc), "run_id": run_id, "rounds_requested": rounds},
+        )
+        raise
 
     produced = list(final_state.get("produced") or [])
     saved = list(final_state.get("saved_factors") or [])
@@ -624,6 +739,8 @@ def run_production_graph(
         promo["pruned_screened"] = prune.get("demoted") or []
     result = {
         "run_id": run_id,
+        "experiment_id": manifest["experiment_id"],
+        "experiment_manifest": str(ctx.experiment.manifest_path),
         "mode": "llm_first",
         "orchestrator": "langgraph",
         "theme": theme,
@@ -646,6 +763,18 @@ def run_production_graph(
         ),
         "factor": produced[0]["name"] if produced else None,
     }
+    experiment_summary = ctx.experiment.close(
+        state="completed",
+        summary={
+            "rounds_requested": rounds,
+            "rounds_completed": int(final_state.get("rounds_done") or 0),
+            "saved_total": len(saved),
+            "screened": len(screened_names),
+            "trial_count": ctx.experiment.trial_count,
+        },
+    )
+    result["experiment_state"] = experiment_summary["state"]
+    result["trial_count"] = experiment_summary["trial_count"]
     (run_dir / "final.json").write_text(
         json.dumps(result, ensure_ascii=False, indent=2, default=str),
         encoding="utf-8",

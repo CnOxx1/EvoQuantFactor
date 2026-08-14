@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import shutil
 from datetime import datetime, timezone, timedelta
+from pathlib import Path
 from typing import Any, Literal
 
 from qfactor.eval.service import EvalService
@@ -373,6 +374,118 @@ class LibraryOps:
                 self.demote(name, "draft", reason="skeleton_cap")
                 demoted.append(name)
         return {"demoted": demoted, "max_per": max_per}
+
+    def multifactor_inventory(self) -> dict[str, Any]:
+        """Build a strict, data-version-pinned inventory for downstream strategies.
+
+        This method deliberately does *not* promote factors.  It is a read-only
+        quality boundary between the factor factory and any future multi-factor
+        optimizer: only current `candidate`/`approved` records with a passing
+        production report generated on the active data version are exported.
+        """
+        production = self.cfg.eval.get("production") or {}
+        data_version = EvalService(self.cfg).data.data_version()
+        expected_universe = {
+            str(x).strip().lower()
+            for x in production.get("allowed_universe_modes", ["pit"])
+        }
+        expected_circ_mv = {
+            str(x).strip().lower()
+            for x in production.get("allowed_circ_mv_sources", ["tushare_daily_basic"])
+        }
+        min_daily_basic = float(production.get("min_daily_basic_coverage", 0.0))
+        min_independent = int(production.get("min_independent_observations", 0))
+        factors: list[dict[str, Any]] = []
+        excluded: list[dict[str, Any]] = []
+
+        for item in self.registry.list_factors():
+            name = str(item.get("name") or "")
+            if not name:
+                continue
+            if item.get("status") not in {"candidate", "approved"}:
+                continue
+            reasons: list[str] = []
+            latest = self.registry.factor_dir(name) / "reports" / "latest.json"
+            if not latest.exists():
+                excluded.append({"name": name, "reasons": ["missing_latest_report"]})
+                continue
+            try:
+                report = json.loads(latest.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError) as exc:
+                excluded.append({"name": name, "reasons": [f"invalid_latest_report:{exc}"]})
+                continue
+
+            gate = report.get("gate") if isinstance(report.get("gate"), dict) else {}
+            metrics = report.get("metrics") if isinstance(report.get("metrics"), dict) else {}
+            if gate.get("mode") != "production" or not bool(gate.get("passed")):
+                reasons.append("latest_report_not_passing_production_gate")
+            if data_version and metrics.get("data_version") != data_version:
+                reasons.append("stale_data_version")
+            if expected_universe and str(metrics.get("universe_mode") or "").lower() not in expected_universe:
+                reasons.append("universe_not_pit")
+            if expected_circ_mv and str(metrics.get("circ_mv_source") or "").lower() not in expected_circ_mv:
+                reasons.append("circ_mv_not_vendor")
+            if float(metrics.get("daily_basic_coverage") or 0.0) < min_daily_basic:
+                reasons.append("daily_basic_coverage_below_contract")
+            if int(metrics.get("n_independent") or 0) < min_independent:
+                reasons.append("insufficient_independent_observations")
+            if reasons:
+                excluded.append({"name": name, "reasons": reasons})
+                continue
+
+            spec = self.registry.load_spec(name)
+            factor_dir = self.registry.factor_dir(name)
+            try:
+                factor_path = str(factor_dir.relative_to(self.cfg.root))
+            except ValueError:
+                # A custom registry may be mounted outside the project root.
+                factor_path = str(factor_dir)
+            factors.append(
+                {
+                    "name": name,
+                    "status": item.get("status"),
+                    "mechanism": spec.mechanism or spec.category,
+                    "expression": spec.expression or (spec.params or {}).get("expression"),
+                    "data_version": metrics.get("data_version"),
+                    "factor_path": factor_path,
+                    "quality": {
+                        key: metrics.get(key)
+                        for key in (
+                            "train_rank_ic_mean",
+                            "rank_ic_mean",
+                            "icir_nw",
+                            "resid_ic_mean",
+                            "resid_icir_nw",
+                            "oos_ic_mean",
+                            "oos_min_fold_ic",
+                            "coverage",
+                            "daily_turnover",
+                            "max_corr",
+                            "cost_adjusted_ls",
+                            "n_independent",
+                            "signal_hold_days",
+                            "trade_lag",
+                        )
+                    },
+                }
+            )
+        factors.sort(key=lambda x: (str(x["mechanism"]), str(x["name"])))
+        return {
+            "contract_version": "multifactor-input-v1",
+            "data_version": data_version,
+            "n_eligible": len(factors),
+            "n_excluded": len(excluded),
+            "factors": factors,
+            "excluded": excluded,
+        }
+
+    def export_multifactor_inventory(self, output: str | None = None) -> dict[str, Any]:
+        """Persist the strict multi-factor input inventory without changing factor states."""
+        inventory = self.multifactor_inventory()
+        path = Path(output) if output else self.cfg.path("factor_lib") / "multifactor_inventory.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(inventory, ensure_ascii=False, indent=2), encoding="utf-8")
+        return {**inventory, "path": str(path)}
 
     def _log_op(self, name: str, action: str, to: str, reason: str = "") -> None:
         log_dir = self.cfg.path("runs") / "library_ops"

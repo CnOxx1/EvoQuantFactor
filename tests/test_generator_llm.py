@@ -57,3 +57,22 @@ def test_langgraph_compiles():
     assert "generate" in names
     assert "review_validate" in names
     assert "persist" in names
+
+
+def test_mining_loop_rejects_production_gate_before_external_llm():
+    loop = FactorLoop(llm=LLMClient(api_key=""))
+    with pytest.raises(RuntimeError, match="research-only"):
+        loop.run(rounds=1, batch_size=1, gate_name="production", resume=False)
+
+
+def test_production_graph_rejects_production_gate_before_external_llm():
+    from qfactor.agent.graph import run_production_graph
+
+    with pytest.raises(RuntimeError, match="research-only"):
+        run_production_graph(
+            llm=LLMClient(api_key=""),
+            rounds=1,
+            batch_size=1,
+            gate_name="production",
+            resume=False,
+        )

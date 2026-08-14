@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib.util
+import hashlib
 import json
 import shutil
 from datetime import datetime, timezone
@@ -10,6 +11,7 @@ from typing import Any
 import yaml
 
 from qfactor.factor.base import Factor, FactorSpec
+from qfactor.factor.provenance import definition_hash
 from qfactor.settings import ProjectConfig, get_project_config
 
 
@@ -45,6 +47,17 @@ class FactorRegistry:
         report: dict[str, Any] | None = None,
     ) -> Path:
         fdir = self.factor_dir(spec.name)
+        frozen_path = fdir / "acceptance" / "frozen_definition.json"
+        if frozen_path.exists():
+            frozen = json.loads(frozen_path.read_text(encoding="utf-8"))
+            code_sha256 = hashlib.sha256(code.encode("utf-8")).hexdigest()
+            if (
+                frozen.get("definition_hash") != definition_hash(spec)
+                or frozen.get("code_sha256") != code_sha256
+            ):
+                raise RuntimeError(
+                    "Frozen definition cannot be overwritten. Create a new factor version and acceptance run."
+                )
         fdir.mkdir(parents=True, exist_ok=True)
         (fdir / "reports").mkdir(exist_ok=True)
         (fdir / "runs").mkdir(exist_ok=True)
@@ -62,6 +75,15 @@ class FactorRegistry:
                 json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8"
             )
 
+        summary = dict((report or {}).get("summary") or {})
+        if summary:
+            # `status` is the durable library state consumed downstream.  Preserve
+            # the last numerical gate result separately so a later manual/correlation
+            # demotion does not leave conflicting labels in the catalog.
+            summary["gate_status"] = summary.get("gate_status", summary.get("status"))
+            summary["library_status"] = spec.status
+            summary["status"] = spec.status
+
         catalog = self._read_catalog()
         factors = catalog.get("factors", [])
         entry = {
@@ -72,7 +94,7 @@ class FactorRegistry:
             "category": spec.category,
             "source": source,
             "path": str(fdir.relative_to(self.cfg.root)).replace("\\", "/"),
-            "summary": (report or {}).get("summary", {}),
+            "summary": summary,
         }
         factors = [f for f in factors if f.get("name") != spec.name]
         factors.append(entry)
@@ -128,6 +150,13 @@ class FactorRegistry:
         for f in catalog.get("factors", []):
             if f.get("name") == name:
                 f["status"] = status
+                summary = f.get("summary")
+                if isinstance(summary, dict) and summary:
+                    summary["gate_status"] = summary.get(
+                        "gate_status", summary.get("status")
+                    )
+                    summary["library_status"] = status
+                    summary["status"] = status
         self._write_catalog(catalog)
         try:
             from qfactor.db.repo import Database

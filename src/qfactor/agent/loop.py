@@ -49,10 +49,11 @@ class FactorMiningAgent:
 
 class FactorLoop:
     """
-    LangGraph-orchestrated production loop:
-    decide -> generate -> review_validate -> persist (-> repeat),
-    then production re-eval of newly screened factors.
-    Requires OPENAI_API_KEY; no offline fallback.
+    Research-only LangGraph mining loop:
+    decide -> generate -> review_validate -> persist (-> repeat).
+    It produces screened research inventory only; production promotion must run
+    through LibraryOps so re-evaluation, correlation demotion, and mechanism
+    capacity controls remain centralized. Requires OPENAI_API_KEY.
     """
 
     def __init__(self, cfg: ProjectConfig | None = None, llm: LLMClient | None = None):
@@ -70,6 +71,10 @@ class FactorLoop:
         llm_review_ratio: float | None = None,
         llm_spotcheck_every: int | None = None,
     ) -> dict[str, Any]:
+        if gate_name != "research":
+            raise RuntimeError(
+                "Mining loops are research-only; use library operations for production promotion."
+            )
         return run_production_graph(
             cfg=self.cfg,
             llm=self.llm,
