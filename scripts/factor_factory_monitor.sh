@@ -57,6 +57,9 @@ run_worker() {
 }
 
 supervise() {
+  # `systemctl stop` leaves STOP behind intentionally. A new service start is a
+  # new operator-approved lifecycle and must clear that stale stop request.
+  rm -f "$STOP_FILE"
   printf '%s\n' "$$" > "$PID_FILE"
   trap 'touch "$STOP_FILE"; [ -f "$WORKER_PID_FILE" ] && kill "$(read_pid "$WORKER_PID_FILE")" 2>/dev/null || true; exit 0' INT TERM
   local restarts=0 backoff=10
