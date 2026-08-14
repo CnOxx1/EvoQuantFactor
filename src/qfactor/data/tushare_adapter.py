@@ -9,6 +9,11 @@ from qfactor.data.base import DataAdapter
 from qfactor.settings import get_settings
 
 
+def _permission_denied(exc: BaseException) -> bool:
+    msg = str(exc)
+    return "没有接口" in msg or "访问权限" in msg
+
+
 class TushareAdapter(DataAdapter):
     name = "tushare"
 
@@ -34,14 +39,10 @@ class TushareAdapter(DataAdapter):
             time.sleep(self.sleep_seconds)
 
     def fetch_trade_calendar(self, start: str, end: str) -> pd.DataFrame:
-        self._sleep()
-        df = self.pro.trade_cal(
-            exchange="SSE",
-            start_date=start,
-            end_date=end,
-            fields="cal_date,is_open",
-        )
-        return df.sort_values("cal_date").reset_index(drop=True)
+        """Baostock trading days. Production never calls Tushare trade_cal."""
+        from qfactor.data.baostock_adapter import BaostockAdapter
+
+        return BaostockAdapter().fetch_trade_calendar(start, end)
 
     def fetch_index_members(self, trade_date: str) -> pd.DataFrame:
         self._sleep()
@@ -57,14 +58,26 @@ class TushareAdapter(DataAdapter):
         """CSI reconstitutions: prefer in/out roster, else monthly index_weight."""
         from qfactor.data.universe import members_from_in_out, normalize_members
 
-        roster = self._fetch_index_member_roster()
+        roster, roster_perm = self._fetch_index_member_roster()
         if roster is not None and not roster.empty:
             expanded = members_from_in_out(roster, start, end)
             if not expanded.empty:
                 return expanded
-        return self._fetch_index_weight_range(start, end)
+        try:
+            return self._fetch_index_weight_range(start, end)
+        except RuntimeError:
+            raise
+        except Exception as e:
+            if _permission_denied(e) or roster_perm:
+                raise RuntimeError(
+                    "TUSHARE_TOKEN is set but this account cannot read CSI100 "
+                    "reconstitutions (index_member / index_weight). "
+                    "Need those APIs for PIT; do not fall back to a latest snapshot."
+                ) from e
+            raise
 
-    def _fetch_index_member_roster(self) -> pd.DataFrame:
+    def _fetch_index_member_roster(self) -> tuple[pd.DataFrame, bool]:
+        perm = False
         for api_name in ("index_member", "index_member_all"):
             fn = getattr(self.pro, api_name, None)
             if fn is None:
@@ -72,15 +85,16 @@ class TushareAdapter(DataAdapter):
             self._sleep()
             try:
                 df = fn(index_code=self.index_code)
-            except Exception:
+            except Exception as e:
+                perm = perm or _permission_denied(e)
                 continue
             if df is None or df.empty:
                 continue
             if "in_date" in df.columns and (
                 "ts_code" in df.columns or "con_code" in df.columns
             ):
-                return df
-        return pd.DataFrame()
+                return df, False
+        return pd.DataFrame(), perm
 
     def _fetch_index_weight_range(self, start: str, end: str) -> pd.DataFrame:
         from qfactor.data.universe import normalize_members
@@ -90,7 +104,12 @@ class TushareAdapter(DataAdapter):
             df = self.pro.index_weight(
                 index_code=self.index_code, start_date=start, end_date=end
             )
-        except Exception:
+        except Exception as e:
+            if _permission_denied(e):
+                raise RuntimeError(
+                    "TUSHARE_TOKEN is set but this account has no index_weight "
+                    "permission. PIT CSI100 reconstitutions cannot be fetched."
+                ) from e
             df = None
         out = normalize_members(df)
         expected_months = max(
@@ -118,7 +137,12 @@ class TushareAdapter(DataAdapter):
                 chunk = self.pro.index_weight(
                     index_code=self.index_code, start_date=m_start, end_date=min(m_end, end)
                 )
-            except Exception:
+            except Exception as e:
+                if _permission_denied(e):
+                    raise RuntimeError(
+                        "TUSHARE_TOKEN is set but this account has no index_weight "
+                        "permission. PIT CSI100 reconstitutions cannot be fetched."
+                    ) from e
                 chunk = None
             part = normalize_members(chunk)
             if not part.empty:

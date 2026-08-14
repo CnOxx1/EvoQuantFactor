@@ -35,6 +35,9 @@ def _production_thresholds():
         "min_rank_ic_mean": 0.02,
         "min_abs_rank_ic_mean": 0.02,
         "min_icir": 1.5,
+        "icir_annualized": False,
+        "icir_mode": "newey_west",
+        "min_holdout_icir": 0.07,
         "min_coverage": 0.7,
         "max_corr_existing": 0.7,
         "min_layered_monotonic_score": 0.75,
@@ -42,11 +45,44 @@ def _production_thresholds():
         "require_no_lookahead": True,
         "require_recent_ic_positive": True,
         "require_oos": True,
+        "oos_mode": "freeze_sign",
         "min_oos_ic_mean": 0.01,
         "min_oos_pos_folds": 2,
         "require_cost_ls_positive": True,
         "require_years_same_sign": True,
+        "require_residual_ic": True,
+        "min_resid_ic_mean": 0.01,
+        "min_resid_icir": 0.07,
+        "require_train_ic": True,
     }
+
+
+def _production_ok_metrics(**overrides):
+    metrics = {
+        "rank_ic_mean": 0.04,
+        "train_rank_ic_mean": 0.03,
+        "icir": 0.12,
+        "icir_nw": 0.12,
+        "icir_ann": 1.9,
+        "coverage": 0.8,
+        "max_corr": 0.2,
+        "monotonic_score": 0.8,
+        "daily_turnover": 0.5,
+        "years_consistent": True,
+        "no_lookahead": True,
+        "recent_rank_ic_mean": 0.03,
+        "freeze_sign_ok": True,
+        "oos_ic_mean": 0.04,
+        "oos_min_fold_ic": 0.02,
+        "oos_pos_folds": 2,
+        "cost_adjusted_ls": 0.01,
+        "resid_ic_mean": 0.02,
+        "resid_icir": 0.12,
+        "resid_icir_nw": 0.10,
+        "resid_icir_ann": 2.0,
+    }
+    metrics.update(overrides)
+    return metrics
 
 
 def test_gate_pass_research_is_screened():
@@ -100,82 +136,53 @@ def test_research_rejects_without_lookahead():
 
 
 def test_production_requires_oos():
-    metrics = {
-        "rank_ic_mean": 0.04,
-        "icir": 0.12,
-        "icir_ann": 1.9,
-        "coverage": 0.8,
-        "max_corr": 0.2,
-        "monotonic_score": 0.8,
-        "daily_turnover": 0.5,
-        "years_consistent": True,
-        "no_lookahead": True,
-        "recent_rank_ic_mean": 0.03,
-        "oos_ic_mean": 0.005,
-        "oos_pos_folds": 1,
-        "cost_adjusted_ls": 0.01,
-    }
+    metrics = _production_ok_metrics(oos_ic_mean=0.005, oos_min_fold_ic=0.005, oos_pos_folds=1)
     out = apply_gate(metrics, _production_thresholds(), mode="production")
     assert out["status"] == "reject"
     assert out["checks"]["oos"] is False
 
 
 def test_production_pass_is_candidate():
-    metrics = {
-        "rank_ic_mean": 0.04,
-        "icir": 0.12,
-        "icir_ann": 1.9,
-        "coverage": 0.8,
-        "max_corr": 0.2,
-        "monotonic_score": 0.8,
-        "daily_turnover": 0.5,
-        "years_consistent": True,
-        "no_lookahead": True,
-        "recent_rank_ic_mean": 0.03,
-        "oos_ic_mean": 0.02,
-        "oos_pos_folds": 3,
-        "cost_adjusted_ls": 0.01,
-    }
-    out = apply_gate(metrics, _production_thresholds(), mode="production")
+    out = apply_gate(_production_ok_metrics(), _production_thresholds(), mode="production")
     assert out["status"] == "candidate"
     assert out["passed"] is True
 
 
+def test_production_rejects_weak_train_ic():
+    metrics = _production_ok_metrics(train_rank_ic_mean=0.011)
+    out = apply_gate(metrics, _production_thresholds(), mode="production")
+    assert out["checks"]["train_ic"] is False
+    assert out["status"] == "reject"
+
+
+def test_live_yaml_production_matches_gate_contract():
+    from qfactor.settings import get_project_config
+
+    live = dict(get_project_config().eval["production"])
+    assert live.get("oos_mode") == "freeze_sign"
+    assert live.get("icir_mode") == "newey_west"
+    assert live.get("require_residual_ic") is True
+    assert live.get("require_train_ic") is True
+    assert int(live.get("min_oos_pos_folds", 0)) == 2
+    out = apply_gate(_production_ok_metrics(), live, mode="production")
+    assert out["status"] == "candidate"
+    weak_train = apply_gate(
+        _production_ok_metrics(train_rank_ic_mean=0.011), live, mode="production"
+    )
+    assert weak_train["checks"]["train_ic"] is False
+
+
 def test_recent_ic_rejects_negative_after_orientation():
-    metrics = {
-        "rank_ic_mean": 0.04,
-        "icir_ann": 1.9,
-        "coverage": 0.8,
-        "max_corr": 0.2,
-        "monotonic_score": 0.8,
-        "daily_turnover": 0.5,
-        "years_consistent": True,
-        "no_lookahead": True,
-        "recent_rank_ic_mean": -0.04,
-        "oos_ic_mean": 0.02,
-        "oos_pos_folds": 3,
-        "cost_adjusted_ls": 0.01,
-    }
+    metrics = _production_ok_metrics(recent_rank_ic_mean=-0.04)
     out = apply_gate(metrics, _production_thresholds(), mode="production")
     assert out["checks"]["recent_ic"] is False
     assert out["status"] == "reject"
 
 
 def test_oos_rejects_negative_mean():
-    metrics = {
-        "rank_ic_mean": 0.04,
-        "icir_ann": 1.9,
-        "coverage": 0.8,
-        "max_corr": 0.2,
-        "monotonic_score": 0.8,
-        "daily_turnover": 0.5,
-        "years_consistent": True,
-        "no_lookahead": True,
-        "recent_rank_ic_mean": 0.03,
-        "oos_ic_mean": -0.02,
-        "oos_pos_folds": 3,
-        "cost_adjusted_ls": 0.01,
-    }
+    metrics = _production_ok_metrics(
+        oos_ic_mean=-0.02, oos_min_fold_ic=-0.02, oos_pos_folds=3
+    )
     out = apply_gate(metrics, _production_thresholds(), mode="production")
     assert out["checks"]["oos"] is False
 
@@ -192,23 +199,7 @@ def test_oos_pos_folds_defaults_to_one():
 
 def test_production_freeze_sign_oos():
     thresholds = dict(_production_thresholds())
-    thresholds["oos_mode"] = "freeze_sign"
-    ok = {
-        "rank_ic_mean": 0.04,
-        "icir": 0.12,
-        "icir_ann": 1.9,
-        "coverage": 0.8,
-        "max_corr": 0.2,
-        "monotonic_score": 0.8,
-        "daily_turnover": 0.5,
-        "years_consistent": True,
-        "no_lookahead": True,
-        "recent_rank_ic_mean": 0.03,
-        "freeze_sign_ok": True,
-        "oos_ic_mean": 0.04,
-        "oos_pos_folds": 2,
-        "cost_adjusted_ls": 0.01,
-    }
+    ok = _production_ok_metrics()
     assert apply_gate(ok, thresholds, mode="production")["status"] == "candidate"
     bad = dict(ok)
     bad["freeze_sign_ok"] = False
@@ -217,6 +208,7 @@ def test_production_freeze_sign_oos():
     assert out["status"] == "reject"
     weak = dict(ok)
     weak["oos_ic_mean"] = 0.0
+    weak["oos_min_fold_ic"] = 0.0
     weak["oos_pos_folds"] = 2
     out = apply_gate(weak, thresholds, mode="production")
     assert out["checks"]["oos"] is False
@@ -360,27 +352,8 @@ def test_production_peers_exclude_screened():
 
 
 def test_production_requires_residual_ic():
-    metrics = {
-        "rank_ic_mean": 0.04,
-        "icir_ann": 1.9,
-        "coverage": 0.8,
-        "max_corr": 0.2,
-        "monotonic_score": 0.8,
-        "daily_turnover": 0.5,
-        "years_consistent": True,
-        "no_lookahead": True,
-        "recent_rank_ic_mean": 0.03,
-        "oos_ic_mean": 0.02,
-        "oos_pos_folds": 2,
-        "cost_adjusted_ls": 0.01,
-        "resid_ic_mean": 0.002,
-        "resid_icir_ann": 0.2,
-    }
-    thresholds = dict(_production_thresholds())
-    thresholds["require_residual_ic"] = True
-    thresholds["min_resid_ic_mean"] = 0.01
-    thresholds["min_resid_icir"] = 1.0
-    out = apply_gate(metrics, thresholds, mode="production")
+    metrics = _production_ok_metrics(resid_ic_mean=0.002, resid_icir_nw=0.20, resid_icir_ann=0.2)
+    out = apply_gate(metrics, _production_thresholds(), mode="production")
     assert out["checks"]["resid_ic"] is False
     assert out["status"] == "reject"
 

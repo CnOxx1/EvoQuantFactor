@@ -60,6 +60,7 @@ production:
   require_residual_ic: true
   min_resid_ic_mean: 0.01
   min_resid_icir: 0.07     # NW residual ICIR, same units as min_holdout_icir
+  require_train_ic: true   # train IC must also clear min_rank_ic_mean; holdout-only is not enough
 
 eval:
   forward_horizon: 5

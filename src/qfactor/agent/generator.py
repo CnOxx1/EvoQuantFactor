@@ -124,6 +124,18 @@ _FIELD_MECH: dict[str, str] = {
     "low": "amplitude",
 }
 
+_UNADJUSTED_BLOCKED_FIELDS = frozenset({"close"})
+_MECH_REQUIRED_ANY: dict[str, frozenset[str]] = {
+    "volume_price": frozenset({"vol", "amount", "turnover_rate"}),
+    "liquidity": frozenset({"vol", "amount", "turnover_rate"}),
+    "amplitude": frozenset({"amplitude", "high", "low"}),
+    "overnight": frozenset({"overnight"}),
+    "shadow": frozenset({"upper_shadow", "lower_shadow"}),
+    "momentum": frozenset({"close_adj", "open"}),
+    "reversal": frozenset({"ret_1d", "close_adj"}),
+    "volatility": frozenset({"ret_1d", "close_adj", "open"}),
+}
+
 _UNARY_TMPLS = (
     "ma({f},{w})",
     "std({f},{w})",
@@ -420,20 +432,21 @@ def save_extra_templates(
 SYSTEM_DSL = (
     "你是A股量价因子研究员。只输出JSON。"
     f"只能使用DSL函数: {DSL_OPS}。"
-    f"字段仅限: {DSL_FIELDS}。"
+    "字段以用户JSON的 allowed_fields 为准，不得使用 blocked_fields。"
     f"窗口仅限 {DSL_WINDOWS}。"
     "表达式必须可被解析为单棵算子树，不要写Python。"
     "禁止只改窗口数字来伪创新；禁止复用 banned_skeletons / banned_expressions。"
+    "至少两层嵌套、至少两个允许字段；禁止单字段单算子。"
     "name 字段可忽略，系统会强制生成唯一名。"
 )
 
 SYSTEM_IDEA = (
     "你是A股量价因子研究员。只输出JSON。不要写DSL表达式，不要写Python。"
-    f"字段仅限: {DSL_FIELDS}。"
+    "字段以用户JSON的 allowed_fields 为准，不得使用 blocked_fields。"
     "每个想法必须可被现有算子树表达（无 if / 截面分组 / 新字段）。"
     "claim 说明截面排序与未来5日收益的关系。"
     "why_t1 说明为何 T 日收盘后可见、T+1 可交易。"
-    "fields 必须是白名单字段的非空列表。"
+    "fields 必须是 allowed_fields 的非空子集，至少 2 个字段。"
     "not_like 必须点名 library_cards 里已有 candidate 不是同一件事（禁止只改窗口）。"
     "禁止提出 catalog_skeletons / banned_skeletons 已有的结构。"
 )
@@ -441,7 +454,7 @@ SYSTEM_IDEA = (
 SYSTEM_TEMPLATE = (
     "你是A股量价因子研究员。只输出JSON。"
     f"只能使用DSL函数: {DSL_OPS}。"
-    f"字段仅限: {DSL_FIELDS}。"
+    "字段以用户JSON的 allowed_fields 为准，不得使用 blocked_fields。"
     "输出 templates 数组，每条 {mechanism, tmpl}。"
     "tmpl 必须是带 {w} 的模板（双窗用 {w2}），不要写死窗口数字当创新。"
     "mechanism 必须是给定 id 之一。"
@@ -646,9 +659,11 @@ class CandidateGenerator:
                 usable_coverage={},
             )
         usable_cov = usable_mechanism_coverage(existing)
+        self._blocked_mechs = blocked_mechanisms(usable_cov)
         pool = eligible_mechanisms(self.mechanisms, usable_cov)
+        pool = self._field_viable_mechanisms(pool)
         soft = pick_theme_with_lessons(
-            self.mechanisms,
+            pool,
             coverage,
             lessons,
             forced=forced_theme,
@@ -736,6 +751,8 @@ class CandidateGenerator:
                 banned, _why = is_banned_expression(expr, bans)
                 if banned:
                     continue
+                if self._expr_has_blocked_fields(expr):
+                    continue
                 try:
                     parse_expression(expr)
                 except Exception:
@@ -788,7 +805,7 @@ class CandidateGenerator:
         for mech, tmpl in specs:
             expr = tmpl.format(w=20, w2=60)
             banned, _ = is_banned_expression(expr, bans)
-            if banned:
+            if banned or self._expr_has_blocked_fields(expr):
                 continue
             out.append({"mechanism": mech, "example": expr})
             if len(out) >= limit:
@@ -797,10 +814,33 @@ class CandidateGenerator:
 
     def _blocked_field_set(self) -> set[str]:
         blocked = getattr(self, "_blocked_mechs", set()) or set()
-        return {f for f, m in _FIELD_MECH.items() if m in blocked}
+        skip = {f for f, m in _FIELD_MECH.items() if m in blocked}
+        skip |= set(_UNADJUSTED_BLOCKED_FIELDS)
+        return skip
 
     def _allowed_field_set(self) -> set[str]:
         return _DSL_FIELD_SET - self._blocked_field_set()
+
+    def _field_viable_mechanisms(
+        self, mechanisms: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
+        """Drop families that have no remaining unblocked fields (e.g. volume_price without vol)."""
+        skip = self._blocked_field_set()
+        if not skip:
+            return list(mechanisms)
+        kept: list[dict[str, Any]] = []
+        for m in mechanisms:
+            need = _MECH_REQUIRED_ANY.get(str(m.get("id") or ""))
+            if need and not (need - skip):
+                continue
+            kept.append(m)
+        return kept if kept else list(mechanisms)
+
+    def _llm_field_payload(self) -> dict[str, list[str]]:
+        return {
+            "allowed_fields": sorted(self._allowed_field_set()),
+            "blocked_fields": sorted(self._blocked_field_set()),
+        }
 
     def _search_parents(
         self,
@@ -865,7 +905,10 @@ class CandidateGenerator:
         cap = max(0, min(cap, _CATALOG_EXPAND_MAX))
         mech_ids = {str(m["id"]) for m in self.mechanisms}
         blocked = set(blocked if blocked is not None else getattr(self, "_blocked_mechs", set()) or set())
-        allowed = [m for m in self.mechanisms if m["id"] not in blocked] or list(self.mechanisms)
+        self._blocked_mechs = blocked
+        allowed = self._field_viable_mechanisms(
+            [m for m in self.mechanisms if m["id"] not in blocked] or list(self.mechanisms)
+        )
         allowed_ids = {str(m["id"]) for m in allowed}
         known = set(_CATALOG_SKELETONS)
         result: dict[str, Any] = {
@@ -886,10 +929,11 @@ class CandidateGenerator:
             "count": n_ask,
             "mechanisms": [{"id": m["id"], "desc": m["desc"]} for m in allowed],
             "blocked_mechanisms": sorted(blocked),
+            **self._llm_field_payload(),
             "catalog_skeletons": sorted(known)[:40],
             "instruction": (
                 f"提出最多 {n_ask} 条互异 tmpl。"
-                "只用 allowed mechanisms。"
+                "只用 allowed mechanisms 与 allowed_fields。"
                 "骨架不得出现在 catalog_skeletons。"
             ),
         }
@@ -924,6 +968,9 @@ class CandidateGenerator:
                 rejected.append({"tmpl": tmpl, "reason": err or "bad_template"})
                 continue
             expr = norm.format(w=20, w2=60)
+            if self._expr_has_blocked_fields(expr):
+                rejected.append({"tmpl": tmpl, "reason": "blocked_fields"})
+                continue
             sk = skel_of(parse_expression(expr))
             known.add(sk)
             accepted.append({"mechanism": mech, "tmpl": norm, "skeleton": sk})
@@ -1410,6 +1457,8 @@ class CandidateGenerator:
         blocked_fields = self._blocked_field_set()
         if blocked_fields and any(f in blocked_fields for f in clean_fields):
             return None
+        if blocked_fields and len(clean_fields) < 2:
+            return None
         mid = str(raw.get("mechanism") or mech["id"]).strip() or mech["id"]
         return {
             "claim": claim,
@@ -1470,9 +1519,22 @@ class CandidateGenerator:
         cards: list[dict[str, Any]],
         bans: dict[str, set[str]],
         source: str = "llm_mutate",
+        retry: bool = False,
     ) -> list[dict[str, Any]]:
         parent_skels = {p.get("skeleton") for p in cards if p.get("skeleton")}
         banned = set(bans.get("skeletons") or []) | set(_CATALOG_SKELETONS)
+        instruction = (
+            "把每个 idea 译成一棵新骨架 DSL 树。"
+            "只用 idea.fields 与 allowed_fields，不得使用 blocked_fields。"
+            "至少两层嵌套、至少两个允许字段。"
+            "子代 skeleton 不得与 parent_skeletons / banned_skeletons / catalog_skeletons 相同。"
+            "严禁只改窗口。不要写Python。"
+        )
+        if retry:
+            instruction += (
+                "上一轮 candidates 全部因禁用字段或 catalog/banned 骨架被丢。"
+                "必须换字段组合并加深嵌套。"
+            )
         user = {
             "task": "compile",
             "ideas": ideas,
@@ -1480,12 +1542,8 @@ class CandidateGenerator:
             "parent_skeletons": sorted(str(s) for s in parent_skels if s),
             "banned_skeletons": sorted(str(s) for s in banned)[:40],
             "catalog_skeletons": sorted(_CATALOG_SKELETONS)[:40],
-            "instruction": (
-                "把每个 idea 译成一棵新骨架 DSL 树。"
-                "只用 idea.fields 与白名单算子/窗口。"
-                "子代 skeleton 不得与 parent_skeletons / banned_skeletons / catalog_skeletons 相同。"
-                "严禁只改窗口。不要写Python。"
-            ),
+            **self._llm_field_payload(),
+            "instruction": instruction,
         }
         data = self._llm_json_with_retry(
             SYSTEM_DSL + f" 请把 {len(ideas)} 个想法编译为表达式。输出 candidates 数组。",
@@ -1521,6 +1579,10 @@ class CandidateGenerator:
                 out.append(cand)
             if len(out) >= len(ideas):
                 break
+        if not out and ideas and not retry:
+            return self._llm_compile_ideas(
+                mech, ideas, cards, bans, source=source, retry=True
+            )
         return out
 
     def _llm_mutate_batch(
@@ -1738,8 +1800,13 @@ class CandidateGenerator:
             self._eligible_mechs = list(self.mechanisms)
         else:
             self._blocked_mechs = blocked_mechanisms(usable_cov)
-            self._eligible_mechs = eligible_mechanisms(self.mechanisms, usable_cov)
-            if theme and theme in self._blocked_mechs:
+            self._eligible_mechs = self._field_viable_mechanisms(
+                eligible_mechanisms(self.mechanisms, usable_cov)
+            )
+            if theme and (
+                theme in self._blocked_mechs
+                or theme not in {m["id"] for m in self._eligible_mechs}
+            ):
                 theme = None
         prior_refreshed = self._refresh_field_window_prior(
             lessons,
@@ -1828,10 +1895,9 @@ class CandidateGenerator:
             fp = expression_fingerprint(cand["expression"])
             if fp["skeleton"] in bans.get("skeletons", set()):
                 return False
+            if self._expr_has_blocked_fields(cand["expression"]):
+                return False
             src = str(cand.get("source") or "")
-            if src in {"llm", "llm_mutate", "crossover", "structure_perturb"}:
-                if self._expr_has_blocked_fields(cand["expression"]):
-                    return False
             if src in {"llm", "llm_mutate", "crossover"}:
                 if fp["skeleton"] in _CATALOG_SKELETONS:
                     return False

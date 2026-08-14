@@ -1,0 +1,29 @@
+name: volatility_llm_173610_9176
+version: 0.1.0
+status: screened
+family: price_volume
+category: volatility
+universe: csi100
+frequency: daily
+required_fields:
+- close
+- open
+- high
+- low
+lookback: 20
+horizon: 5
+neutralize: []
+params: {}
+tags:
+- dsl
+- loop
+- langgraph
+- llm
+hypothesis: Higher ratio of absolute daily return to its 20-day moving average indicates
+  recent volatility clustering, predicting lower future 5-day returns due to risk
+  premium and mean reversion.；unlike div(abs(ret_1d),ma(turnover_rate,60))
+entry_gate: research
+expression: div(abs(ret_1d),add(ma(abs(ret_1d),20),std(close_adj,20)))
+mechanism: volatility
+expr_hash: 3cebd741c9876ec8
+signal_hold_days: 5

@@ -1,6 +1,17 @@
 from types import SimpleNamespace
 
-from qfactor.factor.ops import LibraryOps
+from qfactor.factor.ops import LibraryOps, screened_promotion_key
+
+
+def test_screened_promotion_key_prefers_train_resid_oos():
+    loud = {"icir_ann": 9.0, "oos_ic_mean": 0.05, "train_rank_ic_mean": 0.005}
+    honest = {
+        "icir_ann": 1.2,
+        "train_rank_ic_mean": 0.03,
+        "resid_icir_nw": 0.12,
+        "oos_min_fold_ic": 0.02,
+    }
+    assert screened_promotion_key(honest) > screened_promotion_key(loud)
 
 
 def test_cap_usable_per_mechanism_keeps_one(monkeypatch):

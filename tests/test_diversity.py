@@ -585,6 +585,31 @@ def test_fresh_empty_thin_catalog_does_not_compose(monkeypatch):
     assert any(c.get("source") == "crossover" for c in out)
 
 
+def test_decide_theme_skips_volume_price_when_liquidity_blocked(monkeypatch):
+    gen = CandidateGenerator(llm=LLMClient(api_key="x"))
+    gen.llm_cfg["llm_decide_theme"] = False
+    monkeypatch.setattr(
+        "qfactor.agent.generator.is_cold_start", lambda existing, cfg=None: False
+    )
+    existing = [
+        {"mechanism": "amplitude", "status": "candidate"},
+        {"mechanism": "liquidity", "status": "candidate"},
+        {"mechanism": "overnight", "status": "candidate"},
+        {"mechanism": "shadow", "status": "screened"},
+    ]
+    theme = gen.decide_theme({}, existing)
+    assert theme not in {"amplitude", "liquidity", "overnight", "volume_price"}
+
+
+def test_field_viable_drops_volume_price_without_vol_fields():
+    gen = CandidateGenerator(llm=LLMClient(api_key="x"))
+    gen._blocked_mechs = {"liquidity"}
+    kept = {m["id"] for m in gen._field_viable_mechanisms(gen.mechanisms)}
+    assert "volume_price" not in kept
+    assert "shadow" in kept
+    assert "reversal" in kept
+
+
 def test_decide_theme_skips_amplitude_and_overnight(monkeypatch):
     gen = CandidateGenerator(llm=LLMClient(api_key="x"))
     gen.llm_cfg["llm_decide_theme"] = False
@@ -808,5 +833,108 @@ def test_crossover_shallow_keep_parents_not_none():
         "turnover_rate",
         "vol",
     }
+
+
+def test_validate_idea_requires_two_fields_when_blocked():
+    gen = CandidateGenerator(llm=LLMClient(api_key="x"))
+    gen._blocked_mechs = {"liquidity"}
+    mech = {"id": "momentum", "desc": "动量"}
+    bad = gen._validate_idea(
+        {
+            "claim": "收盘动量高的股票未来5日收益偏低",
+            "why_t1": "T日收盘可见",
+            "fields": ["close_adj"],
+            "not_like": "不是隔夜振幅比",
+            "mechanism": "momentum",
+        },
+        mech,
+    )
+    assert bad is None
+
+
+def test_compile_retries_once_after_blocked_catalog_drop():
+    import json
+
+    class _Fake:
+        enabled = True
+        n = 0
+
+        def require_enabled(self):
+            return None
+
+        def chat_json(self, _system, user):
+            payload = json.loads(user)
+            _Fake.n += 1
+            if "上一轮" in str(payload.get("instruction") or ""):
+                return {
+                    "candidates": [
+                        {
+                            "expression": "div(roc(upper_shadow,10),std(close_adj,20))",
+                            "mechanism": "shadow",
+                        }
+                    ]
+                }
+            return {
+                "candidates": [
+                    {"expression": "ma(turnover_rate,20)", "mechanism": "liquidity"}
+                ]
+            }
+
+    gen = CandidateGenerator(llm=_Fake())  # type: ignore[arg-type]
+    gen._blocked_mechs = {"amplitude", "liquidity", "overnight"}
+    mech = next(m for m in gen.mechanisms if m["id"] == "shadow")
+    ideas = [
+        {
+            "claim": "长上影相对价格波动扩张后收益偏低",
+            "why_t1": "T日收盘可见",
+            "fields": ["upper_shadow", "close_adj"],
+            "not_like": "不是隔夜振幅比",
+            "mechanism": "shadow",
+        }
+    ]
+    out = gen._llm_compile_ideas(
+        mech,
+        ideas,
+        [{"skeleton": "ma(upper_shadow,N)"}],
+        {"hashes": set(), "skeletons": set()},
+        source="llm",
+    )
+    assert _Fake.n == 2
+    assert len(out) == 1
+    assert "turnover_rate" not in out[0]["expression"]
+
+
+def test_unadjusted_close_always_blocked():
+    gen = CandidateGenerator(llm=LLMClient(api_key="x"))
+    gen._blocked_mechs = set()
+    assert "close" not in gen._allowed_field_set()
+    assert "close_adj" in gen._allowed_field_set()
+    assert gen._expr_has_blocked_fields("roc(close,20)")
+    assert not gen._expr_has_blocked_fields("roc(close_adj,20)")
+    mech = {"id": "momentum", "desc": "动量"}
+    bad = gen._validate_idea(
+        {
+            "claim": "未复权收盘涨的股票未来5日收益偏低",
+            "why_t1": "T日收盘可见",
+            "fields": ["close", "open"],
+            "not_like": "不是隔夜振幅比",
+            "mechanism": "momentum",
+        },
+        mech,
+    )
+    assert bad is None
+
+
+def test_from_hint_skips_blocked_turnover_and_close():
+    gen = CandidateGenerator(llm=LLMClient(api_key="x"))
+    gen._blocked_mechs = {"liquidity"}
+    mech = next(m for m in gen.mechanisms if m["id"] == "reversal")
+    bans: dict[str, set[str]] = {"hashes": set(), "skeletons": set()}
+    cand = gen._from_hint(mech, bans)
+    assert cand is not None
+    fields, _ = collect_fields_windows(cand["expression"])
+    assert "turnover_rate" not in fields
+    assert "vol" not in fields
+    assert "close" not in fields
 
 

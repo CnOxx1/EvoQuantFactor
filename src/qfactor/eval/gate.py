@@ -97,6 +97,11 @@ def apply_gate(metrics: dict[str, Any], thresholds: dict[str, Any], mode: str = 
             checks["oos"] = (
                 float(metrics.get("oos_ic_mean", 0.0)) >= min_oos and oos_floor
             )
+    if thresholds.get("require_train_ic", False):
+        min_train = float(
+            thresholds.get("min_train_ic_mean", thresholds.get("min_rank_ic_mean", 0.0))
+        )
+        checks["train_ic"] = float(metrics.get("train_rank_ic_mean", 0.0)) >= min_train
     if thresholds.get("require_cost_ls_positive", False):
         checks["cost_ls"] = float(metrics.get("cost_adjusted_ls", 0.0)) > 0
     if thresholds.get("require_residual_ic", False):

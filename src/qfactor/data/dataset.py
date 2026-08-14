@@ -253,6 +253,17 @@ class DataService:
                 return self._sync_with_adapter(adapter, start, end, max_names=max_names)
         return self._sync_with_adapter(adapter, start, end, max_names=max_names)
 
+    def _fetch_trade_calendar(
+        self, adapter: DataAdapter, start: str, end: str
+    ) -> tuple[pd.DataFrame, str]:
+        """Production calendar is Baostock trading days, never Tushare trade_cal."""
+        if adapter.name == "baostock":
+            cal = adapter.fetch_trade_calendar(start, end)
+            return cal, "baostock"
+        print("[sync] calendar source=baostock (not Tushare trade_cal)", flush=True)
+        cal = BaostockAdapter().fetch_trade_calendar(start, end)
+        return cal, "baostock"
+
     def _sync_with_adapter(
         self,
         adapter: DataAdapter,
@@ -260,7 +271,7 @@ class DataService:
         end: str,
         max_names: int | None,
     ) -> dict:
-        calendar = adapter.fetch_trade_calendar(start, end)
+        calendar, calendar_source = self._fetch_trade_calendar(adapter, start, end)
         self.calendar_path.parent.mkdir(parents=True, exist_ok=True)
         calendar.to_parquet(self.calendar_path, index=False)
         open_dates = (
@@ -395,6 +406,7 @@ class DataService:
             "daily_basic_coverage": basic_info.get("daily_basic_coverage"),
             "quality": report.to_dict(),
             "data_version": datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"),
+            "calendar_source": calendar_source,
             "universe_mode": umeta.get("universe_mode"),
             "limitations": _universe_limitations(
                 umeta, circ_mv_source=str(basic_info.get("circ_mv_source") or "")

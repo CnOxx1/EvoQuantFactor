@@ -1,0 +1,27 @@
+name: volatility_llm_mu_173614_6024
+version: 0.1.0
+status: screened
+family: price_volume
+category: volatility
+universe: csi100
+frequency: daily
+required_fields:
+- close
+- open
+- high
+- low
+lookback: 20
+horizon: 5
+neutralize: []
+params: {}
+tags:
+- dsl
+- loop
+- langgraph
+- llm_mutate
+hypothesis: 股票收益率的波动率与未来5日收益负相关，即高波动率股票未来5日收益较低。；unlike 不同于已有的div(std(close_adj,N),std(close_adj,N))，该因子使用收益率的标准差而非价格的标准差。
+entry_gate: research
+expression: neg(div(std(ret_1d,20), std(ret_1d,5)))
+mechanism: volatility
+expr_hash: eea8d87600a9ea87
+signal_hold_days: 5

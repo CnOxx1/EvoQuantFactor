@@ -3743,6 +3743,40 @@
       }
     },
     {
+      "name": "volatility_llm_173610_9176",
+      "version": "0.1.0",
+      "status": "screened",
+      "family": "price_volume",
+      "category": "volatility",
+      "source": "llm",
+      "path": "factor_lib/factors/volatility_llm_173610_9176",
+      "summary": {
+        "rank_ic_mean": 0.014849340848675572,
+        "train_rank_ic_mean": 0.015255324112022751,
+        "icir": 0.09968990021595923,
+        "icir_ann": 1.5825281051776343,
+        "icir_nw": 0.09968990021595922,
+        "n_independent": 463,
+        "train_trim_days": 5,
+        "coverage": 0.9537525773195874,
+        "max_corr": 0.8181144449008952,
+        "resid_ic_mean": 0.0,
+        "oos_ic_mean": 0.004188167876673014,
+        "oos_min_fold_ic": 0.004188167876673014,
+        "cost_adjusted_ls": 0.0006130416030630664,
+        "status": "screened",
+        "trade_lag": 1,
+        "eval_split": "train",
+        "orientation_source": "train",
+        "universe_mode": "snapshot",
+        "circ_mv_source": "estimated",
+        "freeze_sign_ok": true,
+        "horizon": 5,
+        "signal_hold_days": 5,
+        "cost_horizon": 5
+      }
+    },
+    {
       "name": "volatility_llm_mu_104538_4930",
       "version": "0.1.0",
       "status": "screened",
@@ -3825,6 +3859,40 @@
         "eval_split": "holdout",
         "orientation_source": "train",
         "universe_mode": "latest_snapshot",
+        "circ_mv_source": "estimated",
+        "freeze_sign_ok": true,
+        "horizon": 5,
+        "signal_hold_days": 5,
+        "cost_horizon": 5
+      }
+    },
+    {
+      "name": "volatility_llm_mu_173614_6024",
+      "version": "0.1.0",
+      "status": "screened",
+      "family": "price_volume",
+      "category": "volatility",
+      "source": "llm_mutate",
+      "path": "factor_lib/factors/volatility_llm_mu_173614_6024",
+      "summary": {
+        "rank_ic_mean": 0.025785053427467154,
+        "train_rank_ic_mean": 0.02617669199429658,
+        "icir": 0.22357298212319157,
+        "icir_ann": 3.5491110634263263,
+        "icir_nw": 0.22357298212319157,
+        "n_independent": 463,
+        "train_trim_days": 5,
+        "coverage": 0.9537525773195874,
+        "max_corr": 0.4330209165000276,
+        "resid_ic_mean": 0.0,
+        "oos_ic_mean": 0.025260638433737676,
+        "oos_min_fold_ic": 0.025260638433737676,
+        "cost_adjusted_ls": -4.403658484226339e-06,
+        "status": "screened",
+        "trade_lag": 1,
+        "eval_split": "train",
+        "orientation_source": "train",
+        "universe_mode": "snapshot",
         "circ_mv_source": "estimated",
         "freeze_sign_ok": true,
         "horizon": 5,
@@ -4348,5 +4416,5 @@
       }
     }
   ],
-  "updated_at": "2026-08-14T08:30:19.507855+00:00"
+  "updated_at": "2026-08-14T09:36:52.590248+00:00"
 }

@@ -13,6 +13,19 @@ from qfactor.settings import ProjectConfig, get_project_config
 Status = Literal["draft", "screened", "candidate", "approved", "deprecated", "archived"]
 
 
+def screened_promotion_key(summary: dict[str, Any] | None) -> tuple[float, float, float]:
+    """Rank screened → production attempts by train / residual / OOS floor.
+
+    Research icir_ann * oos_ic_mean over-weights overlapping annualized ICIR
+    and ignores the production contract (train magnitude, residual, min fold).
+    """
+    s = summary if isinstance(summary, dict) else {}
+    train = abs(float(s.get("train_rank_ic_mean") or 0))
+    resid = abs(float(s.get("resid_icir_nw") or s.get("resid_ic_mean") or 0))
+    oos = float(s.get("oos_min_fold_ic") or s.get("oos_ic_mean") or 0)
+    return (train, resid, oos)
+
+
 class LibraryOps:
     """Factor library operating rules: archive / promote / demote / corr demote."""
 
@@ -164,14 +177,11 @@ class LibraryOps:
     def promote_screened(self, names: list[str] | None = None) -> dict[str, Any]:
         """Re-run production gate on screened factors; passers become candidate."""
         if names is None:
-            ranked: list[tuple[float, str]] = []
+            ranked: list[tuple[tuple[float, float, float], str]] = []
             for f in self.registry.list_factors():
                 if f.get("status") != "screened":
                     continue
-                summary = f.get("summary") or {}
-                icir = abs(float(summary.get("icir_ann") or summary.get("icir") or 0))
-                oos = float(summary.get("oos_ic_mean") or 0)
-                ranked.append((icir * max(oos, 0.0), str(f["name"])))
+                ranked.append((screened_promotion_key(f.get("summary")), str(f["name"])))
             ranked.sort(reverse=True)
             names = [n for _s, n in ranked]
         promoted: list[str] = []
