@@ -79,7 +79,15 @@ class EvalService:
         panel = factor_panel
         if bool(ev.get("neutralize_industry", True)):
             groups = self._industry_groups()
-            if int(groups.nunique()) >= 2:
+            if isinstance(groups, pd.DataFrame):
+                # PIT classifications are date x security. Eligibility is based
+                # on the largest valid cross-section, not DataFrame.nunique(),
+                # which returns one count per security column.
+                per_date = groups.nunique(axis=1, dropna=True)
+                has_industry_groups = bool(len(per_date)) and int(per_date.max()) >= 2
+            else:
+                has_industry_groups = int(groups.nunique()) >= 2
+            if has_industry_groups:
                 panel = neutralize_groups(panel, groups)
                 used.append("industry")
         if bool(ev.get("neutralize_size", True)):
