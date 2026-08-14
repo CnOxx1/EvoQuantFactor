@@ -161,6 +161,14 @@ class EvalService:
             pass
         return "estimated"
 
+    def _daily_basic_coverage(self) -> float:
+        """Return vendor daily-basic coverage recorded by the current data version."""
+        try:
+            meta = (self.data.status() or {}).get("meta") or {}
+            return float(meta.get("daily_basic_coverage") or 0.0)
+        except Exception:
+            return 0.0
+
     def _slice_panel(self, panel: pd.DataFrame, split: str) -> pd.DataFrame:
         idx = slice_eval_index(panel.index, self._train_end() or None, split)
         return panel.loc[idx]
@@ -347,6 +355,7 @@ class EvalService:
             "recent_window": recent_n,
             "neutralized": neutralized,
             "circ_mv_source": self._circ_mv_source(neutralized),
+            "daily_basic_coverage": self._daily_basic_coverage(),
             "eval_split": split,
             "train_end": train_end or None,
             "train_trim_days": train_trim_days,
@@ -380,6 +389,7 @@ class EvalService:
             "orientation_source": metrics.get("orientation_source"),
             "universe_mode": metrics.get("universe_mode"),
             "circ_mv_source": metrics.get("circ_mv_source"),
+            "daily_basic_coverage": metrics.get("daily_basic_coverage", 0.0),
             "freeze_sign_ok": freeze_sign_ok,
             "horizon": horizon,
             "signal_hold_days": hold if hold > 1 else 0,

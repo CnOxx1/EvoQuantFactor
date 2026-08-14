@@ -30,6 +30,8 @@ research:
   max_daily_turnover: 2.00
   require_no_lookahead: true
   min_layered_monotonic_score: 0.5
+  # screened 因子可作为生成父本，因此软通过也不能跳过换手约束。
+  soft_require_turnover: true
   require_recent_ic_positive: false
   require_oos: true
   min_oos_ic_mean: 0.0
@@ -61,6 +63,16 @@ production:
   min_resid_ic_mean: 0.01
   min_resid_icir: 0.07     # NW residual ICIR, same units as min_holdout_icir
   require_train_ic: true   # train IC must also clear min_rank_ic_mean; holdout-only is not enough
+  # Multi-factor upstream quality contract: do not label a factor candidate when
+  # its universe or size neutralization cannot support the claimed CSI100 basis.
+  require_pit_universe: true
+  allowed_universe_modes: [pit]
+  require_vendor_circ_mv: true
+  allowed_circ_mv_sources: [tushare_daily_basic]
+  min_daily_basic_coverage: 0.80
+  # H-day IC observations overlap. Require a material count of independent
+  # observations before a single factor becomes strategy input.
+  min_independent_observations: 60
 
 eval:
   forward_horizon: 5

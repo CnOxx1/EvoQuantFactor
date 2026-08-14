@@ -102,6 +102,26 @@ def apply_gate(metrics: dict[str, Any], thresholds: dict[str, Any], mode: str = 
             thresholds.get("min_train_ic_mean", thresholds.get("min_rank_ic_mean", 0.0))
         )
         checks["train_ic"] = float(metrics.get("train_rank_ic_mean", 0.0)) >= min_train
+    if thresholds.get("require_pit_universe", False):
+        allowed = {
+            str(x).strip().lower()
+            for x in thresholds.get("allowed_universe_modes", ["pit"])
+        }
+        checks["universe"] = str(metrics.get("universe_mode", "unknown")).strip().lower() in allowed
+    if thresholds.get("require_vendor_circ_mv", False):
+        allowed = {
+            str(x).strip().lower()
+            for x in thresholds.get("allowed_circ_mv_sources", ["tushare_daily_basic"])
+        }
+        source_ok = str(metrics.get("circ_mv_source", "none")).strip().lower() in allowed
+        coverage_ok = float(metrics.get("daily_basic_coverage", 0.0)) >= float(
+            thresholds.get("min_daily_basic_coverage", 0.0)
+        )
+        checks["vendor_circ_mv"] = source_ok and coverage_ok
+    if "min_independent_observations" in thresholds:
+        checks["independent_obs"] = int(metrics.get("n_independent", 0) or 0) >= int(
+            thresholds["min_independent_observations"]
+        )
     if thresholds.get("require_cost_ls_positive", False):
         checks["cost_ls"] = float(metrics.get("cost_adjusted_ls", 0.0)) > 0
     if thresholds.get("require_residual_ic", False):
@@ -132,6 +152,8 @@ def apply_gate(metrics: dict[str, Any], thresholds: dict[str, Any], mode: str = 
             soft = soft and checks["recent_ic"]
         if "resid_ic" in checks:
             soft = soft and checks["resid_ic"]
+        if thresholds.get("soft_require_turnover", False):
+            soft = soft and checks["turnover"]
         if passed or soft:
             status = "screened"
         else:

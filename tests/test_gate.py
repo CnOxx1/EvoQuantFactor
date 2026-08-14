@@ -80,6 +80,10 @@ def _production_ok_metrics(**overrides):
         "resid_icir": 0.12,
         "resid_icir_nw": 0.10,
         "resid_icir_ann": 2.0,
+        "universe_mode": "pit",
+        "circ_mv_source": "tushare_daily_basic",
+        "daily_basic_coverage": 0.9,
+        "n_independent": 80,
     }
     metrics.update(overrides)
     return metrics

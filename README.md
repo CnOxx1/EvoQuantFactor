@@ -130,11 +130,25 @@ python -m qfactor.cli data-status
 - `freeze_sign`：训练窗与 holdout 同号，且 holdout IC ≥ `min_oos_ic_mean`
 - 年份同号；近期 IC 为正；日换手 ≤ 1.20
 
+### 多因子上游质量合同
+
+后续多因子策略**不能直接读取** `screened` 或全部 `candidate`。它只能读取
+`library-export-multifactor` 生成的库存；该库存只保留满足以下条件的条目：
+
+- 当前状态为 `candidate` 或 `approved`，且最近一次报告是通过的 production 闸；
+- 报告的数据版本等于当前数据版本；
+- 宇宙为 PIT，中性化使用供应商 `daily_basic` 流通市值，且供应商覆盖率 ≥ 80%；
+- 5 日持有期下独立观测数 ≥ 60；
+- 导出同时保留 holdout IC、NW ICIR、残差 IC、最低 OOS 折、成本后多空、换手和库相关等质量元数据，供多因子层做二次择优与组合约束。
+
+若当前是快照宇宙、估算市值或样本不足，导出结果为零是**预期的保护行为**，不是应通过放宽阈值解决的问题。
+
 ```bash
 python -m qfactor.cli eval-factor NAME --gate research
 python -m qfactor.cli library-reeval-screened
 python -m qfactor.cli library-refresh-production
 python -m qfactor.cli library-promote NAME --gate production
+python -m qfactor.cli library-export-multifactor
 ```
 
 ---
@@ -194,6 +208,7 @@ python runs/_hour_mine.py 1800 half_hour
 | `library-reeval-screened` | screened 上生产闸 |
 | `library-refresh-production` | 重打 candidate |
 | `library-promote` / `library-demote` | 升降级 |
+| `library-export-multifactor` | 导出严格、数据版本固定的多因子策略输入库存 |
 | `db-init` / `db-import` / `db-status` | SQLite |
 | `serve` | Web UI `http://127.0.0.1:8000/ui/{sync,loop,factors}` |
 | `show-config` | 打印根路径与宇宙 |

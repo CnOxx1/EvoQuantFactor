@@ -10,12 +10,16 @@ from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from qfactor.db.models import (
     DailyBar,
     DataVersion,
+    FactorAcceptance,
+    FactorRelease,
     FactorReport,
     FactorRow,
     IndustryMap,
     JobRun,
     LibraryOpLog,
     LoopCheckpoint,
+    ResearchExperiment,
+    ResearchTrial,
     TradeCalendar,
     UniverseMember,
     get_session_factory,
@@ -407,6 +411,101 @@ class Database:
             if not row:
                 return None
             return json.loads(row.payload_json)
+
+    def create_experiment(self, experiment_id: str, manifest: dict[str, Any]) -> None:
+        with self.Session() as s:
+            s.merge(
+                ResearchExperiment(
+                    experiment_id=experiment_id,
+                    state=str(manifest.get("state") or "running"),
+                    created_at=str(manifest.get("created_at") or utc_now()),
+                    closed_at=manifest.get("closed_at"),
+                    data_version=manifest.get("data_version"),
+                    manifest_json=json.dumps(manifest, ensure_ascii=False, default=str),
+                    updated_at=utc_now(),
+                )
+            )
+            s.commit()
+
+    def update_experiment(self, experiment_id: str, manifest: dict[str, Any]) -> None:
+        self.create_experiment(experiment_id, manifest)
+
+    def save_experiment_trial(self, experiment_id: str, event: dict[str, Any]) -> None:
+        with self.Session() as s:
+            s.add(
+                ResearchTrial(
+                    experiment_id=experiment_id,
+                    trial_id=str(event.get("trial_id") or ""),
+                    stage=str(event.get("stage") or "unknown"),
+                    outcome=str(event.get("outcome") or "unknown"),
+                    source=event.get("source"),
+                    name=event.get("name"),
+                    expr_hash=event.get("expr_hash"),
+                    created_at=str(event.get("timestamp") or utc_now()),
+                    event_json=json.dumps(event, ensure_ascii=False, default=str),
+                )
+            )
+            s.commit()
+
+    def get_experiment(self, experiment_id: str) -> dict[str, Any] | None:
+        with self.Session() as s:
+            row = s.get(ResearchExperiment, experiment_id)
+            if not row:
+                return None
+            return json.loads(row.manifest_json)
+
+    def list_experiment_trials(self, experiment_id: str) -> list[dict[str, Any]]:
+        with self.Session() as s:
+            rows = s.execute(
+                select(ResearchTrial)
+                .where(ResearchTrial.experiment_id == experiment_id)
+                .order_by(ResearchTrial.id)
+            ).scalars().all()
+        return [json.loads(r.event_json) for r in rows]
+
+    def save_acceptance(self, acceptance_id: str, payload: dict[str, Any]) -> None:
+        with self.Session() as s:
+            s.merge(
+                FactorAcceptance(
+                    acceptance_id=acceptance_id,
+                    name=str(payload["name"]),
+                    definition_hash=str(payload["definition_hash"]),
+                    state=str(payload["state"]),
+                    data_version=payload.get("data_version"),
+                    created_at=str(payload.get("created_at") or utc_now()),
+                    report_json=json.dumps(payload, ensure_ascii=False, default=str),
+                )
+            )
+            s.commit()
+
+    def get_acceptance(self, acceptance_id: str) -> dict[str, Any] | None:
+        with self.Session() as s:
+            row = s.get(FactorAcceptance, acceptance_id)
+            return json.loads(row.report_json) if row else None
+
+    def save_release(self, release_id: str, payload: dict[str, Any]) -> None:
+        with self.Session() as s:
+            s.merge(
+                FactorRelease(
+                    release_id=release_id,
+                    name=str(payload["name"]),
+                    version=str(payload.get("version") or "0.1.0"),
+                    state=str(payload["state"]),
+                    data_version=payload.get("data_version"),
+                    acceptance_id=payload.get("acceptance_id"),
+                    created_at=str(payload.get("created_at") or utc_now()),
+                    manifest_json=json.dumps(payload, ensure_ascii=False, default=str),
+                )
+            )
+            s.commit()
+
+    def list_releases(self, state: str | None = None) -> list[dict[str, Any]]:
+        with self.Session() as s:
+            q = select(FactorRelease)
+            if state:
+                q = q.where(FactorRelease.state == state)
+            rows = s.execute(q.order_by(FactorRelease.created_at.desc())).scalars().all()
+        return [json.loads(r.manifest_json) for r in rows]
 
     def log_library_op(
         self, name: str, action: str, to_status: str = "", reason: str = ""

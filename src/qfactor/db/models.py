@@ -6,7 +6,6 @@ from pathlib import Path
 
 from sqlalchemy import (
     Boolean,
-    DateTime,
     Float,
     Index,
     Integer,
@@ -155,6 +154,54 @@ class LoopCheckpoint(Base):
     updated_at: Mapped[str] = mapped_column(String(64))
 
 
+class ResearchExperiment(Base):
+    __tablename__ = "research_experiments"
+    experiment_id: Mapped[str] = mapped_column(String(96), primary_key=True)
+    state: Mapped[str] = mapped_column(String(32), index=True, default="running")
+    created_at: Mapped[str] = mapped_column(String(64), index=True)
+    closed_at: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    data_version: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    manifest_json: Mapped[str] = mapped_column(Text)
+    updated_at: Mapped[str] = mapped_column(String(64))
+
+
+class ResearchTrial(Base):
+    __tablename__ = "research_trials"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    experiment_id: Mapped[str] = mapped_column(String(96), index=True)
+    trial_id: Mapped[str] = mapped_column(String(128), index=True)
+    stage: Mapped[str] = mapped_column(String(32), index=True)
+    outcome: Mapped[str] = mapped_column(String(32), index=True)
+    source: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    name: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    expr_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    created_at: Mapped[str] = mapped_column(String(64), index=True)
+    event_json: Mapped[str] = mapped_column(Text)
+
+
+class FactorAcceptance(Base):
+    __tablename__ = "factor_acceptances"
+    acceptance_id: Mapped[str] = mapped_column(String(96), primary_key=True)
+    name: Mapped[str] = mapped_column(String(128), index=True)
+    definition_hash: Mapped[str] = mapped_column(String(64), index=True)
+    state: Mapped[str] = mapped_column(String(32), index=True)
+    data_version: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    created_at: Mapped[str] = mapped_column(String(64), index=True)
+    report_json: Mapped[str] = mapped_column(Text)
+
+
+class FactorRelease(Base):
+    __tablename__ = "factor_releases"
+    release_id: Mapped[str] = mapped_column(String(96), primary_key=True)
+    name: Mapped[str] = mapped_column(String(128), index=True)
+    version: Mapped[str] = mapped_column(String(32), default="0.1.0")
+    state: Mapped[str] = mapped_column(String(32), index=True)
+    data_version: Mapped[str | None] = mapped_column(String(32), nullable=True, index=True)
+    acceptance_id: Mapped[str | None] = mapped_column(String(96), nullable=True, index=True)
+    created_at: Mapped[str] = mapped_column(String(64), index=True)
+    manifest_json: Mapped[str] = mapped_column(Text)
+
+
 class LibraryOpLog(Base):
     __tablename__ = "library_ops"
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -196,7 +243,6 @@ def get_session_factory(db_url: str | None = None):
 
 def init_db(db_url: str | None = None) -> Path:
     cfg = get_project_config()
-    path = db_path(cfg) if db_url is None else Path(".")
     engine = get_engine(db_url)
     Base.metadata.create_all(engine)
     return db_path(cfg)
