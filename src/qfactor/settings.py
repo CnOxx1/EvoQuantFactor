@@ -28,6 +28,11 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     openai_base_url: str = "https://api.openai.com/v1"
     openai_model: str = "gpt-4o-mini"
+    # Optional reasoning-effort hint for reasoning models (e.g. "minimal"/"low"/
+    # "medium"/"high"). Empty means do not send the field, keeping compatibility
+    # with non-reasoning models. Reasoning models (e.g. DeepSeek v4) otherwise emit
+    # thousands of reasoning tokens per call, making each mining round very slow.
+    openai_reasoning_effort: str = ""
     qfactor_root: str = ""
 
     @property
