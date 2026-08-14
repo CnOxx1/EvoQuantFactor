@@ -4,7 +4,7 @@ import json
 import shutil
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
-from typing import Any, Literal
+from typing import Any, Callable, Literal
 
 from qfactor.db.repo import Database
 from qfactor.eval.service import EvalService
@@ -209,7 +209,11 @@ class LibraryOps:
             "mech_capped": cap.get("demoted") or [],
         }
 
-    def refresh_production(self, include_screened: bool = False) -> dict[str, Any]:
+    def refresh_production(
+        self,
+        include_screened: bool = False,
+        on_progress: Callable[[dict[str, Any]], None] | None = None,
+    ) -> dict[str, Any]:
         """Re-score candidates under the current production gate.
 
         By default does not sweep the screened pile — that pile was admitted
@@ -225,15 +229,22 @@ class LibraryOps:
         kept: list[str] = []
         demoted: list[str] = []
         errors: list[dict[str, str]] = []
-        for name in candidates:
+        for index, name in enumerate(candidates, start=1):
+            if on_progress:
+                on_progress({"stage": "candidate_start", "name": name, "index": index, "total": len(candidates)})
             try:
                 report = ev.evaluate_and_save(name, gate_name="production", promote=True)
                 if report.get("gate", {}).get("status") == "candidate":
                     kept.append(name)
+                    outcome = "kept"
                 else:
                     demoted.append(name)
+                    outcome = "demoted"
             except Exception as e:
                 errors.append({"name": name, "error": str(e)})
+                outcome = "error"
+            if on_progress:
+                on_progress({"stage": "candidate_done", "name": name, "index": index, "total": len(candidates), "outcome": outcome})
         prune = self.prune_redundant_screened()
         corr = self.demote_high_corr()
         cap = self.cap_usable_per_mechanism()

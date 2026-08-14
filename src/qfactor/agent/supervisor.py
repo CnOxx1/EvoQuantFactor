@@ -174,9 +174,15 @@ class FactoryRuntime:
         # Re-score the small candidate book every cycle. A larger screened book is
         # intentionally revisited much less often to avoid recurrent search bias.
         self._write_progress(cycle, "refresh_candidates", started)
+
+        def _candidate_progress(event: dict[str, Any]) -> None:
+            name = str(event.get("name") or "unknown")
+            stage = str(event.get("stage") or "candidate")
+            self._write_progress(cycle, f"refresh_{stage}:{name}", started)
+
         try:
             result["actions"]["refresh_candidates"] = self.ops.refresh_production(
-                include_screened=False
+                include_screened=False, on_progress=_candidate_progress
             )
         except Exception as exc:
             result["actions"]["refresh_candidates"] = {"state": "error", "error": str(exc)}

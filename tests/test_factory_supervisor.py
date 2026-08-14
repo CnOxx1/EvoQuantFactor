@@ -12,9 +12,12 @@ class _Ops:
     def __init__(self):
         self.refresh_calls = 0
 
-    def refresh_production(self, include_screened=False):
+    def refresh_production(self, include_screened=False, on_progress=None):
         assert include_screened is False
         self.refresh_calls += 1
+        if on_progress:
+            on_progress({"stage": "candidate_start", "name": "candidate_a", "index": 1, "total": 1})
+            on_progress({"stage": "candidate_done", "name": "candidate_a", "index": 1, "total": 1, "outcome": "demoted"})
         return {"kept_candidates": [], "demoted_candidates": []}
 
     def promote_screened(self):
