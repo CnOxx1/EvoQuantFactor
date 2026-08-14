@@ -188,6 +188,25 @@ _PAIR_TMPLS = (
 )
 
 
+def _expr_from_item(item: Any) -> str:
+    """Extract a DSL expression string from an LLM item.
+
+    The model frequently returns a bare expression string (e.g.
+    "neg(ma(ret_1d,5))") or wraps it under one of several keys instead of the
+    expected {"expression": ...}. Without this, valid LLM expressions were
+    silently dropped and the loop fell back to crossover/compose only.
+    """
+    if isinstance(item, str):
+        return item.strip()
+    if not isinstance(item, dict):
+        return ""
+    for key in ("expression", "expr", "dsl", "formula", "tmpl", "template"):
+        val = item.get(key)
+        if isinstance(val, str) and val.strip():
+            return val.strip()
+    return ""
+
+
 def extra_templates_path(cfg: ProjectConfig | None = None) -> Path:
     cfg = cfg or get_project_config()
     return cfg.path("runs") / "extra_templates.yaml"
@@ -951,7 +970,10 @@ class CandidateGenerator:
             items = [data] if isinstance(data, dict) and data.get("tmpl") else []
         accepted: list[dict[str, Any]] = []
         rejected: list[dict[str, str]] = []
+        default_mech = allowed[0]["id"] if allowed else ""
         for item in items:
+            if isinstance(item, str):
+                item = {"mechanism": default_mech, "tmpl": item.strip()}
             if not isinstance(item, dict):
                 continue
             if len(accepted) >= cap:
@@ -1281,7 +1303,7 @@ class CandidateGenerator:
     ) -> dict[str, Any] | None:
         from qfactor.dsl.validate import validate_expression
 
-        expr = str(data.get("expression", "")).strip()
+        expr = _expr_from_item(data)
         banned, _why = is_banned_expression(expr, bans, parent_skeleton=parent_skeleton)
         if banned:
             return None
@@ -1555,6 +1577,8 @@ class CandidateGenerator:
         out: list[dict[str, Any]] = []
         parent_skel = next(iter(parent_skels), None)
         for i, item in enumerate(items):
+            if isinstance(item, str):
+                item = {"expression": item.strip()}
             if not isinstance(item, dict):
                 continue
             idea = ideas[i] if i < len(ideas) else (ideas[0] if ideas else {})

@@ -15,11 +15,15 @@ class LLMClient:
         api_key: str | None = None,
         base_url: str | None = None,
         model: str | None = None,
+        reasoning_effort: str | None = None,
     ):
         s = get_settings()
         self.api_key = api_key if api_key is not None else s.openai_api_key
         self.base_url = (base_url or s.openai_base_url).rstrip("/")
         self.model = model or s.openai_model
+        self.reasoning_effort = (
+            reasoning_effort if reasoning_effort is not None else s.openai_reasoning_effort
+        ).strip()
 
     @property
     def enabled(self) -> bool:
@@ -35,7 +39,7 @@ class LLMClient:
     def chat_json(self, system: str, user: str) -> dict[str, Any]:
         self.require_enabled()
         url = f"{self.base_url}/chat/completions"
-        payload = {
+        payload: dict[str, Any] = {
             "model": self.model,
             "temperature": 0.2,
             "messages": [
@@ -44,6 +48,8 @@ class LLMClient:
             ],
             "response_format": {"type": "json_object"},
         }
+        if self.reasoning_effort:
+            payload["reasoning_effort"] = self.reasoning_effort
         headers = {
             "Authorization": f"Bearer {self.api_key}",
             "Content-Type": "application/json",
