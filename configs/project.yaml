@@ -29,7 +29,7 @@ production:
     perturb_ratio: 0.15
     llm_review_ratio: 0      # no LLM veto; parser + apply_gate decide
     llm_decide_theme: false   # local rotator already covers themes; saves one LLM call/round
-    llm_library_mutate_slots: 0  # catalog unused >= 20: compose only; mutate when catalog is thin
+    llm_library_mutate_slots: 1  # thick catalog: 1 mutate (+ 1 fresh on n>=6); rest compose
     catalog_expand_every: 20     # while mining, refill new skeletons every N rounds
     catalog_expand_max: 10       # max templates merged per refill; new-skeleton gate
     catalog_expand_unused_lt: 0  # 0 = do not wait for empty catalog; keep producing

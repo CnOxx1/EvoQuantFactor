@@ -309,6 +309,20 @@ def test_llm_slot_plan_forces_mutate_when_library_exists():
     assert forced["n_fresh"] == 0
     assert forced["n_template"] == 2
 
+    full = llm_slot_plan(
+        8,
+        unused_compose=80,
+        n_usable=4,
+        ratio=0.45,
+        has_parents=True,
+        library_mutate_slots=1,
+    )
+    assert full["skip_llm"] is False
+    assert full["n_fresh"] == 1
+    assert full["n_mutate"] == 1
+    assert full["n_template"] == 6
+    assert full["n_fresh"] + full["n_mutate"] + full["n_template"] == 8
+
     thin = llm_slot_plan(
         8, unused_compose=3, n_usable=4, ratio=0.45, has_parents=True
     )

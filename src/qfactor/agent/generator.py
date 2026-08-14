@@ -522,7 +522,9 @@ def llm_slot_plan(
 
     Empty catalog (unused < 5), n=8: fresh 3, crossover 3+, mutate 1.
     Mid (5 <= unused < skip): compose fills the rest; fresh and crossover at least 1.
-    Thick: skip LLM unless cold start or forced library mutate.
+    Thick: compose-majority. Skip LLM only when there is no usable library and
+    library_mutate_slots==0. With a usable library and mutate slots, keep 1 fresh
+    (n>=6) plus mutate, remainder compose — not compose-only.
     """
     n = max(0, int(n))
     ratio = min(1.0, max(0.0, float(ratio)))
@@ -581,16 +583,20 @@ def llm_slot_plan(
             n_template=n,
         )
     if force:
-        cap = min(mutate_slots, n)
-        if n > 1:
-            cap = min(cap, n - 1)
+        # Compose stays the majority; keep one LLM-fresh hypothesis on full batches
+        # so thick catalogs still search unblocked families instead of near-clones.
+        n_fresh = 1 if n >= 6 else 0
+        rest = max(0, n - n_fresh)
+        cap = min(mutate_slots, rest)
+        if rest > 1:
+            cap = min(cap, rest - 1)
         n_mutate = cap
         return _pack(
-            skip_llm=n_mutate == 0,
-            n_fresh=0,
+            skip_llm=n_fresh == 0 and n_mutate == 0,
+            n_fresh=n_fresh,
             n_mutate=n_mutate,
             n_crossover=0,
-            n_template=max(0, n - n_mutate),
+            n_template=max(0, n - n_fresh - n_mutate),
             force_library_mutate=n_mutate > 0,
         )
 

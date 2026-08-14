@@ -12,7 +12,7 @@ def test_production_llm_defaults():
     assert 0.3 <= cfg["llm_ratio"] <= 0.9
     assert "llm_mutate_share" not in cfg
     assert cfg["llm_review_ratio"] == 0.0
-    assert cfg["llm_library_mutate_slots"] == 0
+    assert cfg["llm_library_mutate_slots"] == 1
     assert cfg["llm_batch_size"] >= 1
     assert cfg.get("llm_retries", 1) >= 1
 
