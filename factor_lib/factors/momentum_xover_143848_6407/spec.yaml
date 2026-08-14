@@ -1,0 +1,26 @@
+name: momentum_xover_143848_6407
+version: 0.1.0
+status: screened
+family: price_volume
+category: momentum
+universe: csi100
+frequency: daily
+required_fields:
+- close
+- open
+- high
+- low
+lookback: 20
+horizon: 5
+neutralize: []
+params: {}
+tags:
+- dsl
+- loop
+- langgraph
+- crossover
+hypothesis: crossover volatility x amplitude
+entry_gate: research
+expression: sub(div(std(high, 10), std(low, 10)), rank(roc(overnight, 60)))
+mechanism: momentum
+expr_hash: 779f4c107b1b4643

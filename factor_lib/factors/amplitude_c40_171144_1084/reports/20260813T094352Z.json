@@ -1,0 +1,219 @@
+{
+  "name": "amplitude_c40_171144_1084",
+  "gate_name": "production",
+  "metrics": {
+    "rank_ic_mean": 0.02475545664739665,
+    "rank_ic_std": 0.10834790019488102,
+    "icir": 0.22848118517174767,
+    "icir_ann": 3.627026371330458,
+    "n": 111,
+    "recent_rank_ic_mean": 0.07309346137339486,
+    "coverage": 0.9973275862068967,
+    "daily_turnover": 0.4217391304347826,
+    "monotonic_score": 0.8,
+    "monotonic_steps": 0.5,
+    "layered": {
+      "q1": -0.00011235156619330361,
+      "q2": -0.0001282079927522336,
+      "q3": -0.0005917983394790772,
+      "q4": 0.0002636808090209821,
+      "q5": -2.0758732447055034e-05,
+      "long_short": 9.159283374624857e-05,
+      "monotonic_steps": 0.25,
+      "monotonic_score": 0.5,
+      "long_short_daily": 9.159283374624857e-05,
+      "long_short_cost_adj": -0.00033014629668853406,
+      "cost_drag": 0.0004217391304347826,
+      "cost_horizon": 1,
+      "horizon_layered": {
+        "q1": -0.00334204844955388,
+        "q2": -0.004318575141029243,
+        "q3": -0.0009275331923431322,
+        "q4": 0.0004091704761844359,
+        "q5": 0.00018226289027230603,
+        "long_short": 0.003524311339826186,
+        "monotonic_steps": 0.5,
+        "monotonic_score": 0.8
+      }
+    },
+    "max_corr": 0.08730152258771172,
+    "max_corr_with": "overnight_c40_164135_4925",
+    "corr_skipped": false,
+    "resid_ic_mean": 0.024174899252247965,
+    "resid_icir": 0.22193004034979116,
+    "resid_icir_ann": 3.523030171320465,
+    "n_peers": 2,
+    "years": {
+      "years": {
+        "2024": 0.012377176546690028,
+        "2025": 0.010162844863865516
+      },
+      "consistent": true,
+      "pos_years": 2,
+      "neg_years": 0,
+      "n_years": 2,
+      "dominant_years": 2
+    },
+    "years_consistent": true,
+    "cost_adjusted_ls": -0.00033014629668853406,
+    "oos_ic_mean": 0.02475545664739665,
+    "oos_icir": 0.22848118517174767,
+    "oos_pos_folds": 1,
+    "oos": {
+      "folds": [
+        {
+          "fold": 1,
+          "start": "20260105",
+          "end": "20260623",
+          "orientation": -1,
+          "rank_ic_mean": 0.02475545664739665,
+          "rank_ic_std": 0.10834790019488102,
+          "icir": 0.22848118517174767,
+          "icir_ann": 3.627026371330458,
+          "n": 111
+        }
+      ],
+      "oos_ic_mean": 0.02475545664739665,
+      "oos_icir": 0.22848118517174767,
+      "n_folds": 1,
+      "pos_folds": 1,
+      "period_stability": {
+        "folds": [
+          {
+            "fold": 1,
+            "start": "20260105",
+            "end": "20260330",
+            "rank_ic_mean": -0.025040203278635532,
+            "rank_ic_std": 0.08104311851190915,
+            "icir": -0.30897383687124425,
+            "icir_ann": -4.904807603920509,
+            "n": 55
+          },
+          {
+            "fold": 2,
+            "start": "20260331",
+            "end": "20260623",
+            "rank_ic_mean": 0.07366190836046396,
+            "rank_ic_std": 0.10950357777306395,
+            "icir": 0.672689512603154,
+            "icir_ann": 10.678614959455171,
+            "n": 56
+          }
+        ],
+        "ic_mean": 0.024310852540914217,
+        "icir": 0.49261058628220483,
+        "n_folds": 2,
+        "pos_folds": 1
+      }
+    },
+    "period_stability": {
+      "folds": [
+        {
+          "fold": 1,
+          "start": "20260105",
+          "end": "20260330",
+          "rank_ic_mean": -0.025040203278635532,
+          "rank_ic_std": 0.08104311851190915,
+          "icir": -0.30897383687124425,
+          "icir_ann": -4.904807603920509,
+          "n": 55
+        },
+        {
+          "fold": 2,
+          "start": "20260331",
+          "end": "20260623",
+          "rank_ic_mean": 0.07366190836046396,
+          "rank_ic_std": 0.10950357777306395,
+          "icir": 0.672689512603154,
+          "icir_ann": 10.678614959455171,
+          "n": 56
+        }
+      ],
+      "ic_mean": 0.024310852540914217,
+      "icir": 0.49261058628220483,
+      "n_folds": 2,
+      "pos_folds": 1
+    },
+    "orientation": -1,
+    "orientation_source": "train",
+    "no_lookahead": true,
+    "trade_lag": 1,
+    "horizon": 5,
+    "signal_hold_days": 5,
+    "recent_window": 55,
+    "neutralized": [
+      "industry",
+      "circ_mv",
+      "hold5"
+    ],
+    "eval_split": "holdout",
+    "train_end": "20251231",
+    "eval_start": "20260105",
+    "eval_end": "20260630",
+    "universe_mode": "latest_snapshot",
+    "data_version": "20260812T095118Z"
+  },
+  "gate": {
+    "passed": false,
+    "status": "reject",
+    "checks": {
+      "rank_ic_mean": true,
+      "abs_rank_ic": true,
+      "icir": true,
+      "coverage": true,
+      "max_corr": true,
+      "monotonic": true,
+      "turnover": true,
+      "years": true,
+      "no_lookahead": true,
+      "recent_ic": true,
+      "oos": true,
+      "cost_ls": false,
+      "resid_ic": true
+    },
+    "mode": "production"
+  },
+  "summary": {
+    "rank_ic_mean": 0.02475545664739665,
+    "icir": 0.22848118517174767,
+    "icir_ann": 3.627026371330458,
+    "coverage": 0.9973275862068967,
+    "max_corr": 0.08730152258771172,
+    "resid_ic_mean": 0.024174899252247965,
+    "oos_ic_mean": 0.02475545664739665,
+    "cost_adjusted_ls": -0.00033014629668853406,
+    "status": "reject",
+    "trade_lag": 1,
+    "eval_split": "holdout"
+  },
+  "spec": {
+    "name": "amplitude_c40_171144_1084",
+    "version": "0.1.0",
+    "status": "draft",
+    "family": "price_volume",
+    "category": "amplitude",
+    "universe": "csi100",
+    "frequency": "daily",
+    "required_fields": [
+      "close",
+      "open",
+      "high",
+      "low"
+    ],
+    "lookback": 20,
+    "horizon": 5,
+    "neutralize": [],
+    "params": {
+      "expression": "delay(roc(amplitude,40),60)"
+    },
+    "tags": [
+      "dsl",
+      "loop"
+    ],
+    "hypothesis": "振幅结构；compose delay(roc(amplitude,40),60)",
+    "entry_gate": "research",
+    "expression": "delay(roc(amplitude,40),60)",
+    "mechanism": "amplitude",
+    "expr_hash": null
+  }
+}

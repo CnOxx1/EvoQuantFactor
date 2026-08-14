@@ -33,6 +33,10 @@ class DataAdapter(ABC):
             columns=["trade_date", "ts_code", "turnover_rate", "circ_mv"]
         )
 
+    def fetch_index_members_history(self, start: str, end: str) -> pd.DataFrame:
+        """Reconstitution snapshots. Default empty — Tushare overrides."""
+        return pd.DataFrame(columns=["trade_date", "ts_code", "weight"])
+
 
 class SupportsPanel(Protocol):
     def panel(self, field: str) -> pd.DataFrame: ...

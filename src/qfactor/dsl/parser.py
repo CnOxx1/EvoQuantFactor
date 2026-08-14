@@ -90,3 +90,59 @@ def skeleton(expr: Expr | str | int | float) -> str:
     if isinstance(expr, str):
         return expr
     return "N"
+
+
+def clone_expr(node: Expr | str | int | float) -> Expr | str | int | float:
+    if isinstance(node, Expr):
+        return Expr(op=node.op, args=[clone_expr(a) for a in node.args])
+    return node
+
+
+def nested_expr_paths(node: Expr | str | int | float, path: tuple[int, ...] = ()) -> list[tuple[int, ...]]:
+    """Paths to Expr nodes that contain at least one child Expr (not field+window leaves)."""
+    out: list[tuple[int, ...]] = []
+    if not isinstance(node, Expr):
+        return out
+    if any(isinstance(a, Expr) for a in node.args):
+        out.append(path)
+    for i, a in enumerate(node.args):
+        out.extend(nested_expr_paths(a, path + (i,)))
+    return out
+
+
+def all_expr_paths(node: Expr | str | int | float, path: tuple[int, ...] = ()) -> list[tuple[int, ...]]:
+    """Paths to every Expr node, including the root (empty path)."""
+    out: list[tuple[int, ...]] = []
+    if not isinstance(node, Expr):
+        return out
+    out.append(path)
+    for i, a in enumerate(node.args):
+        out.extend(all_expr_paths(a, path + (i,)))
+    return out
+
+
+def expr_at(node: Expr | str | int | float, path: tuple[int, ...]) -> Expr | str | int | float:
+    cur: Expr | str | int | float = node
+    for i in path:
+        if not isinstance(cur, Expr):
+            raise ValueError("path does not point into an Expr")
+        cur = cur.args[i]
+    return cur
+
+
+def replace_expr_at(
+    node: Expr | str | int | float,
+    path: tuple[int, ...],
+    new: Expr | str | int | float,
+) -> Expr | str | int | float:
+    if not path:
+        return clone_expr(new)
+    if not isinstance(node, Expr):
+        return node
+    args = []
+    for i, a in enumerate(node.args):
+        if i == path[0]:
+            args.append(replace_expr_at(a, path[1:], new))
+        else:
+            args.append(clone_expr(a) if isinstance(a, Expr) else a)
+    return Expr(op=node.op, args=args)

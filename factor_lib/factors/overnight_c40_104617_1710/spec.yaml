@@ -1,0 +1,26 @@
+name: overnight_c40_104617_1710
+version: 0.1.0
+status: screened
+family: price_volume
+category: overnight
+universe: csi100
+frequency: daily
+required_fields:
+- close
+- open
+- high
+- low
+lookback: 40
+horizon: 5
+neutralize: []
+params: {}
+tags:
+- dsl
+- loop
+- langgraph
+- compose
+hypothesis: 跳空/隔夜；compose min(overnight,40)
+entry_gate: research
+expression: min(overnight,40)
+mechanism: overnight
+expr_hash: 5b66defda6e25fa4

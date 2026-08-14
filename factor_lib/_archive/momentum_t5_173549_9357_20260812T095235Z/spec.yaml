@@ -1,0 +1,25 @@
+name: momentum_t5_173549_9357
+version: 0.1.0
+status: draft
+family: price_volume
+category: momentum
+universe: csi100
+frequency: daily
+required_fields:
+- close
+- open
+- high
+- low
+lookback: 20
+horizon: 5
+neutralize: []
+params:
+  expression: ma(roc(close_adj,5),5)
+tags:
+- dsl
+- loop
+hypothesis: 中期动量；模板启发表达式 ma(roc(close_adj,5),5)
+entry_gate: research
+expression: ma(roc(close_adj,5),5)
+mechanism: momentum
+expr_hash: null

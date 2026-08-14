@@ -1,0 +1,95 @@
+{
+  "name": "overnight_60_7794",
+  "gate_name": "research",
+  "metrics": {
+    "rank_ic_mean": 0.05372423442122283,
+    "rank_ic_std": 0.25784452162725496,
+    "icir": 0.20835903001611034,
+    "n": 537,
+    "recent_rank_ic_mean": 0.03744351014249695,
+    "coverage": 0.901830282861897,
+    "daily_turnover": 0.025878003696857665,
+    "monotonic_score": 0.5,
+    "layered": {
+      "q1": 0.0018856057162549098,
+      "q2": 0.0007132840939846506,
+      "q3": 0.0016203844062741256,
+      "q4": 0.0007155711476333475,
+      "q5": 0.0018098422875637609,
+      "long_short": -7.576342869114894e-05,
+      "monotonic_score": 0.5
+    },
+    "max_corr": 0.7983647266950978,
+    "max_corr_with": "volatility_10_4285",
+    "years": {
+      "years": {
+        "2024": 0.08088650268300769,
+        "2025": 0.03561553049716809,
+        "2026": 0.048586576417967625
+      },
+      "consistent": true,
+      "pos_years": 3,
+      "neg_years": 0,
+      "n_years": 3,
+      "dominant_years": 3
+    },
+    "years_consistent": true,
+    "cost_adjusted_ls": -0.00012751943608486427,
+    "orientation": 1,
+    "no_lookahead": true,
+    "horizon": 5,
+    "data_version": "20260812T083430Z"
+  },
+  "gate": {
+    "passed": true,
+    "status": "candidate",
+    "checks": {
+      "rank_ic_mean": true,
+      "abs_rank_ic": true,
+      "icir": true,
+      "coverage": true,
+      "max_corr": true,
+      "monotonic": true,
+      "turnover": true,
+      "years": true,
+      "no_lookahead": true
+    }
+  },
+  "summary": {
+    "rank_ic_mean": 0.05372423442122283,
+    "icir": 0.20835903001611034,
+    "coverage": 0.901830282861897,
+    "max_corr": 0.7983647266950978,
+    "status": "candidate"
+  },
+  "spec": {
+    "name": "overnight_60_7794",
+    "version": "0.1.0",
+    "status": "draft",
+    "family": "price_volume",
+    "category": "overnight",
+    "universe": "csi100",
+    "frequency": "daily",
+    "required_fields": [
+      "close",
+      "open",
+      "high",
+      "low"
+    ],
+    "lookback": 20,
+    "horizon": 5,
+    "neutralize": [],
+    "params": {
+      "expression": "sub(ma(overnight,60),ma(amplitude,60))"
+    },
+    "tags": [
+      "dsl",
+      "loop"
+    ],
+    "hypothesis": "跳空/隔夜；模板启发表达式 sub(ma(overnight,60),ma(amplitude,60))",
+    "entry_gate": "research",
+    "expression": "sub(ma(overnight,60),ma(amplitude,60))",
+    "mechanism": "overnight",
+    "expr_hash": null
+  }
+}

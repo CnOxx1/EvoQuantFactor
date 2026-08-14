@@ -1,0 +1,26 @@
+name: shadow_c5_112049_3483
+version: 0.1.0
+status: screened
+family: price_volume
+category: shadow
+universe: csi100
+frequency: daily
+required_fields:
+- close
+- open
+- high
+- low
+lookback: 5
+horizon: 5
+neutralize: []
+params: {}
+tags:
+- dsl
+- loop
+- langgraph
+- compose
+hypothesis: 影线结构；compose delay(upper_shadow,5)
+entry_gate: research
+expression: delay(upper_shadow,5)
+mechanism: shadow
+expr_hash: d98bdf560679c819

@@ -1,0 +1,25 @@
+name: liquidity_20_5019
+version: 0.1.0
+status: draft
+family: price_volume
+category: liquidity
+universe: csi100
+frequency: daily
+required_fields:
+- close
+- open
+- high
+- low
+lookback: 20
+horizon: 5
+neutralize: []
+params:
+  expression: roc(vol,20)
+tags:
+- dsl
+- loop
+hypothesis: 流动性/成交；模板启发表达式 roc(vol,20)
+entry_gate: research
+expression: roc(vol,20)
+mechanism: liquidity
+expr_hash: null

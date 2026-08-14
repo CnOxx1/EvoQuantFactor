@@ -1,0 +1,26 @@
+name: amplitude_c20_121818_1101
+version: 0.1.0
+status: screened
+family: price_volume
+category: amplitude
+universe: csi100
+frequency: daily
+required_fields:
+- close
+- open
+- high
+- low
+lookback: 20
+horizon: 5
+neutralize: []
+params: {}
+tags:
+- dsl
+- loop
+- langgraph
+- compose
+hypothesis: 振幅结构；compose std(roc(amplitude,20),10)
+entry_gate: research
+expression: std(roc(amplitude,20),10)
+mechanism: amplitude
+expr_hash: 84e91cf020a70b99

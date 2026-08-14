@@ -1,0 +1,24 @@
+name: seed_reversal_10
+version: 0.1.0
+status: draft
+family: price_volume
+category: reversal
+universe: csi100
+frequency: daily
+required_fields:
+- close
+- open
+- high
+- low
+lookback: 20
+horizon: 5
+neutralize: []
+params: {}
+tags:
+- dsl
+- seed
+hypothesis: 10日收益反转
+entry_gate: research
+expression: neg(roc(close_adj,10))
+mechanism: reversal
+expr_hash: null

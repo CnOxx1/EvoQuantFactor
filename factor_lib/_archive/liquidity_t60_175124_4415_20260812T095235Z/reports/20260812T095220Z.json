@@ -1,0 +1,147 @@
+{
+  "name": "liquidity_t60_175124_4415",
+  "gate_name": "research",
+  "metrics": {
+    "rank_ic_mean": 0.005661560978172834,
+    "rank_ic_std": 0.15821808577976976,
+    "icir": 0.03578327313385268,
+    "n": 536,
+    "recent_rank_ic_mean": -0.013512677428892237,
+    "coverage": 0.8978702163061564,
+    "daily_turnover": 0.4433333333333333,
+    "monotonic_score": 1.0,
+    "layered": {
+      "q1": 0.00621613839785826,
+      "q2": 0.005501001646892824,
+      "q3": 0.005029541041577794,
+      "q4": 0.004524153401983956,
+      "q5": 0.003944756562108705,
+      "long_short": -0.002271381835749555,
+      "monotonic_score": 1.0,
+      "long_short_cost_adj": -0.0031580485024162216,
+      "cost_drag": 0.0008866666666666666
+    },
+    "max_corr": 0.25850498290974966,
+    "max_corr_with": "amplitude_10_9558",
+    "years": {
+      "years": {
+        "2024": 0.003214923518823456,
+        "2025": 0.017827733315983908,
+        "2026": -0.01696088821539927
+      },
+      "consistent": true,
+      "pos_years": 2,
+      "neg_years": 1,
+      "n_years": 3,
+      "dominant_years": 2
+    },
+    "years_consistent": true,
+    "cost_adjusted_ls": -0.0031580485024162216,
+    "oos_ic_mean": 0.005661560978172832,
+    "oos_icir": 0.3674339736313815,
+    "oos_pos_folds": 2,
+    "oos": {
+      "folds": [
+        {
+          "fold": 1,
+          "start": "20240403",
+          "end": "20241024",
+          "rank_ic_mean": -0.006987496665582376,
+          "rank_ic_std": 0.1304716238825174,
+          "icir": -0.053555680979905915,
+          "n": 134
+        },
+        {
+          "fold": 2,
+          "start": "20241025",
+          "end": "20250515",
+          "rank_ic_mean": 0.016116959928279023,
+          "rank_ic_std": 0.17349301004243742,
+          "icir": 0.09289688342104803,
+          "n": 134
+        },
+        {
+          "fold": 3,
+          "start": "20250516",
+          "end": "20251128",
+          "rank_ic_mean": 0.025169693387016457,
+          "rank_ic_std": 0.17229328285550102,
+          "icir": 0.14608633006387012,
+          "n": 134
+        },
+        {
+          "fold": 4,
+          "start": "20251201",
+          "end": "20260623",
+          "rank_ic_mean": -0.011652912737021773,
+          "rank_ic_std": 0.14958119509286652,
+          "icir": -0.07790359429731215,
+          "n": 134
+        }
+      ],
+      "oos_ic_mean": 0.005661560978172832,
+      "oos_icir": 0.3674339736313815,
+      "n_folds": 4,
+      "pos_folds": 2
+    },
+    "orientation": -1,
+    "no_lookahead": true,
+    "horizon": 5,
+    "data_version": "20260812T095118Z"
+  },
+  "gate": {
+    "passed": false,
+    "status": "reject",
+    "checks": {
+      "rank_ic_mean": false,
+      "abs_rank_ic": false,
+      "icir": false,
+      "coverage": true,
+      "max_corr": true,
+      "monotonic": true,
+      "turnover": true,
+      "years": true,
+      "no_lookahead": true
+    },
+    "mode": "research"
+  },
+  "summary": {
+    "rank_ic_mean": 0.005661560978172834,
+    "icir": 0.03578327313385268,
+    "coverage": 0.8978702163061564,
+    "max_corr": 0.25850498290974966,
+    "oos_ic_mean": 0.005661560978172832,
+    "cost_adjusted_ls": -0.0031580485024162216,
+    "status": "reject"
+  },
+  "spec": {
+    "name": "liquidity_t60_175124_4415",
+    "version": "0.1.0",
+    "status": "draft",
+    "family": "price_volume",
+    "category": "liquidity",
+    "universe": "csi100",
+    "frequency": "daily",
+    "required_fields": [
+      "close",
+      "open",
+      "high",
+      "low"
+    ],
+    "lookback": 20,
+    "horizon": 5,
+    "neutralize": [],
+    "params": {
+      "expression": "roc(vol,60)"
+    },
+    "tags": [
+      "dsl",
+      "loop"
+    ],
+    "hypothesis": "流动性/成交；模板启发表达式 roc(vol,60)",
+    "entry_gate": "research",
+    "expression": "roc(vol,60)",
+    "mechanism": "liquidity",
+    "expr_hash": null
+  }
+}

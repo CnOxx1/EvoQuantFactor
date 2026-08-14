@@ -1,0 +1,26 @@
+name: volatility_llm_mu_130046_5075
+version: 0.1.0
+status: screened
+family: price_volume
+category: volatility
+universe: csi100
+frequency: daily
+required_fields:
+- close
+- open
+- high
+- low
+lookback: 20
+horizon: 5
+neutralize: []
+params: {}
+tags:
+- dsl
+- loop
+- langgraph
+- llm_mutate
+hypothesis: 股票的未来5日收益与近期日内波动率的变化率负相关，即波动率上升的股票未来表现较差。；unlike 不同于library_cards中的div(std(high,10),std(low,10))，该因子关注波动率的时间变化，而非高低价波动率之比。
+entry_gate: research
+expression: neg(div(delta(std(close,20),5),std(close,20)))
+mechanism: volatility
+expr_hash: 86b17d9d0238ad75

@@ -1,0 +1,229 @@
+{
+  "name": "reversal_c20_105736_2911",
+  "gate_name": "production",
+  "metrics": {
+    "rank_ic_mean": -0.026401867468743997,
+    "rank_ic_std": 0.11179027501440042,
+    "icir": -0.2361732043806405,
+    "icir_ann": -3.7491333907704307,
+    "n": 111,
+    "recent_rank_ic_mean": -0.08909432882367319,
+    "coverage": 0.8886206896551724,
+    "daily_turnover": 0.25562199937183105,
+    "monotonic_score": -0.7,
+    "monotonic_steps": 0.75,
+    "layered": {
+      "q1": 0.0033447603606983362,
+      "q2": 0.0007581518903000404,
+      "q3": -0.004700191572013779,
+      "q4": -0.0018511988356884757,
+      "q5": -0.003188964479027745,
+      "long_short": -0.0065337248397260815,
+      "monotonic_steps": 0.75,
+      "monotonic_score": -0.7,
+      "long_short_daily": -0.0013067449679452163,
+      "long_short_cost_adj": -0.0015623669673170474,
+      "cost_drag": 0.0002556219993718311,
+      "cost_horizon": 5,
+      "horizon_layered": {
+        "q1": 0.0033447603606983362,
+        "q2": 0.0007581518903000404,
+        "q3": -0.004700191572013779,
+        "q4": -0.0018511988356884757,
+        "q5": -0.003188964479027745,
+        "long_short": -0.0065337248397260815,
+        "monotonic_steps": 0.75,
+        "monotonic_score": -0.7
+      }
+    },
+    "max_corr": 0.05323528769288981,
+    "max_corr_with": "shadow_t5_142049_8374",
+    "corr_skipped": false,
+    "resid_ic_mean": -0.020514460924633677,
+    "resid_icir": -0.17882670355598215,
+    "resid_icir_ann": -2.838785912319592,
+    "n_peers": 5,
+    "years": {
+      "years": {
+        "2024": 0.016865205251393088,
+        "2025": 0.017141404988781608
+      },
+      "consistent": true,
+      "pos_years": 2,
+      "neg_years": 0,
+      "n_years": 2,
+      "dominant_years": 2
+    },
+    "years_consistent": true,
+    "cost_adjusted_ls": -0.0015623669673170474,
+    "oos_ic_mean": -0.026401867468743997,
+    "oos_icir": -0.2361732043806405,
+    "oos_pos_folds": 0,
+    "oos": {
+      "folds": [
+        {
+          "fold": 1,
+          "start": "20260105",
+          "end": "20260623",
+          "orientation": 1,
+          "rank_ic_mean": -0.026401867468743997,
+          "rank_ic_std": 0.11179027501440042,
+          "icir": -0.2361732043806405,
+          "icir_ann": -3.7491333907704307,
+          "n": 111
+        }
+      ],
+      "oos_ic_mean": -0.026401867468743997,
+      "oos_icir": -0.2361732043806405,
+      "n_folds": 1,
+      "pos_folds": 0,
+      "period_stability": {
+        "folds": [
+          {
+            "fold": 1,
+            "start": "20260105",
+            "end": "20260330",
+            "rank_ic_mean": 0.038718093203005816,
+            "rank_ic_std": 0.09676355373174739,
+            "icir": 0.4001309554043663,
+            "icir_ann": 6.351881999151776,
+            "n": 55
+          },
+          {
+            "fold": 2,
+            "start": "20260331",
+            "end": "20260623",
+            "rank_ic_mean": -0.09035897169992683,
+            "rank_ic_std": 0.08555459311746723,
+            "icir": -1.0561557060514934,
+            "icir_ann": -16.765952063844523,
+            "n": 56
+          }
+        ],
+        "ic_mean": -0.02582043924846051,
+        "icir": -0.40007788010794576,
+        "n_folds": 2,
+        "pos_folds": 1
+      }
+    },
+    "freeze_sign_ok": false,
+    "period_stability": {
+      "folds": [
+        {
+          "fold": 1,
+          "start": "20260105",
+          "end": "20260330",
+          "rank_ic_mean": 0.038718093203005816,
+          "rank_ic_std": 0.09676355373174739,
+          "icir": 0.4001309554043663,
+          "icir_ann": 6.351881999151776,
+          "n": 55
+        },
+        {
+          "fold": 2,
+          "start": "20260331",
+          "end": "20260623",
+          "rank_ic_mean": -0.09035897169992683,
+          "rank_ic_std": 0.08555459311746723,
+          "icir": -1.0561557060514934,
+          "icir_ann": -16.765952063844523,
+          "n": 56
+        }
+      ],
+      "ic_mean": -0.02582043924846051,
+      "icir": -0.40007788010794576,
+      "n_folds": 2,
+      "pos_folds": 1
+    },
+    "orientation": 1,
+    "orientation_source": "train",
+    "no_lookahead": true,
+    "trade_lag": 1,
+    "horizon": 5,
+    "signal_hold_days": 5,
+    "cost_horizon": 5,
+    "recent_window": 55,
+    "neutralized": [
+      "industry",
+      "circ_mv",
+      "hold5"
+    ],
+    "circ_mv_source": "estimated",
+    "eval_split": "holdout",
+    "train_end": "20251231",
+    "eval_start": "20260105",
+    "eval_end": "20260630",
+    "universe_mode": "latest_snapshot",
+    "data_version": "20260812T095118Z"
+  },
+  "gate": {
+    "passed": false,
+    "status": "reject",
+    "checks": {
+      "rank_ic_mean": false,
+      "abs_rank_ic": true,
+      "icir": true,
+      "coverage": true,
+      "max_corr": true,
+      "monotonic": false,
+      "turnover": true,
+      "years": true,
+      "no_lookahead": true,
+      "recent_ic": false,
+      "oos": false,
+      "cost_ls": false,
+      "resid_ic": true
+    },
+    "mode": "production"
+  },
+  "summary": {
+    "rank_ic_mean": -0.026401867468743997,
+    "icir": -0.2361732043806405,
+    "icir_ann": -3.7491333907704307,
+    "coverage": 0.8886206896551724,
+    "max_corr": 0.05323528769288981,
+    "resid_ic_mean": -0.020514460924633677,
+    "oos_ic_mean": -0.026401867468743997,
+    "cost_adjusted_ls": -0.0015623669673170474,
+    "status": "reject",
+    "trade_lag": 1,
+    "eval_split": "holdout",
+    "orientation_source": "train",
+    "universe_mode": "latest_snapshot",
+    "circ_mv_source": "estimated",
+    "freeze_sign_ok": false,
+    "horizon": 5,
+    "signal_hold_days": 5,
+    "cost_horizon": 5
+  },
+  "spec": {
+    "name": "reversal_c20_105736_2911",
+    "version": "0.1.0",
+    "status": "draft",
+    "family": "price_volume",
+    "category": "reversal",
+    "universe": "csi100",
+    "frequency": "daily",
+    "required_fields": [
+      "close",
+      "open",
+      "high",
+      "low"
+    ],
+    "lookback": 20,
+    "horizon": 5,
+    "neutralize": [],
+    "params": {
+      "expression": "ma(roc(ret_1d,20),10)"
+    },
+    "tags": [
+      "dsl",
+      "loop"
+    ],
+    "hypothesis": "短期反转；compose ma(roc(ret_1d,20),10)",
+    "entry_gate": "research",
+    "expression": "ma(roc(ret_1d,20),10)",
+    "mechanism": "reversal",
+    "expr_hash": null
+  }
+}

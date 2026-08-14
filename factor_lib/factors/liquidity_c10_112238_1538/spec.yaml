@@ -1,0 +1,26 @@
+name: liquidity_c10_112238_1538
+version: 0.1.0
+status: screened
+family: price_volume
+category: liquidity
+universe: csi100
+frequency: daily
+required_fields:
+- close
+- open
+- high
+- low
+lookback: 10
+horizon: 5
+neutralize: []
+params: {}
+tags:
+- dsl
+- loop
+- langgraph
+- compose
+hypothesis: 流动性/成交；compose rank(delta(vol,10))
+entry_gate: research
+expression: rank(delta(vol,10))
+mechanism: liquidity
+expr_hash: 72c73cf3443de0ec

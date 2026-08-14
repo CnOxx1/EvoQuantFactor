@@ -243,6 +243,34 @@ def test_production_window_icir_not_annualized():
     assert out["checks"]["icir"] is True
 
 
+def test_production_newey_west_icir_gate():
+    thresholds = dict(_production_thresholds())
+    thresholds["icir_annualized"] = False
+    thresholds["icir_mode"] = "newey_west"
+    thresholds["min_holdout_icir"] = 0.07
+    thresholds["oos_mode"] = "freeze_sign"
+    metrics = {
+        "rank_ic_mean": 0.04,
+        "icir": 0.20,
+        "icir_nw": 0.04,
+        "icir_ann": 3.0,
+        "coverage": 0.8,
+        "max_corr": 0.2,
+        "monotonic_score": 0.8,
+        "daily_turnover": 0.5,
+        "years_consistent": True,
+        "no_lookahead": True,
+        "recent_rank_ic_mean": 0.03,
+        "freeze_sign_ok": True,
+        "cost_adjusted_ls": 0.01,
+    }
+    out = apply_gate(metrics, thresholds, mode="production")
+    assert out["checks"]["icir"] is False
+    metrics["icir_nw"] = 0.10
+    out = apply_gate(metrics, thresholds, mode="production")
+    assert out["checks"]["icir"] is True
+
+
 def test_production_resid_icir_is_window_when_not_annualized():
     thresholds = dict(_production_thresholds())
     thresholds["icir_annualized"] = False
@@ -271,6 +299,41 @@ def test_production_resid_icir_is_window_when_not_annualized():
     out = apply_gate(metrics, thresholds, mode="production")
     assert out["checks"]["resid_ic"] is False
     metrics["resid_icir"] = 0.15
+    out = apply_gate(metrics, thresholds, mode="production")
+    assert out["checks"]["resid_ic"] is True
+
+
+def test_production_resid_icir_uses_newey_west():
+    thresholds = dict(_production_thresholds())
+    thresholds["icir_annualized"] = False
+    thresholds["icir_mode"] = "newey_west"
+    thresholds["min_holdout_icir"] = 0.07
+    thresholds["require_residual_ic"] = True
+    thresholds["min_resid_ic_mean"] = 0.01
+    thresholds["min_resid_icir"] = 0.07
+    thresholds["oos_mode"] = "freeze_sign"
+    metrics = {
+        "rank_ic_mean": 0.04,
+        "icir": 0.20,
+        "icir_nw": 0.12,
+        "icir_ann": 1.9,
+        "coverage": 0.8,
+        "max_corr": 0.2,
+        "monotonic_score": 0.8,
+        "daily_turnover": 0.5,
+        "years_consistent": True,
+        "no_lookahead": True,
+        "recent_rank_ic_mean": 0.03,
+        "freeze_sign_ok": True,
+        "cost_adjusted_ls": 0.01,
+        "resid_ic_mean": 0.02,
+        "resid_icir": 0.20,
+        "resid_icir_nw": 0.04,
+        "resid_icir_ann": 2.0,
+    }
+    out = apply_gate(metrics, thresholds, mode="production")
+    assert out["checks"]["resid_ic"] is False
+    metrics["resid_icir_nw"] = 0.10
     out = apply_gate(metrics, thresholds, mode="production")
     assert out["checks"]["resid_ic"] is True
 

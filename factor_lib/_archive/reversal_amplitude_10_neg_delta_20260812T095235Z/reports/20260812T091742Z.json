@@ -1,0 +1,95 @@
+{
+  "name": "reversal_amplitude_10_neg_delta",
+  "gate_name": "research",
+  "metrics": {
+    "rank_ic_mean": 0.02429775868610138,
+    "rank_ic_std": 0.22187998672561107,
+    "icir": 0.10950856381720141,
+    "n": 586,
+    "recent_rank_ic_mean": 0.06637956362442271,
+    "coverage": 0.9833610648918466,
+    "daily_turnover": 0.7158192090395481,
+    "monotonic_score": 0.5,
+    "layered": {
+      "q1": 0.00208019746786138,
+      "q2": 0.0019683012601912123,
+      "q3": 0.0017935592653786385,
+      "q4": 0.0020432690209945207,
+      "q5": 0.0032938783762133947,
+      "long_short": 0.0012136809083520147,
+      "monotonic_score": 0.5
+    },
+    "max_corr": 1.0,
+    "max_corr_with": "amplitude_10_9558",
+    "years": {
+      "years": {
+        "2024": 0.0015109064157664619,
+        "2025": 0.026011734077340212,
+        "2026": 0.06817211640363889
+      },
+      "consistent": true,
+      "pos_years": 3,
+      "neg_years": 0,
+      "n_years": 3,
+      "dominant_years": 3
+    },
+    "years_consistent": true,
+    "cost_adjusted_ls": -0.00021795750972708147,
+    "orientation": 1,
+    "no_lookahead": true,
+    "horizon": 5,
+    "data_version": "20260812T083430Z"
+  },
+  "gate": {
+    "passed": false,
+    "status": "reject",
+    "checks": {
+      "rank_ic_mean": true,
+      "abs_rank_ic": true,
+      "icir": true,
+      "coverage": true,
+      "max_corr": false,
+      "monotonic": true,
+      "turnover": true,
+      "years": true,
+      "no_lookahead": true
+    }
+  },
+  "summary": {
+    "rank_ic_mean": 0.02429775868610138,
+    "icir": 0.10950856381720141,
+    "coverage": 0.9833610648918466,
+    "max_corr": 1.0,
+    "status": "reject"
+  },
+  "spec": {
+    "name": "reversal_amplitude_10_neg_delta",
+    "version": "0.1.0",
+    "status": "draft",
+    "family": "price_volume",
+    "category": "reversal",
+    "universe": "csi100",
+    "frequency": "daily",
+    "required_fields": [
+      "close",
+      "open",
+      "high",
+      "low"
+    ],
+    "lookback": 20,
+    "horizon": 5,
+    "neutralize": [],
+    "params": {
+      "expression": "neg(delta(amplitude,10))"
+    },
+    "tags": [
+      "dsl",
+      "loop"
+    ],
+    "hypothesis": "振幅的短期变化可能反映过度反应，反转因子捕捉其回落。",
+    "entry_gate": "research",
+    "expression": "neg(delta(amplitude,10))",
+    "mechanism": "reversal",
+    "expr_hash": null
+  }
+}

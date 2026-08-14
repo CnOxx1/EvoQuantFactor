@@ -1,0 +1,24 @@
+name: seed_overnight_ma_20
+version: 0.1.0
+status: draft
+family: price_volume
+category: overnight
+universe: csi100
+frequency: daily
+required_fields:
+- close
+- open
+- high
+- low
+lookback: 20
+horizon: 5
+neutralize: []
+params: {}
+tags:
+- dsl
+- seed
+hypothesis: 隔夜收益的中期均值；A股跳空溢价先验
+entry_gate: research
+expression: ma(overnight,20)
+mechanism: overnight
+expr_hash: null

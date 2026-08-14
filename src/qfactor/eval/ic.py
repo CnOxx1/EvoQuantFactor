@@ -68,24 +68,57 @@ def rank_ic(
     return cs_spearman_series(factor, forward_ret, min_obs=min_obs, name="rank_ic")
 
 
-def summarize_ic(ic: pd.Series) -> dict:
+def newey_west_variance(values: np.ndarray, lags: int) -> float:
+    """Bartlett-kernel Newey-West variance of a 1-d series (not of the mean)."""
+    x = np.asarray(values, dtype=float)
+    x = x[np.isfinite(x)]
+    t = len(x)
+    if t < 2:
+        return 0.0
+    u = x - x.mean()
+    gamma0 = float(np.dot(u, u) / t)
+    if lags <= 0:
+        return max(gamma0, 0.0)
+    acc = gamma0
+    max_lag = min(int(lags), t - 1)
+    for k in range(1, max_lag + 1):
+        weight = 1.0 - k / (max_lag + 1)
+        gamma_k = float(np.dot(u[k:], u[:-k]) / t)
+        acc += 2.0 * weight * gamma_k
+    return max(acc, 0.0)
+
+
+def summarize_ic(ic: pd.Series, nw_lags: int = 0) -> dict:
+    empty = {
+        "rank_ic_mean": 0.0,
+        "rank_ic_std": 0.0,
+        "icir": 0.0,
+        "icir_ann": 0.0,
+        "icir_nw": 0.0,
+        "n": 0,
+        "n_independent": 0,
+        "nw_lags": int(max(0, nw_lags)),
+    }
     if ic.empty:
-        return {
-            "rank_ic_mean": 0.0,
-            "rank_ic_std": 0.0,
-            "icir": 0.0,
-            "icir_ann": 0.0,
-            "n": 0,
-        }
+        return empty
     mean = float(ic.mean())
     std = float(ic.std(ddof=0)) if len(ic) > 1 else 0.0
     icir = float(mean / std) if std > 1e-12 else 0.0
+    lags = int(max(0, nw_lags))
+    var_nw = newey_west_variance(ic.to_numpy(dtype=float), lags)
+    std_nw = float(np.sqrt(var_nw)) if var_nw > 0 else 0.0
+    icir_nw = float(mean / std_nw) if std_nw > 1e-12 else 0.0
+    n = int(len(ic))
+    n_independent = max(1, int(round(n / (lags + 1)))) if lags else n
     return {
         "rank_ic_mean": mean,
         "rank_ic_std": std,
         "icir": icir,
         "icir_ann": float(icir * np.sqrt(TRADING_DAYS)),
-        "n": int(len(ic)),
+        "icir_nw": icir_nw,
+        "n": n,
+        "n_independent": n_independent,
+        "nw_lags": lags,
     }
 
 

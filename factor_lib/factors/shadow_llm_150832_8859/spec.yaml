@@ -1,0 +1,27 @@
+name: shadow_llm_150832_8859
+version: 0.1.0
+status: screened
+family: price_volume
+category: shadow
+universe: csi100
+frequency: daily
+required_fields:
+- close
+- open
+- high
+- low
+lookback: 20
+horizon: 5
+neutralize: []
+params: {}
+tags:
+- dsl
+- loop
+- langgraph
+- llm
+hypothesis: 高换手率伴随长上影线预示未来5日收益走低，因为上影线反映抛压，换手率放大确认资金出逃。；unlike 不同于已有的 div(ma(upper_shadow,N),ma(turnover_rate,N))
+  候选，该想法使用 rank 和乘法，强调截面排序后的交互效应。
+entry_gate: research
+expression: mul(rank(upper_shadow), rank(turnover_rate))
+mechanism: shadow
+expr_hash: 898f37b59c8122f5

@@ -11,7 +11,7 @@ from qfactor.eval.corr import max_corr_with_library
 from qfactor.eval.gate import KEEP_STATUSES, USABLE_STATUSES, apply_gate, route_library_status
 from qfactor.eval.ic import rank_ic, summarize_ic, yearly_ic_sign_consistency
 from qfactor.eval.layered import layered_returns
-from qfactor.eval.timing import apply_trade_lag, forward_close_returns, slice_eval_index
+from qfactor.eval.timing import apply_trade_lag, drop_tail, forward_close_returns, slice_eval_index
 from qfactor.eval.turnover import approx_daily_turnover
 from qfactor.factor.base import Factor
 from qfactor.factor.context import FactorContext
@@ -133,8 +133,19 @@ class EvalService:
     def _universe_mode(self) -> str:
         try:
             meta = (self.data.status() or {}).get("meta") or {}
-            if meta.get("members_provider") or "snapshot" in str(meta.get("limitations") or ""):
-                return "latest_snapshot"
+            mode = str(meta.get("universe_mode") or "").strip()
+            if mode:
+                return mode
+            nested = meta.get("members_provider")
+            if isinstance(nested, dict) and nested.get("universe_mode"):
+                return str(nested["universe_mode"])
+            blob = str(meta.get("limitations") or "")
+            if "point-in-time" in blob.lower() or "reconstitution" in blob.lower():
+                if "latest snapshot" in blob.lower():
+                    return "snapshot"
+                return "pit"
+            if "snapshot" in blob.lower():
+                return "snapshot"
         except Exception:
             pass
         return "unknown"
@@ -174,6 +185,11 @@ class EvalService:
 
         train_f = self._slice_panel(tradable_full, "train") if train_end else tradable_full
         train_fwd = self._slice_panel(fwd_full, "train") if train_end else fwd_full
+        train_trim_days = int(horizon) if train_end else 0
+        if train_trim_days > 0:
+            # Last H train days' H-day forward includes holdout (or post-sample) returns.
+            train_f = drop_tail(train_f, train_trim_days)
+            train_fwd = drop_tail(train_fwd, train_trim_days)
         ic_train_raw = rank_ic(train_f, train_fwd, min_obs=min_obs)
         orient = 1
         if ic_train_raw.empty:
@@ -191,7 +207,8 @@ class EvalService:
         signed = tradable * orient
         ic_raw = rank_ic(tradable, fwd, min_obs=min_obs)
         ic = ic_raw * orient
-        ic_summary = summarize_ic(ic)
+        nw_lags = max(0, int(horizon) - 1) if is_prod else 0
+        ic_summary = summarize_ic(ic, nw_lags=nw_lags)
         freeze_sign_ok = (not ic.empty) and float(ic.mean()) > 0
 
         recent_days = int(ev.get("recent_days", 120))
@@ -199,7 +216,7 @@ class EvalService:
         recent_n = recent_days
         if is_prod and train_end and len(ic) <= recent_days:
             recent_n = max(40, len(ic) // 2)
-        recent_ic = summarize_ic(ic.tail(recent_n))
+        recent_ic = summarize_ic(ic.tail(recent_n), nw_lags=nw_lags)
         years_ic = ic_train_raw * orient if not ic_train_raw.empty else ic
         years = yearly_ic_sign_consistency(years_ic, min_years)
         if thresholds.get("require_years_same_sign", False):
@@ -234,9 +251,14 @@ class EvalService:
         if thresholds.get("require_residual_ic", False):
             resid_panel = residualize_on_peers(signed, others, min_obs=min_obs)
             resid_ic = rank_ic(resid_panel, fwd, min_obs=min_obs)
-            resid_summary = summarize_ic(resid_ic)
+            resid_summary = summarize_ic(resid_ic, nw_lags=nw_lags)
         else:
-            resid_summary = {"rank_ic_mean": 0.0, "icir": 0.0, "icir_ann": 0.0}
+            resid_summary = {
+                "rank_ic_mean": 0.0,
+                "icir": 0.0,
+                "icir_ann": 0.0,
+                "icir_nw": 0.0,
+            }
 
         cost_bps = float(ev.get("cost_bps", 10))
         cost_horizon = hold if is_prod and hold > 1 else 1
@@ -253,6 +275,7 @@ class EvalService:
                 after=train_end,
                 orientation=orient,
                 min_days=int(ev.get("oos_min_days", 40)),
+                nw_lags=nw_lags,
             )
         else:
             oos = walk_forward_ic(
@@ -281,6 +304,7 @@ class EvalService:
             "resid_ic_mean": resid_summary.get("rank_ic_mean", 0.0),
             "resid_icir": resid_summary.get("icir", 0.0),
             "resid_icir_ann": resid_summary.get("icir_ann", 0.0),
+            "resid_icir_nw": resid_summary.get("icir_nw", 0.0),
             "n_peers": len(others),
             "years": years,
             "years_consistent": years_ok,
@@ -303,6 +327,10 @@ class EvalService:
             "circ_mv_source": "estimated" if "circ_mv" in neutralized else "none",
             "eval_split": split,
             "train_end": train_end or None,
+            "train_trim_days": train_trim_days,
+            "icir_nw": ic_summary.get("icir_nw", 0.0),
+            "n_independent": ic_summary.get("n_independent", ic_summary.get("n", 0)),
+            "nw_lags": nw_lags,
             "eval_start": eval_start,
             "eval_end": eval_end,
             "universe_mode": self._universe_mode(),
@@ -314,6 +342,9 @@ class EvalService:
             "rank_ic_mean": metrics["rank_ic_mean"],
             "icir": metrics["icir"],
             "icir_ann": metrics.get("icir_ann", 0.0),
+            "icir_nw": metrics.get("icir_nw", 0.0),
+            "n_independent": metrics.get("n_independent"),
+            "train_trim_days": metrics.get("train_trim_days"),
             "coverage": coverage,
             "max_corr": corr["max_corr"],
             "resid_ic_mean": metrics["resid_ic_mean"],
@@ -352,6 +383,30 @@ class EvalService:
         raw = evaluate_expression(parse_expression(expression), self._context())
         panel = zscore(winsorize(raw))
         return self.evaluate_panel(panel, name, gate_name=gate_name)
+
+    def quick_rank_ic(self, expression: str, recent_days: int = 120) -> float:
+        """Cheap |train Rank IC| for cold-start pre-screen; no peers / OOS."""
+        from qfactor.dsl.eval_expr import evaluate_expression
+        from qfactor.dsl.parser import parse_expression
+        from qfactor.factor.transforms import winsorize, zscore
+
+        raw = evaluate_expression(parse_expression(expression), self._context())
+        panel = zscore(winsorize(raw))
+        lag = self.trade_lag()
+        tradable = apply_trade_lag(panel, lag)
+        train_end = self._train_end()
+        ev = self.cfg.eval.get("eval", {}) or {}
+        horizon = int(ev.get("forward_horizon", 5))
+        min_obs = int(ev.get("min_obs_per_day", 30))
+        fwd = self._forward_returns(horizon)
+        if train_end:
+            tradable = self._slice_panel(tradable, "train")
+            fwd = self._slice_panel(fwd, "train")
+        ic = rank_ic(tradable, fwd, min_obs=min_obs)
+        if ic.empty:
+            return 0.0
+        tail = ic.tail(max(20, int(recent_days)))
+        return abs(float(tail.mean())) if len(tail) else 0.0
 
     def evaluate_factor(
         self, factor: Factor, gate_name: str | None = None

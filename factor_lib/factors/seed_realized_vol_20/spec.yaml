@@ -1,0 +1,24 @@
+name: seed_realized_vol_20
+version: 0.1.0
+status: draft
+family: price_volume
+category: volatility
+universe: csi100
+frequency: daily
+required_fields:
+- close
+- open
+- high
+- low
+lookback: 20
+horizon: 5
+neutralize: []
+params: {}
+tags:
+- dsl
+- seed
+hypothesis: 已实现波动
+entry_gate: research
+expression: std(ret_1d,20)
+mechanism: volatility
+expr_hash: null

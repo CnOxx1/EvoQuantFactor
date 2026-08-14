@@ -1,0 +1,95 @@
+{
+  "name": "volatility_10_4285",
+  "gate_name": "research",
+  "metrics": {
+    "rank_ic_mean": 0.033723519888750955,
+    "rank_ic_std": 0.25150951373589553,
+    "icir": 0.13408447015711408,
+    "n": 587,
+    "recent_rank_ic_mean": 0.017150735638000864,
+    "coverage": 0.985024958402662,
+    "daily_turnover": 0.11082910321489002,
+    "monotonic_score": 0.5,
+    "layered": {
+      "q1": 0.003569801276626842,
+      "q2": 0.0009465344929599225,
+      "q3": 0.0029480975187219025,
+      "q4": 0.0016215416662590017,
+      "q5": 0.001994529444701208,
+      "long_short": -0.0015752718319256343,
+      "monotonic_score": 0.5
+    },
+    "max_corr": 0.0,
+    "max_corr_with": null,
+    "years": {
+      "years": {
+        "2024": 0.05732891969439517,
+        "2025": 0.015203915044146107,
+        "2026": 0.024716365136713807
+      },
+      "consistent": true,
+      "pos_years": 3,
+      "neg_years": 0,
+      "n_years": 3,
+      "dominant_years": 3
+    },
+    "years_consistent": true,
+    "cost_adjusted_ls": -0.0017969300383554143,
+    "orientation": -1,
+    "no_lookahead": true,
+    "horizon": 5,
+    "data_version": "20260812T083430Z"
+  },
+  "gate": {
+    "passed": true,
+    "status": "candidate",
+    "checks": {
+      "rank_ic_mean": true,
+      "abs_rank_ic": true,
+      "icir": true,
+      "coverage": true,
+      "max_corr": true,
+      "monotonic": true,
+      "turnover": true,
+      "years": true,
+      "no_lookahead": true
+    }
+  },
+  "summary": {
+    "rank_ic_mean": 0.033723519888750955,
+    "icir": 0.13408447015711408,
+    "coverage": 0.985024958402662,
+    "max_corr": 0.0,
+    "status": "candidate"
+  },
+  "spec": {
+    "name": "volatility_10_4285",
+    "version": "0.1.0",
+    "status": "draft",
+    "family": "price_volume",
+    "category": "volatility",
+    "universe": "csi100",
+    "frequency": "daily",
+    "required_fields": [
+      "close",
+      "open",
+      "high",
+      "low"
+    ],
+    "lookback": 20,
+    "horizon": 5,
+    "neutralize": [],
+    "params": {
+      "expression": "ma(amplitude,10)"
+    },
+    "tags": [
+      "dsl",
+      "loop"
+    ],
+    "hypothesis": "波动率；模板启发表达式 ma(amplitude,10)",
+    "entry_gate": "research",
+    "expression": "ma(amplitude,10)",
+    "mechanism": "volatility",
+    "expr_hash": null
+  }
+}

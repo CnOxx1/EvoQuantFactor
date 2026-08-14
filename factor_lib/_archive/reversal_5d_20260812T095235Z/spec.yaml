@@ -1,0 +1,25 @@
+name: reversal_5d
+version: 0.1.0
+status: draft
+family: price_volume
+category: reversal
+universe: csi100
+frequency: daily
+required_fields:
+- close
+- open
+- high
+- low
+lookback: 20
+horizon: 5
+neutralize: []
+params:
+  expression: neg(roc(close_adj,5))
+tags:
+- dsl
+- loop
+hypothesis: 短期反转：过去5日收益率为负时买入，预期未来收益为正。
+entry_gate: research
+expression: neg(roc(close_adj,5))
+mechanism: reversal
+expr_hash: null

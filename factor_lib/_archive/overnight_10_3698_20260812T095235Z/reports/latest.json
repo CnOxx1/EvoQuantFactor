@@ -1,0 +1,94 @@
+{
+  "name": "overnight_10_3698",
+  "gate_name": "research",
+  "metrics": {
+    "rank_ic_mean": 0.013651450964993999,
+    "rank_ic_std": 0.23116273195589115,
+    "icir": 0.0590555875918566,
+    "n": 587,
+    "recent_rank_ic_mean": 0.027469440569108612,
+    "coverage": 0.985024958402662,
+    "daily_turnover": 0.2171460800902425,
+    "monotonic_score": 0.75,
+    "layered": {
+      "q1": 0.0008541926797358373,
+      "q2": 0.0017528830310908218,
+      "q3": 0.002619015791056314,
+      "q4": 0.00189402143163344,
+      "q5": 0.003960391465752462,
+      "long_short": 0.003106198786016625,
+      "monotonic_score": 0.75
+    },
+    "max_corr": 0.3139190739258791,
+    "max_corr_with": "ret_reversal_10d",
+    "years": {
+      "years": {
+        "2024": -0.0014214698908942012,
+        "2025": 0.01453190297463746,
+        "2026": 0.04336352953326957
+      },
+      "consistent": true,
+      "pos_years": 2,
+      "neg_years": 1,
+      "n_years": 3,
+      "dominant_years": 2
+    },
+    "years_consistent": true,
+    "cost_adjusted_ls": 0.0026719066258361402,
+    "no_lookahead": true,
+    "horizon": 5,
+    "data_version": "20260812T083430Z"
+  },
+  "gate": {
+    "passed": false,
+    "status": "reject",
+    "checks": {
+      "rank_ic_mean": true,
+      "abs_rank_ic": true,
+      "icir": false,
+      "coverage": true,
+      "max_corr": true,
+      "monotonic": true,
+      "turnover": true,
+      "years": true,
+      "no_lookahead": true
+    }
+  },
+  "summary": {
+    "rank_ic_mean": 0.013651450964993999,
+    "icir": 0.0590555875918566,
+    "coverage": 0.985024958402662,
+    "max_corr": 0.3139190739258791,
+    "status": "reject"
+  },
+  "spec": {
+    "name": "overnight_10_3698",
+    "version": "0.1.0",
+    "status": "draft",
+    "family": "price_volume",
+    "category": "overnight",
+    "universe": "csi100",
+    "frequency": "daily",
+    "required_fields": [
+      "close",
+      "open",
+      "high",
+      "low"
+    ],
+    "lookback": 20,
+    "horizon": 5,
+    "neutralize": [],
+    "params": {
+      "expression": "ma(overnight,10)"
+    },
+    "tags": [
+      "dsl",
+      "loop"
+    ],
+    "hypothesis": "跳空/隔夜；模板启发表达式 ma(overnight,10)",
+    "entry_gate": "research",
+    "expression": "ma(overnight,10)",
+    "mechanism": "overnight",
+    "expr_hash": null
+  }
+}

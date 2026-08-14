@@ -1,0 +1,26 @@
+name: amplitude_c20_103431_9923
+version: 0.1.0
+status: screened
+family: price_volume
+category: amplitude
+universe: csi100
+frequency: daily
+required_fields:
+- close
+- open
+- high
+- low
+lookback: 20
+horizon: 5
+neutralize: []
+params: {}
+tags:
+- dsl
+- loop
+- langgraph
+- compose
+hypothesis: 振幅结构；compose std(low,20)
+entry_gate: research
+expression: std(low,20)
+mechanism: amplitude
+expr_hash: 002ce6f1c2dba717

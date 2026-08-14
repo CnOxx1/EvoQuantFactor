@@ -1,0 +1,25 @@
+name: amplitude_t40_172601_8989
+version: 0.1.0
+status: draft
+family: price_volume
+category: amplitude
+universe: csi100
+frequency: daily
+required_fields:
+- close
+- open
+- high
+- low
+lookback: 20
+horizon: 5
+neutralize: []
+params:
+  expression: ma(amplitude,40)
+tags:
+- dsl
+- loop
+hypothesis: 振幅结构；模板启发表达式 ma(amplitude,40)
+entry_gate: research
+expression: ma(amplitude,40)
+mechanism: amplitude
+expr_hash: null

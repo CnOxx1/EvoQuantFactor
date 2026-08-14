@@ -12,6 +12,12 @@ from qfactor.settings import ProjectConfig, get_project_config
 from qfactor.agent.graph import _dsl_factor_code as _dsl_factor_code  # noqa: F401
 
 
+def graph_rounds_for_budget(remaining_s: float, *, est_s: float = 70, max_n: int = 10) -> int:
+    """Pack several LangGraph rounds into one invoke so field/window prior cache survives."""
+    n = int(float(remaining_s) / max(float(est_s), 1.0))
+    return max(1, min(int(max_n), n))
+
+
 class FactorMiningAgent:
     """Legacy single-theme miner kept for compatibility."""
 

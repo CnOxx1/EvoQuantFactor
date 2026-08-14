@@ -12,6 +12,7 @@ def period_stability_ic(
     ic: pd.Series,
     n_folds: int = 4,
     min_days: int = 40,
+    nw_lags: int = 0,
 ) -> dict[str, Any]:
     """Split an IC series into contiguous folds (in-sample stability, not OOS)."""
     if ic.empty or len(ic) < min_days * 2:
@@ -25,7 +26,7 @@ def period_stability_ic(
         if end - start < min_days // 2:
             continue
         part = ic.iloc[start:end]
-        s = summarize_ic(part)
+        s = summarize_ic(part, nw_lags=nw_lags)
         folds.append(
             {"fold": i + 1, "start": str(dates[start]), "end": str(dates[end - 1]), **s}
         )
@@ -184,6 +185,7 @@ def holdout_oos(
     after: str,
     orientation: int = 1,
     min_days: int = 40,
+    nw_lags: int = 0,
 ) -> dict[str, Any]:
     """Treat the entire window after `after` as one OOS fold (frozen sign).
 
@@ -196,14 +198,16 @@ def holdout_oos(
         "oos_icir": 0.0,
         "n_folds": 0,
         "pos_folds": 0,
-        "period_stability": period_stability_ic(ic, n_folds=2, min_days=min_days),
+        "period_stability": period_stability_ic(
+            ic, n_folds=2, min_days=min_days, nw_lags=nw_lags
+        ),
     }
     if ic.empty:
         return empty
     hold = ic.loc[ic.index.astype(str) > str(after)] * int(orientation)
     if hold.empty or len(hold) < min_days:
         return empty
-    s = summarize_ic(hold)
+    s = summarize_ic(hold, nw_lags=nw_lags)
     mean = float(s["rank_ic_mean"])
     return {
         "folds": [
@@ -216,10 +220,12 @@ def holdout_oos(
             }
         ],
         "oos_ic_mean": mean,
-        "oos_icir": float(s["icir"]),
+        "oos_icir": float(s.get("icir_nw") if nw_lags else s["icir"]),
         "n_folds": 1,
         "pos_folds": 1 if mean > 0 else 0,
-        "period_stability": period_stability_ic(hold, n_folds=2, min_days=min_days),
+        "period_stability": period_stability_ic(
+            hold, n_folds=2, min_days=min_days, nw_lags=nw_lags
+        ),
     }
 
 

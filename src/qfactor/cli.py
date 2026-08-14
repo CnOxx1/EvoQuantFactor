@@ -28,6 +28,15 @@ def sync_data(
     print(meta)
 
 
+@app.command("sync-universe")
+def sync_universe(
+    start: str = typer.Option(..., help="YYYYMMDD"),
+    end: str = typer.Option(..., help="YYYYMMDD"),
+):
+    """Refresh point-in-time CSI100 members. Requires TUSHARE_TOKEN. Does not re-download bars."""
+    print(DataService().sync_universe(start, end))
+
+
 @app.command("install-seeds")
 def install_seeds():
     paths = install_seed_factors()
@@ -136,9 +145,13 @@ def library_reeval_screened():
 
 
 @app.command("library-refresh-production")
-def library_refresh_production():
-    """Re-score candidates under the current production gate, then try screened."""
-    print(LibraryOps().refresh_production())
+def library_refresh_production(
+    include_screened: bool = typer.Option(
+        False, help="also try promoting screened (slow; research pile, not production inventory)"
+    ),
+):
+    """Re-score candidates under the current production gate."""
+    print(LibraryOps().refresh_production(include_screened=include_screened))
 
 
 @app.command("library-promote")

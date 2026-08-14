@@ -1,0 +1,20 @@
+{
+  "synced_at": "2026-08-12T08:34:30.814403+00:00",
+  "source": "baostock",
+  "start": "20240101",
+  "end": "20260630",
+  "universe": "csi100",
+  "n_codes_requested": 30,
+  "n_codes_ok": 30,
+  "n_codes_failed": 0,
+  "failed_codes": [],
+  "quality": {
+    "n_rows": 18030,
+    "n_codes": 30,
+    "start": "20240102",
+    "end": "20260630",
+    "missing_close_pct": 0.0,
+    "duplicate_keys": 0
+  },
+  "data_version": "20260812T083430Z"
+}

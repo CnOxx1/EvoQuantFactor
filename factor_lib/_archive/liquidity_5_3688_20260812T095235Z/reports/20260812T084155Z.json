@@ -1,0 +1,95 @@
+{
+  "name": "liquidity_5_3688",
+  "gate_name": "research",
+  "metrics": {
+    "rank_ic_mean": 0.015776265016186272,
+    "rank_ic_std": 0.218936766244798,
+    "icir": 0.07205854588418688,
+    "n": 591,
+    "recent_rank_ic_mean": 0.06413972307011398,
+    "coverage": 0.9909040488075429,
+    "daily_turnover": 0.1689075630252101,
+    "monotonic_score": 0.5,
+    "layered": {
+      "q1": 0.001135806291132648,
+      "q2": 0.0010274420838786073,
+      "q3": 0.0028449186391628556,
+      "q4": 0.0021316333386190173,
+      "q5": 0.0039025848852287924,
+      "long_short": 0.0027667785940961444,
+      "monotonic_score": 0.5
+    },
+    "max_corr": 0.15624744997659346,
+    "max_corr_with": "volatility_10_4285",
+    "years": {
+      "years": {
+        "2024": 0.0055286517081028904,
+        "2025": 0.002056821918260764,
+        "2026": 0.06769076075322826
+      },
+      "consistent": true,
+      "pos_years": 3,
+      "neg_years": 0,
+      "n_years": 3,
+      "dominant_years": 3
+    },
+    "years_consistent": true,
+    "cost_adjusted_ls": 0.0024289634680457243,
+    "orientation": -1,
+    "no_lookahead": true,
+    "horizon": 5,
+    "data_version": "20260812T083430Z"
+  },
+  "gate": {
+    "passed": false,
+    "status": "reject",
+    "checks": {
+      "rank_ic_mean": true,
+      "abs_rank_ic": true,
+      "icir": false,
+      "coverage": true,
+      "max_corr": true,
+      "monotonic": true,
+      "turnover": true,
+      "years": true,
+      "no_lookahead": true
+    }
+  },
+  "summary": {
+    "rank_ic_mean": 0.015776265016186272,
+    "icir": 0.07205854588418688,
+    "coverage": 0.9909040488075429,
+    "max_corr": 0.15624744997659346,
+    "status": "reject"
+  },
+  "spec": {
+    "name": "liquidity_5_3688",
+    "version": "0.1.0",
+    "status": "draft",
+    "family": "price_volume",
+    "category": "liquidity",
+    "universe": "csi100",
+    "frequency": "daily",
+    "required_fields": [
+      "close",
+      "open",
+      "high",
+      "low"
+    ],
+    "lookback": 20,
+    "horizon": 5,
+    "neutralize": [],
+    "params": {
+      "expression": "ma(div(abs(ret_1d),amount),5)"
+    },
+    "tags": [
+      "dsl",
+      "loop"
+    ],
+    "hypothesis": "流动性/成交；模板启发表达式 ma(div(abs(ret_1d),amount),5)",
+    "entry_gate": "research",
+    "expression": "ma(div(abs(ret_1d),amount),5)",
+    "mechanism": "liquidity",
+    "expr_hash": null
+  }
+}

@@ -1,0 +1,27 @@
+name: momentum_llm_mu_123653_4045
+version: 0.1.0
+status: screened
+family: price_volume
+category: momentum
+universe: csi100
+frequency: daily
+required_fields:
+- close
+- open
+- high
+- low
+lookback: 20
+horizon: 5
+neutralize: []
+params: {}
+tags:
+- dsl
+- loop
+- langgraph
+- llm_mutate
+hypothesis: T日收盘后，计算过去20日收盘价变化率（roc(close_adj,20)）与过去60日收盘价变化率（roc(close_adj,60)）之差，再除以过去60日收盘价变化率的绝对值（abs(roc(close_adj,60))），该因子衡量动量加速度的相对强度。截面排序后，值越大，未来5日收益越高。；unlike
+  不同于library_cards中的振幅类因子，本因子基于价格动量，且使用相对强度，而非直接使用roc或std。
+entry_gate: research
+expression: div(sub(roc(close_adj,20),roc(close_adj,60)),abs(roc(close_adj,60)))
+mechanism: momentum
+expr_hash: 6e0319c599b79d3c

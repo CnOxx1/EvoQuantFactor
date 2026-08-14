@@ -1,0 +1,95 @@
+{
+  "name": "amplitude_t40_172601_8989",
+  "gate_name": "research",
+  "metrics": {
+    "rank_ic_mean": 0.04666834837652738,
+    "rank_ic_std": 0.2558164333676868,
+    "icir": 0.1824290479003381,
+    "n": 557,
+    "recent_rank_ic_mean": 0.01651464858415367,
+    "coverage": 0.9351081530782032,
+    "daily_turnover": 0.043672014260249546,
+    "monotonic_score": 0.5,
+    "layered": {
+      "q1": 0.0029025233645075667,
+      "q2": -0.0012471228706032495,
+      "q3": 0.003301583561043082,
+      "q4": 0.0007387017290518482,
+      "q5": 0.0010483825548190666,
+      "long_short": -0.0018541408096885,
+      "monotonic_score": 0.5
+    },
+    "max_corr": 0.9443063017949423,
+    "max_corr_with": "overnight_60_7794",
+    "years": {
+      "years": {
+        "2024": 0.0717349003766939,
+        "2025": 0.03759844897532897,
+        "2026": 0.020681641155422918
+      },
+      "consistent": true,
+      "pos_years": 3,
+      "neg_years": 0,
+      "n_years": 3,
+      "dominant_years": 3
+    },
+    "years_consistent": true,
+    "cost_adjusted_ls": -0.0019414848382089992,
+    "orientation": -1,
+    "no_lookahead": true,
+    "horizon": 5,
+    "data_version": "20260812T083430Z"
+  },
+  "gate": {
+    "passed": false,
+    "status": "reject",
+    "checks": {
+      "rank_ic_mean": true,
+      "abs_rank_ic": true,
+      "icir": true,
+      "coverage": true,
+      "max_corr": false,
+      "monotonic": true,
+      "turnover": true,
+      "years": true,
+      "no_lookahead": true
+    }
+  },
+  "summary": {
+    "rank_ic_mean": 0.04666834837652738,
+    "icir": 0.1824290479003381,
+    "coverage": 0.9351081530782032,
+    "max_corr": 0.9443063017949423,
+    "status": "reject"
+  },
+  "spec": {
+    "name": "amplitude_t40_172601_8989",
+    "version": "0.1.0",
+    "status": "draft",
+    "family": "price_volume",
+    "category": "amplitude",
+    "universe": "csi100",
+    "frequency": "daily",
+    "required_fields": [
+      "close",
+      "open",
+      "high",
+      "low"
+    ],
+    "lookback": 20,
+    "horizon": 5,
+    "neutralize": [],
+    "params": {
+      "expression": "ma(amplitude,40)"
+    },
+    "tags": [
+      "dsl",
+      "loop"
+    ],
+    "hypothesis": "振幅结构；模板启发表达式 ma(amplitude,40)",
+    "entry_gate": "research",
+    "expression": "ma(amplitude,40)",
+    "mechanism": "amplitude",
+    "expr_hash": null
+  }
+}

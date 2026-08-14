@@ -1,0 +1,26 @@
+name: volume_price_c10_105336_1034
+version: 0.1.0
+status: screened
+family: price_volume
+category: volume_price
+universe: csi100
+frequency: daily
+required_fields:
+- close
+- open
+- high
+- low
+lookback: 10
+horizon: 5
+neutralize: []
+params: {}
+tags:
+- dsl
+- loop
+- langgraph
+- compose
+hypothesis: 量价配合；compose sub(rank(roc(ret_1d,10)),rank(roc(amount,10)))
+entry_gate: research
+expression: sub(rank(roc(ret_1d,10)),rank(roc(amount,10)))
+mechanism: volume_price
+expr_hash: 8a266df8cc8c0287

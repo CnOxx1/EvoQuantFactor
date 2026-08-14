@@ -29,3 +29,12 @@ def slice_eval_index(index: pd.Index, train_end: str | None, split: str) -> pd.I
     if split == "holdout":
         return index[keys > str(train_end)]
     raise ValueError(f"Unknown split: {split}")
+
+
+def drop_tail(panel: pd.DataFrame, n: int) -> pd.DataFrame:
+    """Drop the last n rows (e.g. so H-day forward returns stay inside a split)."""
+    if n <= 0 or panel.empty:
+        return panel
+    if len(panel.index) <= n:
+        return panel.iloc[0:0]
+    return panel.iloc[:-n]

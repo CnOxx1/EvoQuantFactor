@@ -1,0 +1,25 @@
+name: volume_price_10_7143
+version: 0.1.0
+status: draft
+family: price_volume
+category: volume_price
+universe: csi100
+frequency: daily
+required_fields:
+- close
+- open
+- high
+- low
+lookback: 20
+horizon: 5
+neutralize: []
+params:
+  expression: mul(rank(roc(close_adj,10)),rank(roc(vol,10)))
+tags:
+- dsl
+- loop
+hypothesis: 量价配合；模板启发表达式 mul(rank(roc(close_adj,10)),rank(roc(vol,10)))
+entry_gate: research
+expression: mul(rank(roc(close_adj,10)),rank(roc(vol,10)))
+mechanism: volume_price
+expr_hash: null

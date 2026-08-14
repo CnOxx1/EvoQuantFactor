@@ -189,11 +189,12 @@ class LibraryOps:
                 errors.append({"name": name, "error": str(e)})
         return {"promoted": promoted, "held_screened": held, "errors": errors}
 
-    def refresh_production(self) -> dict[str, Any]:
-        """Re-score candidates under the current production gate, then try screened.
+    def refresh_production(self, include_screened: bool = False) -> dict[str, Any]:
+        """Re-score candidates under the current production gate.
 
-        Existing candidates are evaluated first so they keep (or lose) corr budget
-        before new names are considered.
+        By default does not sweep the screened pile — that pile was admitted
+        under research gates and would dump redundant amplitude into production.
+        Pass include_screened=True (CLI library-reeval-screened) to try promotions.
         """
         candidates = [
             str(f["name"])
@@ -214,7 +215,9 @@ class LibraryOps:
             except Exception as e:
                 errors.append({"name": name, "error": str(e)})
         prune = self.prune_redundant_screened()
-        promo = self.promote_screened()
+        promo: dict[str, Any] = {"promoted": [], "held_screened": [], "errors": []}
+        if include_screened:
+            promo = self.promote_screened()
         promo["errors"] = (promo.get("errors") or []) + errors
         rerank = self.rerank_candidates_by_resid()
         return {

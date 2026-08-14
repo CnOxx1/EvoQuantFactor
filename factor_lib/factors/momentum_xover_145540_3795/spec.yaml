@@ -1,0 +1,26 @@
+name: momentum_xover_145540_3795
+version: 0.1.0
+status: screened
+family: price_volume
+category: momentum
+universe: csi100
+frequency: daily
+required_fields:
+- close
+- open
+- high
+- low
+lookback: 20
+horizon: 5
+neutralize: []
+params: {}
+tags:
+- dsl
+- loop
+- langgraph
+- crossover
+hypothesis: crossover volume_price x volatility
+entry_gate: research
+expression: sub(rank(roc(overnight, 60)), ma(turnover_rate, 60))
+mechanism: momentum
+expr_hash: c43d75e6b953eafe

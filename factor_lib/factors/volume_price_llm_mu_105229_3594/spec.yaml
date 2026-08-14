@@ -1,0 +1,27 @@
+name: volume_price_llm_mu_105229_3594
+version: 0.1.0
+status: screened
+family: price_volume
+category: volume_price
+universe: csi100
+frequency: daily
+required_fields:
+- close
+- open
+- high
+- low
+lookback: 20
+horizon: 5
+neutralize: []
+params: {}
+tags:
+- dsl
+- loop
+- langgraph
+- llm_mutate
+hypothesis: 当价格短期动量与成交量短期变化方向一致（同向上升或同向下降）时，未来5日收益倾向于延续该趋势；反之，背离时未来收益可能反转。；unlike
+  与library_cards中的表达式不同，本想法关注价格与成交量的同步性，而非振幅或影线特征，且不直接使用标准差或延迟算子。
+entry_gate: research
+expression: mul(roc(close_adj,5),roc(vol,5))
+mechanism: volume_price
+expr_hash: e47a6f26af245a50

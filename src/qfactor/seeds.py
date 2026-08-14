@@ -317,4 +317,7 @@ def install_seed_factors() -> list[str]:
     for spec, code in items:
         reg.save_factor_files(spec, code, source="seed")
         saved.append(spec.name)
+    from qfactor.agent.coldstart import ensure_dsl_seeds
+
+    saved.extend(ensure_dsl_seeds())
     return saved

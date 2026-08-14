@@ -53,6 +53,84 @@ class TushareAdapter(DataAdapter):
         ]
         return out
 
+    def fetch_index_members_history(self, start: str, end: str) -> pd.DataFrame:
+        """CSI reconstitutions: prefer in/out roster, else monthly index_weight."""
+        from qfactor.data.universe import members_from_in_out, normalize_members
+
+        roster = self._fetch_index_member_roster()
+        if roster is not None and not roster.empty:
+            expanded = members_from_in_out(roster, start, end)
+            if not expanded.empty:
+                return expanded
+        return self._fetch_index_weight_range(start, end)
+
+    def _fetch_index_member_roster(self) -> pd.DataFrame:
+        for api_name in ("index_member", "index_member_all"):
+            fn = getattr(self.pro, api_name, None)
+            if fn is None:
+                continue
+            self._sleep()
+            try:
+                df = fn(index_code=self.index_code)
+            except Exception:
+                continue
+            if df is None or df.empty:
+                continue
+            if "in_date" in df.columns and (
+                "ts_code" in df.columns or "con_code" in df.columns
+            ):
+                return df
+        return pd.DataFrame()
+
+    def _fetch_index_weight_range(self, start: str, end: str) -> pd.DataFrame:
+        from qfactor.data.universe import normalize_members
+
+        self._sleep()
+        try:
+            df = self.pro.index_weight(
+                index_code=self.index_code, start_date=start, end_date=end
+            )
+        except Exception:
+            df = None
+        out = normalize_members(df)
+        expected_months = max(
+            1,
+            (
+                pd.Timestamp(end[:4] + "-" + end[4:6] + "-01")
+                - pd.Timestamp(start[:4] + "-" + start[4:6] + "-01")
+            ).days
+            // 28,
+        )
+        if not out.empty and out["trade_date"].nunique() >= max(2, expected_months // 3):
+            return out
+        frames = [] if out.empty else [out]
+        cursor = pd.Timestamp(start[:4] + "-" + start[4:6] + "-01")
+        last = pd.Timestamp(end[:4] + "-" + end[4:6] + "-01")
+        seen = set(out["trade_date"].astype(str)) if not out.empty else set()
+        while cursor <= last:
+            m_start = cursor.strftime("%Y%m%d")
+            m_end = (cursor + pd.offsets.MonthEnd(0)).strftime("%Y%m%d")
+            if m_end < start:
+                cursor = cursor + pd.offsets.MonthBegin(1)
+                continue
+            self._sleep()
+            try:
+                chunk = self.pro.index_weight(
+                    index_code=self.index_code, start_date=m_start, end_date=min(m_end, end)
+                )
+            except Exception:
+                chunk = None
+            part = normalize_members(chunk)
+            if not part.empty:
+                part = part[~part["trade_date"].astype(str).isin(seen)]
+                if not part.empty:
+                    frames.append(part)
+                    seen.update(part["trade_date"].astype(str))
+            cursor = cursor + pd.offsets.MonthBegin(1)
+        if not frames:
+            return pd.DataFrame(columns=["trade_date", "ts_code", "weight"])
+        return normalize_members(pd.concat(frames, ignore_index=True))
+
     def fetch_daily_bars(self, ts_code: str, start: str, end: str) -> pd.DataFrame:
         self._sleep()
         df = self.pro.daily(ts_code=ts_code, start_date=start, end_date=end)

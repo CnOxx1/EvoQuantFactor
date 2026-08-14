@@ -1,0 +1,30 @@
+{
+  "synced_at": "2026-08-12T09:51:18.935092+00:00",
+  "source": "baostock",
+  "members_provider": {
+    "provider": "csindex",
+    "note": "Official latest constituent/weight file. Full historical reconstitution requires vendor history (e.g. Tushare index_weight). We stamp the file date across the research window and document this limitation."
+  },
+  "start": "20240101",
+  "end": "20260630",
+  "universe": "csi100",
+  "n_codes_requested": 100,
+  "n_codes_ok": 100,
+  "n_codes_failed": 0,
+  "failed_codes": [],
+  "has_industry": true,
+  "has_circ_mv": true,
+  "quality": {
+    "n_rows": 60100,
+    "n_codes": 100,
+    "start": "20240102",
+    "end": "20260630",
+    "missing_close_pct": 0.0,
+    "duplicate_keys": 0
+  },
+  "data_version": "20260812T095118Z",
+  "limitations": [
+    "CSIndex file is latest snapshot (not full historical reconstitution)",
+    "circ_mv estimated from amount/turnover when vendor cap unavailable"
+  ]
+}

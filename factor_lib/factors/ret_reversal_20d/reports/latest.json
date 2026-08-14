@@ -1,0 +1,230 @@
+{
+  "name": "ret_reversal_20d",
+  "gate_name": "research",
+  "metrics": {
+    "rank_ic_mean": 0.013664779094837116,
+    "rank_ic_std": 0.23183381186866645,
+    "icir": 0.05894213179990413,
+    "n": 575,
+    "recent_rank_ic_mean": -0.04421082883499769,
+    "coverage": 0.9650582362728783,
+    "daily_turnover": 0.20051813471502591,
+    "monotonic_score": 0.5,
+    "layered": {
+      "q1": 0.010428811934342745,
+      "q2": 0.004746501554282358,
+      "q3": 0.0049040870342929345,
+      "q4": 0.003920262264539981,
+      "q5": 0.006022103751363397,
+      "long_short": -0.004406708182979348,
+      "monotonic_score": 0.5,
+      "long_short_cost_adj": -0.0048077444524094,
+      "cost_drag": 0.0004010362694300518
+    },
+    "max_corr": 0.5835056069277976,
+    "max_corr_with": "volume_price_t20_173839_5333",
+    "years": {
+      "years": {
+        "2024": 0.030713554525677627,
+        "2025": 0.021939628488708493,
+        "2026": -0.038394390030626835
+      },
+      "consistent": true,
+      "pos_years": 2,
+      "neg_years": 1,
+      "n_years": 3,
+      "dominant_years": 2
+    },
+    "years_consistent": true,
+    "cost_adjusted_ls": -0.0048077444524094,
+    "oos_ic_mean": 0.002666174520273791,
+    "oos_icir": 0.10203430836480598,
+    "oos_pos_folds": 1,
+    "oos": {
+      "folds": [
+        {
+          "fold": 1,
+          "start": "20240904",
+          "end": "20250411",
+          "orientation": 1,
+          "train_ic_mean": 0.04734714015885259,
+          "rank_ic_mean": 0.03941661197249626,
+          "rank_ic_std": 0.23321657893145462,
+          "icir": 0.16901290702871222,
+          "n": 143
+        },
+        {
+          "fold": 2,
+          "start": "20250414",
+          "end": "20251112",
+          "orientation": 1,
+          "train_ic_mean": 0.043381876065674424,
+          "rank_ic_mean": -0.012357444284329848,
+          "rank_ic_std": 0.2596125587657085,
+          "icir": -0.04759956276029782,
+          "n": 143
+        },
+        {
+          "fold": 3,
+          "start": "20251113",
+          "end": "20260623",
+          "orientation": 1,
+          "train_ic_mean": 0.02480210261567301,
+          "rank_ic_mean": -0.019060644127345042,
+          "rank_ic_std": 0.19273174259734602,
+          "icir": -0.09889727488827009,
+          "n": 146
+        }
+      ],
+      "oos_ic_mean": 0.002666174520273791,
+      "oos_icir": 0.10203430836480598,
+      "n_folds": 3,
+      "pos_folds": 1,
+      "period_stability": {
+        "folds": [
+          {
+            "fold": 1,
+            "start": "20240131",
+            "end": "20240903",
+            "rank_ic_mean": 0.04734714015885259,
+            "rank_ic_std": 0.22985546100776913,
+            "icir": 0.20598657935411094,
+            "n": 143
+          },
+          {
+            "fold": 2,
+            "start": "20240904",
+            "end": "20250411",
+            "rank_ic_mean": 0.03941661197249626,
+            "rank_ic_std": 0.23321657893145462,
+            "icir": 0.16901290702871222,
+            "n": 143
+          },
+          {
+            "fold": 3,
+            "start": "20250414",
+            "end": "20251112",
+            "rank_ic_mean": -0.012357444284329848,
+            "rank_ic_std": 0.2596125587657085,
+            "icir": -0.04759956276029782,
+            "n": 143
+          },
+          {
+            "fold": 4,
+            "start": "20251113",
+            "end": "20260623",
+            "rank_ic_mean": -0.019060644127345042,
+            "rank_ic_std": 0.19273174259734602,
+            "icir": -0.09889727488827009,
+            "n": 146
+          }
+        ],
+        "ic_mean": 0.01383641592991849,
+        "icir": 0.46473531588671724,
+        "n_folds": 4,
+        "pos_folds": 2
+      }
+    },
+    "period_stability": {
+      "folds": [
+        {
+          "fold": 1,
+          "start": "20240131",
+          "end": "20240903",
+          "rank_ic_mean": 0.04734714015885259,
+          "rank_ic_std": 0.22985546100776913,
+          "icir": 0.20598657935411094,
+          "n": 143
+        },
+        {
+          "fold": 2,
+          "start": "20240904",
+          "end": "20250411",
+          "rank_ic_mean": 0.03941661197249626,
+          "rank_ic_std": 0.23321657893145462,
+          "icir": 0.16901290702871222,
+          "n": 143
+        },
+        {
+          "fold": 3,
+          "start": "20250414",
+          "end": "20251112",
+          "rank_ic_mean": -0.012357444284329848,
+          "rank_ic_std": 0.2596125587657085,
+          "icir": -0.04759956276029782,
+          "n": 143
+        },
+        {
+          "fold": 4,
+          "start": "20251113",
+          "end": "20260623",
+          "rank_ic_mean": -0.019060644127345042,
+          "rank_ic_std": 0.19273174259734602,
+          "icir": -0.09889727488827009,
+          "n": 146
+        }
+      ],
+      "ic_mean": 0.01383641592991849,
+      "icir": 0.46473531588671724,
+      "n_folds": 4,
+      "pos_folds": 2
+    },
+    "orientation": 1,
+    "no_lookahead": true,
+    "trade_lag": 1,
+    "horizon": 5,
+    "data_version": "20260812T095118Z"
+  },
+  "gate": {
+    "passed": false,
+    "status": "reject",
+    "checks": {
+      "rank_ic_mean": true,
+      "abs_rank_ic": true,
+      "icir": false,
+      "coverage": true,
+      "max_corr": true,
+      "monotonic": true,
+      "turnover": true,
+      "years": true,
+      "no_lookahead": true
+    },
+    "mode": "research"
+  },
+  "summary": {
+    "rank_ic_mean": 0.013664779094837116,
+    "icir": 0.05894213179990413,
+    "coverage": 0.9650582362728783,
+    "max_corr": 0.5835056069277976,
+    "oos_ic_mean": 0.002666174520273791,
+    "cost_adjusted_ls": -0.0048077444524094,
+    "status": "reject",
+    "trade_lag": 1
+  },
+  "spec": {
+    "name": "ret_reversal_20d",
+    "version": "0.1.0",
+    "status": "draft",
+    "family": "price_volume",
+    "category": "reversal",
+    "universe": "csi100",
+    "frequency": "daily",
+    "required_fields": [
+      "close_adj"
+    ],
+    "lookback": 20,
+    "horizon": 5,
+    "neutralize": [],
+    "params": {
+      "window": 20
+    },
+    "tags": [
+      "seed"
+    ],
+    "hypothesis": "短期收益反转",
+    "entry_gate": "research",
+    "expression": null,
+    "mechanism": null,
+    "expr_hash": null
+  }
+}

@@ -1,0 +1,95 @@
+{
+  "name": "shadow_20_7652",
+  "gate_name": "research",
+  "metrics": {
+    "rank_ic_mean": 0.025858610680592233,
+    "rank_ic_std": 0.23810868144576158,
+    "icir": 0.10860003307557908,
+    "n": 577,
+    "recent_rank_ic_mean": 0.011911484907516858,
+    "coverage": 0.9683860232945094,
+    "daily_turnover": 0.09753298909925415,
+    "monotonic_score": 0.75,
+    "layered": {
+      "q1": 0.004025366972896816,
+      "q2": 0.0015723294228801477,
+      "q3": 0.0024298041672186767,
+      "q4": 0.0014289195167296721,
+      "q5": 0.0014121991171473734,
+      "long_short": -0.0026131678557494422,
+      "monotonic_score": 0.75
+    },
+    "max_corr": 0.7916799498488202,
+    "max_corr_with": "volatility_10_4285",
+    "years": {
+      "years": {
+        "2024": 0.03453774192472402,
+        "2025": 0.02059637470258691,
+        "2026": 0.019942187934771555
+      },
+      "consistent": true,
+      "pos_years": 3,
+      "neg_years": 0,
+      "n_years": 3,
+      "dominant_years": 3
+    },
+    "years_consistent": true,
+    "cost_adjusted_ls": -0.0028082338339479504,
+    "orientation": -1,
+    "no_lookahead": true,
+    "horizon": 5,
+    "data_version": "20260812T083430Z"
+  },
+  "gate": {
+    "passed": true,
+    "status": "candidate",
+    "checks": {
+      "rank_ic_mean": true,
+      "abs_rank_ic": true,
+      "icir": true,
+      "coverage": true,
+      "max_corr": true,
+      "monotonic": true,
+      "turnover": true,
+      "years": true,
+      "no_lookahead": true
+    }
+  },
+  "summary": {
+    "rank_ic_mean": 0.025858610680592233,
+    "icir": 0.10860003307557908,
+    "coverage": 0.9683860232945094,
+    "max_corr": 0.7916799498488202,
+    "status": "candidate"
+  },
+  "spec": {
+    "name": "shadow_20_7652",
+    "version": "0.1.0",
+    "status": "draft",
+    "family": "price_volume",
+    "category": "shadow",
+    "universe": "csi100",
+    "frequency": "daily",
+    "required_fields": [
+      "close",
+      "open",
+      "high",
+      "low"
+    ],
+    "lookback": 20,
+    "horizon": 5,
+    "neutralize": [],
+    "params": {
+      "expression": "ma(upper_shadow,20)"
+    },
+    "tags": [
+      "dsl",
+      "loop"
+    ],
+    "hypothesis": "影线结构；模板启发表达式 ma(upper_shadow,20)",
+    "entry_gate": "research",
+    "expression": "ma(upper_shadow,20)",
+    "mechanism": "shadow",
+    "expr_hash": null
+  }
+}

@@ -103,8 +103,8 @@ def member_meta() -> dict[str, Any]:
     return {
         "provider": "csindex",
         "note": (
-            "Official latest constituent/weight file. Full historical reconstitution "
-            "requires vendor history (e.g. Tushare index_weight). We stamp the file date "
-            "across the research window and document this limitation."
+            "Official latest constituent/weight file only. Historical reconstitutions "
+            "come from Tushare (index_weight / index_member). snapshot mode stamps "
+            "this file at window start — that is survivorship, not point-in-time."
         ),
     }

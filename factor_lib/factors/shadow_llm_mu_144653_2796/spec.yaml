@@ -1,0 +1,27 @@
+name: shadow_llm_mu_144653_2796
+version: 0.1.0
+status: screened
+family: price_volume
+category: shadow
+universe: csi100
+frequency: daily
+required_fields:
+- close
+- open
+- high
+- low
+lookback: 20
+horizon: 5
+neutralize: []
+params: {}
+tags:
+- dsl
+- loop
+- langgraph
+- llm_mutate
+hypothesis: T日收盘后，用上影线相对振幅的比值（upper_shadow/amplitude）的20日移动平均，预测未来5日截面收益：该比值越高，未来5日收益越低。；unlike
+  不同于library_cards中的div(std(overnight,40),std(amplitude,40))，该因子使用upper_shadow与amplitude的比值，且用移动平均平滑，而非标准差之比。
+entry_gate: research
+expression: neg(ma(div(upper_shadow,amplitude),20))
+mechanism: shadow
+expr_hash: 65f84b29a4875dcb

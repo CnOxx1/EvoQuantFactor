@@ -1,0 +1,26 @@
+name: liquidity_c20_103651_4320
+version: 0.1.0
+status: screened
+family: price_volume
+category: liquidity
+universe: csi100
+frequency: daily
+required_fields:
+- close
+- open
+- high
+- low
+lookback: 20
+horizon: 5
+neutralize: []
+params: {}
+tags:
+- dsl
+- loop
+- langgraph
+- compose
+hypothesis: 流动性/成交；compose sub(ma(vol,20),ma(amount,20))
+entry_gate: research
+expression: sub(ma(vol,20),ma(amount,20))
+mechanism: liquidity
+expr_hash: 874d2318d80fff9b

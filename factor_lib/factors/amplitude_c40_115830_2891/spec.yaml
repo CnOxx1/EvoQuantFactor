@@ -1,0 +1,26 @@
+name: amplitude_c40_115830_2891
+version: 0.1.0
+status: screened
+family: price_volume
+category: amplitude
+universe: csi100
+frequency: daily
+required_fields:
+- close
+- open
+- high
+- low
+lookback: 40
+horizon: 5
+neutralize: []
+params: {}
+tags:
+- dsl
+- loop
+- langgraph
+- compose
+hypothesis: 振幅结构；compose div(std(amplitude,40),ma(abs(amplitude),40))
+entry_gate: research
+expression: div(std(amplitude,40),ma(abs(amplitude),40))
+mechanism: amplitude
+expr_hash: 7fc42f92214918f4

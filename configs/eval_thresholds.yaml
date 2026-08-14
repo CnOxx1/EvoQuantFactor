@@ -2,8 +2,8 @@
 # trade_lag is read from project.yaml defaults (1 = T-day signal, T+1 trade).
 #
 # min_icir is ANNUALIZED (daily ICIR * sqrt(252)) when icir_annualized: true.
-# Production holdout uses window ICIR (mean/std over the freeze window), not *sqrt(252).
-# 1.5 annualized ≈ 0.095 window ICIR.
+# Production holdout uses Newey-West ICIR (lag = horizon-1). min_holdout_icir is NW units.
+# Former overlapping-window 0.10 ≈ NW 0.06–0.07; 0.07 does not loosen the bar.
 
 default:
   min_rank_ic_mean: 0.02
@@ -42,7 +42,8 @@ production:
   min_abs_rank_ic_mean: 0.02
   min_icir: 1.5
   icir_annualized: false
-  min_holdout_icir: 0.10   # window ICIR; 0.10 ≈ 1.5 annualized
+  icir_mode: newey_west
+  min_holdout_icir: 0.07   # NW ICIR; equivalent of former 0.10 overlapping window
   min_coverage: 0.70
   max_corr_existing: 0.70
   min_years_consistent: 2
@@ -58,7 +59,7 @@ production:
   require_years_same_sign: true
   require_residual_ic: true
   min_resid_ic_mean: 0.01
-  min_resid_icir: 0.10     # window ICIR, same units as min_holdout_icir
+  min_resid_icir: 0.07     # NW residual ICIR, same units as min_holdout_icir
 
 eval:
   forward_horizon: 5

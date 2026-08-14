@@ -1,0 +1,25 @@
+name: reversal_amplitude_10_neg_delta
+version: 0.1.0
+status: draft
+family: price_volume
+category: reversal
+universe: csi100
+frequency: daily
+required_fields:
+- close
+- open
+- high
+- low
+lookback: 20
+horizon: 5
+neutralize: []
+params:
+  expression: neg(delta(amplitude,10))
+tags:
+- dsl
+- loop
+hypothesis: 振幅的短期变化可能反映过度反应，反转因子捕捉其回落。
+entry_gate: research
+expression: neg(delta(amplitude,10))
+mechanism: reversal
+expr_hash: null

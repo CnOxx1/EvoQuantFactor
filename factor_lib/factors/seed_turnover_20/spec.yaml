@@ -1,0 +1,24 @@
+name: seed_turnover_20
+version: 0.1.0
+status: draft
+family: price_volume
+category: liquidity
+universe: csi100
+frequency: daily
+required_fields:
+- close
+- open
+- high
+- low
+lookback: 20
+horizon: 5
+neutralize: []
+params: {}
+tags:
+- dsl
+- seed
+hypothesis: 换手率均值
+entry_gate: research
+expression: ma(turnover_rate,20)
+mechanism: liquidity
+expr_hash: null

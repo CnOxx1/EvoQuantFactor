@@ -1,0 +1,26 @@
+name: volume_price_c60_104125_1070
+version: 0.1.0
+status: screened
+family: price_volume
+category: volume_price
+universe: csi100
+frequency: daily
+required_fields:
+- close
+- open
+- high
+- low
+lookback: 60
+horizon: 5
+neutralize: []
+params: {}
+tags:
+- dsl
+- loop
+- langgraph
+- compose
+hypothesis: 量价配合；compose div(rank(roc(close_adj,60)),rank(roc(amount,60)))
+entry_gate: research
+expression: div(rank(roc(close_adj,60)),rank(roc(amount,60)))
+mechanism: volume_price
+expr_hash: 66f8c937d8ec717e

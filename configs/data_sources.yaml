@@ -1,9 +1,8 @@
 primary: tushare
 fallback: baostock
 
-# Recommended no-Tushare stack:
-#   members: CSIndex official xls (000903)
-#   bars/industry/turnover: Baostock
+# Universe reconstitutions always prefer Tushare (even when bars come from Baostock).
+# Set project.yaml universe_policy.mode=snapshot to keep the old latest-file stamp.
 tushare:
   index_code: "000903.SH"
   sleep_seconds: 0.35

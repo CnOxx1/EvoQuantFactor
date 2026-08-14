@@ -1,0 +1,147 @@
+{
+  "name": "overnight_t40_175421_8430",
+  "gate_name": "research",
+  "metrics": {
+    "rank_ic_mean": 0.008000001504863312,
+    "rank_ic_std": 0.15334694185882106,
+    "icir": 0.05216929276769352,
+    "n": 557,
+    "recent_rank_ic_mean": 0.047330944794755726,
+    "coverage": 0.9351081530782028,
+    "daily_turnover": 0.09964349376114083,
+    "monotonic_score": 0.75,
+    "layered": {
+      "q1": 0.004329064026567132,
+      "q2": 0.003370835634944646,
+      "q3": 0.0038544353415630103,
+      "q4": 0.004999144049981488,
+      "q5": 0.007869329627275037,
+      "long_short": 0.003540265600707905,
+      "monotonic_score": 0.75,
+      "long_short_cost_adj": 0.0033409786131856235,
+      "cost_drag": 0.00019928698752228166
+    },
+    "max_corr": 0.8195715881551253,
+    "max_corr_with": "overnight_60_6081",
+    "years": {
+      "years": {
+        "2024": -0.006842859935170701,
+        "2025": -0.002807451335948865,
+        "2026": 0.05880461333048731
+      },
+      "consistent": true,
+      "pos_years": 1,
+      "neg_years": 2,
+      "n_years": 3,
+      "dominant_years": 2
+    },
+    "years_consistent": true,
+    "cost_adjusted_ls": 0.0033409786131856235,
+    "oos_ic_mean": 0.007924524957302372,
+    "oos_icir": 0.31431484435499774,
+    "oos_pos_folds": 2,
+    "oos": {
+      "folds": [
+        {
+          "fold": 1,
+          "start": "20240305",
+          "end": "20240925",
+          "rank_ic_mean": -0.009290310731481243,
+          "rank_ic_std": 0.12989830787483805,
+          "icir": -0.07151987491963953,
+          "n": 139
+        },
+        {
+          "fold": 2,
+          "start": "20240926",
+          "end": "20250425",
+          "rank_ic_mean": -0.01372645417157603,
+          "rank_ic_std": 0.16945137820029013,
+          "icir": -0.08100526721801858,
+          "n": 139
+        },
+        {
+          "fold": 3,
+          "start": "20250428",
+          "end": "20251120",
+          "rank_ic_mean": 0.004749902783521899,
+          "rank_ic_std": 0.12920985919487465,
+          "icir": 0.03676114820586626,
+          "n": 139
+        },
+        {
+          "fold": 4,
+          "start": "20251121",
+          "end": "20260623",
+          "rank_ic_mean": 0.04996496194874486,
+          "rank_ic_std": 0.1708290215552663,
+          "icir": 0.29248520827346824,
+          "n": 140
+        }
+      ],
+      "oos_ic_mean": 0.007924524957302372,
+      "oos_icir": 0.31431484435499774,
+      "n_folds": 4,
+      "pos_folds": 2
+    },
+    "orientation": 1,
+    "no_lookahead": true,
+    "horizon": 5,
+    "data_version": "20260812T095118Z"
+  },
+  "gate": {
+    "passed": false,
+    "status": "reject",
+    "checks": {
+      "rank_ic_mean": false,
+      "abs_rank_ic": false,
+      "icir": false,
+      "coverage": true,
+      "max_corr": true,
+      "monotonic": true,
+      "turnover": true,
+      "years": true,
+      "no_lookahead": true
+    },
+    "mode": "research"
+  },
+  "summary": {
+    "rank_ic_mean": 0.008000001504863312,
+    "icir": 0.05216929276769352,
+    "coverage": 0.9351081530782028,
+    "max_corr": 0.8195715881551253,
+    "oos_ic_mean": 0.007924524957302372,
+    "cost_adjusted_ls": 0.0033409786131856235,
+    "status": "reject"
+  },
+  "spec": {
+    "name": "overnight_t40_175421_8430",
+    "version": "0.1.0",
+    "status": "draft",
+    "family": "price_volume",
+    "category": "overnight",
+    "universe": "csi100",
+    "frequency": "daily",
+    "required_fields": [
+      "close",
+      "open",
+      "high",
+      "low"
+    ],
+    "lookback": 20,
+    "horizon": 5,
+    "neutralize": [],
+    "params": {
+      "expression": "ma(overnight,40)"
+    },
+    "tags": [
+      "dsl",
+      "loop"
+    ],
+    "hypothesis": "跳空/隔夜；模板启发表达式 ma(overnight,40)",
+    "entry_gate": "research",
+    "expression": "ma(overnight,40)",
+    "mechanism": "overnight",
+    "expr_hash": null
+  }
+}

@@ -1,0 +1,94 @@
+{
+  "name": "liquidity_20_5019",
+  "gate_name": "research",
+  "metrics": {
+    "rank_ic_mean": -0.022743974906131854,
+    "rank_ic_std": 0.21516991101306365,
+    "icir": -0.10570239490758071,
+    "n": 576,
+    "recent_rank_ic_mean": -0.07452760581544084,
+    "coverage": 0.9656128674431503,
+    "daily_turnover": 0.524080459770115,
+    "monotonic_score": 0.5,
+    "layered": {
+      "q1": 0.0022397625234403837,
+      "q2": 0.0022153177657859486,
+      "q3": 0.0027795185446255837,
+      "q4": 0.0007469743592420872,
+      "q5": 0.0030808725334421816,
+      "long_short": 0.000841110010001798,
+      "monotonic_score": 0.5
+    },
+    "max_corr": 0.638247097490778,
+    "max_corr_with": "volume_shock_20d",
+    "years": {
+      "years": {
+        "2024": 0.0018632170689277924,
+        "2025": -0.023183487288599293,
+        "2026": -0.07099618310003865
+      },
+      "consistent": true,
+      "pos_years": 1,
+      "neg_years": 2,
+      "n_years": 3,
+      "dominant_years": 2
+    },
+    "years_consistent": true,
+    "cost_adjusted_ls": -0.00020705090953843206,
+    "no_lookahead": true,
+    "horizon": 5,
+    "data_version": "20260812T083430Z"
+  },
+  "gate": {
+    "passed": false,
+    "status": "reject",
+    "checks": {
+      "rank_ic_mean": true,
+      "abs_rank_ic": true,
+      "icir": false,
+      "coverage": true,
+      "max_corr": true,
+      "monotonic": true,
+      "turnover": true,
+      "years": true,
+      "no_lookahead": true
+    }
+  },
+  "summary": {
+    "rank_ic_mean": -0.022743974906131854,
+    "icir": -0.10570239490758071,
+    "coverage": 0.9656128674431503,
+    "max_corr": 0.638247097490778,
+    "status": "reject"
+  },
+  "spec": {
+    "name": "liquidity_20_5019",
+    "version": "0.1.0",
+    "status": "draft",
+    "family": "price_volume",
+    "category": "liquidity",
+    "universe": "csi100",
+    "frequency": "daily",
+    "required_fields": [
+      "close",
+      "open",
+      "high",
+      "low"
+    ],
+    "lookback": 20,
+    "horizon": 5,
+    "neutralize": [],
+    "params": {
+      "expression": "roc(vol,20)"
+    },
+    "tags": [
+      "dsl",
+      "loop"
+    ],
+    "hypothesis": "流动性/成交；模板启发表达式 roc(vol,20)",
+    "entry_gate": "research",
+    "expression": "roc(vol,20)",
+    "mechanism": "liquidity",
+    "expr_hash": null
+  }
+}

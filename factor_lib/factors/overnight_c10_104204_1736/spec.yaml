@@ -1,0 +1,26 @@
+name: overnight_c10_104204_1736
+version: 0.1.0
+status: screened
+family: price_volume
+category: overnight
+universe: csi100
+frequency: daily
+required_fields:
+- close
+- open
+- high
+- low
+lookback: 10
+horizon: 5
+neutralize: []
+params: {}
+tags:
+- dsl
+- loop
+- langgraph
+- compose
+hypothesis: 跳空/隔夜；compose sum(overnight,10)
+entry_gate: research
+expression: sum(overnight,10)
+mechanism: overnight
+expr_hash: 5142a67c1f974fd8

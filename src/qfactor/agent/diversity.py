@@ -5,7 +5,7 @@ import time
 from collections import Counter
 from typing import Any
 
-from qfactor.eval.gate import KEEP_STATUSES
+from qfactor.eval.gate import KEEP_STATUSES, USABLE_STATUSES
 from qfactor.dsl.parser import expr_hash, parse_expression, skeleton
 from qfactor.factor.registry import FactorRegistry
 from qfactor.settings import ProjectConfig, get_project_config
@@ -119,11 +119,17 @@ def active_skeleton_bans(
     cfg: ProjectConfig | None = None,
     extra: list[str] | None = None,
     max_per: int | None = None,
+    cold_start: bool = False,
 ) -> set[str]:
     """
     Live skeleton bans: high-corr / FSA from the library, plus saturated
     kept-skeletons. Does not replay a checkpoint graveyard of one-off accepts.
+
+    Cold start: only exact hashes matter — FSA and per-skeleton caps stay off
+    until there are enough parents to evolve.
     """
+    if cold_start:
+        return set()
     cfg = cfg or get_project_config()
     prod = (cfg.project.get("production") or {}).get("diversity") or {}
     if max_per is None:
@@ -192,6 +198,45 @@ def weak_mechanisms(lessons: list[dict[str, Any]], recent: int = 30) -> dict[str
     return counts
 
 
+def _mechanism_coverage(
+    existing: list[dict[str, Any]] | None, statuses: tuple[str, ...]
+) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    allowed = set(statuses)
+    for item in existing or []:
+        if str(item.get("status") or "") not in allowed:
+            continue
+        mid = str(item.get("mechanism") or item.get("category") or "").strip()
+        if mid:
+            counts[mid] = counts.get(mid, 0) + 1
+    return counts
+
+
+def keep_mechanism_coverage(existing: list[dict[str, Any]] | None) -> dict[str, int]:
+    """Count screened+candidate+approved by mechanism (KEEP inventory, not generation hits)."""
+    return _mechanism_coverage(existing, KEEP_STATUSES)
+
+
+def usable_mechanism_coverage(existing: list[dict[str, Any]] | None) -> dict[str, int]:
+    """Count candidate/approved factors by mechanism so mining fills missing families."""
+    return _mechanism_coverage(existing, USABLE_STATUSES)
+
+
+def blocked_mechanisms(usable_coverage: dict[str, int] | None) -> set[str]:
+    """Families that already have at least one production factor."""
+    return {str(k) for k, n in (usable_coverage or {}).items() if int(n) >= 1}
+
+
+def eligible_mechanisms(
+    mechanisms: list[dict[str, Any]],
+    usable_coverage: dict[str, int] | None,
+) -> list[dict[str, Any]]:
+    """Mechanisms with zero candidate/approved factors; fall back to all if none remain."""
+    blocked = blocked_mechanisms(usable_coverage)
+    kept = [m for m in mechanisms if m.get("id") not in blocked]
+    return kept if kept else list(mechanisms)
+
+
 def pick_theme_with_lessons(
     mechanisms: list[dict[str, Any]],
     coverage: dict[str, int],
@@ -200,12 +245,15 @@ def pick_theme_with_lessons(
     soft_switch_after: int = 3,
     recent_themes: list[str] | None = None,
     hard_rotate: bool = True,
+    usable_coverage: dict[str, int] | None = None,
 ) -> str | None:
     """
     Prefer under-covered mechanisms; demote repeated failures.
     hard_rotate: avoid repeating recent themes when alternatives exist.
+    usable_coverage: families with production factors are excluded while alternatives exist.
     """
-    ids = [m["id"] for m in mechanisms]
+    pool = eligible_mechanisms(mechanisms, usable_coverage)
+    ids = [m["id"] for m in pool]
     recent = list(recent_themes or [])
     if forced and forced in ids:
         fails = weak_mechanisms(lessons).get(forced, 0)
@@ -213,7 +261,7 @@ def pick_theme_with_lessons(
             return forced
     weak = weak_mechanisms(lessons)
     scored: list[tuple[int, str]] = []
-    for m in mechanisms:
+    for m in pool:
         mid = m["id"]
         score = coverage.get(mid, 0) + 2 * weak.get(mid, 0)
         if hard_rotate and mid in recent[-3:]:

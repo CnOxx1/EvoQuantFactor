@@ -1,0 +1,26 @@
+name: momentum_c5_154128_3907
+version: 0.1.0
+status: screened
+family: price_volume
+category: momentum
+universe: csi100
+frequency: daily
+required_fields:
+- close
+- open
+- high
+- low
+lookback: 5
+horizon: 5
+neutralize: []
+params: {}
+tags:
+- dsl
+- loop
+- langgraph
+- compose
+hypothesis: 中期动量；compose div(delta(close_adj,5), std(close_adj,40))
+entry_gate: research
+expression: div(delta(close_adj,5), std(close_adj,40))
+mechanism: momentum
+expr_hash: bac211824f7b7107

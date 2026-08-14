@@ -1,0 +1,95 @@
+{
+  "name": "volume_price_t20_173839_5333",
+  "gate_name": "research",
+  "metrics": {
+    "rank_ic_mean": 0.03100988721190716,
+    "rank_ic_std": 0.22882211968674104,
+    "icir": 0.13551962220418154,
+    "n": 576,
+    "recent_rank_ic_mean": 0.07778694899582797,
+    "coverage": 0.9656128674431503,
+    "daily_turnover": 0.4634482758620691,
+    "monotonic_score": 1.0,
+    "layered": {
+      "q1": 0.00036096334337977796,
+      "q2": 0.0018333326140629815,
+      "q3": 0.0018776057977538266,
+      "q4": 0.0026297190321564992,
+      "q5": 0.00414852886259657,
+      "long_short": 0.003787565519216792,
+      "monotonic_score": 1.0
+    },
+    "max_corr": 0.6077421590866854,
+    "max_corr_with": "momentum_t20_173549_1960",
+    "years": {
+      "years": {
+        "2024": -0.0034763659093058124,
+        "2025": 0.042923096550457056,
+        "2026": 0.07390212436183204
+      },
+      "consistent": true,
+      "pos_years": 2,
+      "neg_years": 1,
+      "n_years": 3,
+      "dominant_years": 2
+    },
+    "years_consistent": true,
+    "cost_adjusted_ls": 0.002860668967492654,
+    "orientation": 1,
+    "no_lookahead": true,
+    "horizon": 5,
+    "data_version": "20260812T083430Z"
+  },
+  "gate": {
+    "passed": true,
+    "status": "candidate",
+    "checks": {
+      "rank_ic_mean": true,
+      "abs_rank_ic": true,
+      "icir": true,
+      "coverage": true,
+      "max_corr": true,
+      "monotonic": true,
+      "turnover": true,
+      "years": true,
+      "no_lookahead": true
+    }
+  },
+  "summary": {
+    "rank_ic_mean": 0.03100988721190716,
+    "icir": 0.13551962220418154,
+    "coverage": 0.9656128674431503,
+    "max_corr": 0.6077421590866854,
+    "status": "candidate"
+  },
+  "spec": {
+    "name": "volume_price_t20_173839_5333",
+    "version": "0.1.0",
+    "status": "draft",
+    "family": "price_volume",
+    "category": "volume_price",
+    "universe": "csi100",
+    "frequency": "daily",
+    "required_fields": [
+      "close",
+      "open",
+      "high",
+      "low"
+    ],
+    "lookback": 20,
+    "horizon": 5,
+    "neutralize": [],
+    "params": {
+      "expression": "sub(rank(roc(close_adj,20)),rank(roc(vol,20)))"
+    },
+    "tags": [
+      "dsl",
+      "loop"
+    ],
+    "hypothesis": "量价配合；模板启发表达式 sub(rank(roc(close_adj,20)),rank(roc(vol,20)))",
+    "entry_gate": "research",
+    "expression": "sub(rank(roc(close_adj,20)),rank(roc(vol,20)))",
+    "mechanism": "volume_price",
+    "expr_hash": null
+  }
+}

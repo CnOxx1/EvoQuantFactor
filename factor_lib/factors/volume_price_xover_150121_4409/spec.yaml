@@ -1,0 +1,26 @@
+name: volume_price_xover_150121_4409
+version: 0.1.0
+status: screened
+family: price_volume
+category: volume_price
+universe: csi100
+frequency: daily
+required_fields:
+- close
+- open
+- high
+- low
+lookback: 20
+horizon: 5
+neutralize: []
+params: {}
+tags:
+- dsl
+- loop
+- langgraph
+- crossover
+hypothesis: crossover volatility x overnight
+entry_gate: research
+expression: sub(div(std(overnight, 40), std(amplitude, 40)), rank(roc(overnight, 60)))
+mechanism: volume_price
+expr_hash: 2bcbfa99f4e2478d

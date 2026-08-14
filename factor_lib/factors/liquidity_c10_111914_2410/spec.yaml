@@ -1,0 +1,26 @@
+name: liquidity_c10_111914_2410
+version: 0.1.0
+status: screened
+family: price_volume
+category: liquidity
+universe: csi100
+frequency: daily
+required_fields:
+- close
+- open
+- high
+- low
+lookback: 10
+horizon: 5
+neutralize: []
+params: {}
+tags:
+- dsl
+- loop
+- langgraph
+- compose
+hypothesis: 流动性/成交；compose delay(roc(turnover_rate,10),20)
+entry_gate: research
+expression: delay(roc(turnover_rate,10),20)
+mechanism: liquidity
+expr_hash: c359fe482448dc1a

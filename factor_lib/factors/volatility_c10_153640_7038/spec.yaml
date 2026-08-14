@@ -1,0 +1,26 @@
+name: volatility_c10_153640_7038
+version: 0.1.0
+status: screened
+family: price_volume
+category: volatility
+universe: csi100
+frequency: daily
+required_fields:
+- close
+- open
+- high
+- low
+lookback: 10
+horizon: 5
+neutralize: []
+params: {}
+tags:
+- dsl
+- loop
+- langgraph
+- compose
+hypothesis: 波动率；compose div(std(close_adj,10), std(close_adj,20))
+entry_gate: research
+expression: div(std(close_adj,10), std(close_adj,20))
+mechanism: volatility
+expr_hash: 7311a3173b97cfa3

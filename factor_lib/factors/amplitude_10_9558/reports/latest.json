@@ -1,0 +1,234 @@
+{
+  "name": "amplitude_10_9558",
+  "gate_name": "research",
+  "metrics": {
+    "rank_ic_mean": 0.010437182683325299,
+    "rank_ic_std": 0.1597534327841814,
+    "icir": 0.06533307298269699,
+    "n": 585,
+    "recent_rank_ic_mean": 0.02739168839449798,
+    "coverage": 0.9816971713810319,
+    "daily_turnover": 0.7044142614601018,
+    "monotonic_score": 0.5,
+    "layered": {
+      "q1": 0.007339982446871422,
+      "q2": 0.004912648213425554,
+      "q3": 0.004167852859940395,
+      "q4": 0.004313357464814094,
+      "q5": 0.008134253053829551,
+      "long_short": 0.0007942706069581293,
+      "monotonic_score": 0.5,
+      "long_short_cost_adj": -0.0006145579159620744,
+      "cost_drag": 0.0014088285229202037
+    },
+    "max_corr": 0.6563137579042629,
+    "max_corr_with": "liquidity_t10_175144_9767",
+    "years": {
+      "years": {
+        "2024": 0.00846001715023296,
+        "2025": 0.0045907941744979825,
+        "2026": 0.02735067498773402
+      },
+      "consistent": true,
+      "pos_years": 3,
+      "neg_years": 0,
+      "n_years": 3,
+      "dominant_years": 3
+    },
+    "years_consistent": true,
+    "cost_adjusted_ls": -0.0006145579159620744,
+    "oos_ic_mean": -0.007881886906277554,
+    "oos_icir": -0.3710275085179566,
+    "oos_pos_folds": 1,
+    "oos": {
+      "folds": [
+        {
+          "fold": 1,
+          "start": "20240826",
+          "end": "20250407",
+          "orientation": -1,
+          "train_ic_mean": -0.01714498706184839,
+          "rank_ic_mean": -0.021689991153491843,
+          "rank_ic_std": 0.16647103467460705,
+          "icir": -0.13029288365923974,
+          "n": 146
+        },
+        {
+          "fold": 2,
+          "start": "20250408",
+          "end": "20251111",
+          "orientation": 1,
+          "train_ic_mean": 0.002272502045821728,
+          "rank_ic_mean": -0.024084661751639397,
+          "rank_ic_std": 0.1507457981165376,
+          "icir": -0.15977003705947532,
+          "n": 146
+        },
+        {
+          "fold": 3,
+          "start": "20251112",
+          "end": "20260623",
+          "orientation": -1,
+          "train_ic_mean": -0.006513219219998648,
+          "rank_ic_mean": 0.022128992186298577,
+          "rank_ic_std": 0.1462421883619066,
+          "icir": 0.1513174305866909,
+          "n": 147
+        }
+      ],
+      "oos_ic_mean": -0.007881886906277554,
+      "oos_icir": -0.3710275085179566,
+      "n_folds": 3,
+      "pos_folds": 1,
+      "period_stability": {
+        "folds": [
+          {
+            "fold": 1,
+            "start": "20240117",
+            "end": "20240823",
+            "rank_ic_mean": -0.01714498706184839,
+            "rank_ic_std": 0.1699654018094172,
+            "icir": -0.10087339469872302,
+            "n": 146
+          },
+          {
+            "fold": 2,
+            "start": "20240826",
+            "end": "20250407",
+            "rank_ic_mean": 0.021689991153491843,
+            "rank_ic_std": 0.16647103467460705,
+            "icir": 0.13029288365923974,
+            "n": 146
+          },
+          {
+            "fold": 3,
+            "start": "20250408",
+            "end": "20251111",
+            "rank_ic_mean": -0.024084661751639397,
+            "rank_ic_std": 0.1507457981165376,
+            "icir": -0.15977003705947532,
+            "n": 146
+          },
+          {
+            "fold": 4,
+            "start": "20251112",
+            "end": "20260623",
+            "rank_ic_mean": -0.022128992186298577,
+            "rank_ic_std": 0.1462421883619066,
+            "icir": -0.1513174305866909,
+            "n": 147
+          }
+        ],
+        "ic_mean": -0.01041716246157363,
+        "icir": -0.5568007845515868,
+        "n_folds": 4,
+        "pos_folds": 1
+      }
+    },
+    "period_stability": {
+      "folds": [
+        {
+          "fold": 1,
+          "start": "20240117",
+          "end": "20240823",
+          "rank_ic_mean": -0.01714498706184839,
+          "rank_ic_std": 0.1699654018094172,
+          "icir": -0.10087339469872302,
+          "n": 146
+        },
+        {
+          "fold": 2,
+          "start": "20240826",
+          "end": "20250407",
+          "rank_ic_mean": 0.021689991153491843,
+          "rank_ic_std": 0.16647103467460705,
+          "icir": 0.13029288365923974,
+          "n": 146
+        },
+        {
+          "fold": 3,
+          "start": "20250408",
+          "end": "20251111",
+          "rank_ic_mean": -0.024084661751639397,
+          "rank_ic_std": 0.1507457981165376,
+          "icir": -0.15977003705947532,
+          "n": 146
+        },
+        {
+          "fold": 4,
+          "start": "20251112",
+          "end": "20260623",
+          "rank_ic_mean": -0.022128992186298577,
+          "rank_ic_std": 0.1462421883619066,
+          "icir": -0.1513174305866909,
+          "n": 147
+        }
+      ],
+      "ic_mean": -0.01041716246157363,
+      "icir": -0.5568007845515868,
+      "n_folds": 4,
+      "pos_folds": 1
+    },
+    "orientation": -1,
+    "no_lookahead": true,
+    "trade_lag": 1,
+    "horizon": 5,
+    "data_version": "20260812T095118Z"
+  },
+  "gate": {
+    "passed": false,
+    "status": "reject",
+    "checks": {
+      "rank_ic_mean": true,
+      "abs_rank_ic": true,
+      "icir": false,
+      "coverage": true,
+      "max_corr": true,
+      "monotonic": true,
+      "turnover": true,
+      "years": true,
+      "no_lookahead": true
+    },
+    "mode": "research"
+  },
+  "summary": {
+    "rank_ic_mean": 0.010437182683325299,
+    "icir": 0.06533307298269699,
+    "coverage": 0.9816971713810319,
+    "max_corr": 0.6563137579042629,
+    "oos_ic_mean": -0.007881886906277554,
+    "cost_adjusted_ls": -0.0006145579159620744,
+    "status": "reject",
+    "trade_lag": 1
+  },
+  "spec": {
+    "name": "amplitude_10_9558",
+    "version": "0.1.0",
+    "status": "draft",
+    "family": "price_volume",
+    "category": "amplitude",
+    "universe": "csi100",
+    "frequency": "daily",
+    "required_fields": [
+      "close",
+      "open",
+      "high",
+      "low"
+    ],
+    "lookback": 20,
+    "horizon": 5,
+    "neutralize": [],
+    "params": {
+      "expression": "delta(amplitude,10)"
+    },
+    "tags": [
+      "dsl",
+      "loop"
+    ],
+    "hypothesis": "振幅结构；模板启发表达式 delta(amplitude,10)",
+    "entry_gate": "research",
+    "expression": "delta(amplitude,10)",
+    "mechanism": "amplitude",
+    "expr_hash": null
+  }
+}

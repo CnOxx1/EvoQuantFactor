@@ -1,0 +1,27 @@
+name: volatility_llm_mu_104538_4930
+version: 0.1.0
+status: screened
+family: price_volume
+category: volatility
+universe: csi100
+frequency: daily
+required_fields:
+- close
+- open
+- high
+- low
+lookback: 20
+horizon: 5
+neutralize: []
+params: {}
+tags:
+- dsl
+- loop
+- langgraph
+- llm_mutate
+hypothesis: T日收盘后，用过去10日的振幅标准差除以过去10日收益绝对值均值，衡量波动率的不稳定性。该值越高，未来5日收益越低，呈负相关。；unlike
+  不同于library_cards中的div(std(high,10),std(low,10))，该因子使用振幅和收益，而非高低价标准差之比。
+entry_gate: research
+expression: div(std(amplitude,10),ma(abs(ret_1d),10))
+mechanism: volatility
+expr_hash: 55fd90fde35f51dd

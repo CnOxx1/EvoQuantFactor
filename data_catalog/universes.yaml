@@ -2,7 +2,7 @@ csi100:
   name: 中证100
   tushare_code: "000903.SH"
   akshare_symbol: "sh000903"
-  description: CSI 100 constituents, daily research universe
+  description: Point-in-time CSI100 constituents (Tushare reconstitutions), daily research universe
 
 # Reserved
 csi300:

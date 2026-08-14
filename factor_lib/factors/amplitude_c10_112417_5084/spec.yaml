@@ -1,0 +1,26 @@
+name: amplitude_c10_112417_5084
+version: 0.1.0
+status: screened
+family: price_volume
+category: amplitude
+universe: csi100
+frequency: daily
+required_fields:
+- close
+- open
+- high
+- low
+lookback: 10
+horizon: 5
+neutralize: []
+params: {}
+tags:
+- dsl
+- loop
+- langgraph
+- compose
+hypothesis: 振幅结构；compose delay(roc(amplitude,10),60)
+entry_gate: research
+expression: delay(roc(amplitude,10),60)
+mechanism: amplitude
+expr_hash: 2a8a19d31281166f

@@ -1,7 +1,9 @@
+from qfactor.agent.coldstart import collect_fields_windows
 from qfactor.agent.diversity import (
     active_skeleton_bans,
     expression_fingerprint,
     is_banned_expression,
+    keep_mechanism_coverage,
     pick_theme_with_lessons,
     saturated_skeletons,
     unique_factor_name,
@@ -82,6 +84,18 @@ def test_pick_theme_hard_rotate_off_allows_recent():
         hard_rotate=False,
     )
     assert theme == "reversal"
+
+
+def test_pick_theme_penalizes_usable_library_families():
+    mechs = [{"id": "amplitude"}, {"id": "liquidity"}, {"id": "reversal"}]
+    theme = pick_theme_with_lessons(
+        mechs,
+        coverage={"amplitude": 0, "liquidity": 0, "reversal": 0},
+        lessons=[],
+        usable_coverage={"amplitude": 3, "liquidity": 0, "reversal": 0},
+        hard_rotate=False,
+    )
+    assert theme in {"liquidity", "reversal"}
 
 
 def test_saturated_skeletons_caps_window_shopping(monkeypatch):
@@ -190,6 +204,10 @@ def test_factor_card_is_metrics_not_name_list():
 def test_generate_skips_llm_while_catalog_thick_without_usable(monkeypatch):
     gen = CandidateGenerator(llm=LLMClient(api_key="x"))
     monkeypatch.setattr(gen, "_parent_pool", lambda existing: [])
+    monkeypatch.setattr(gen, "_unused_compose_count", lambda bans: 80)
+    monkeypatch.setattr(
+        "qfactor.agent.generator.is_cold_start", lambda existing, cfg=None: False
+    )
     out = gen.generate_batch(n=4, theme="reversal")
     assert gen.last_stats["llm_skipped"] is True
     assert gen.last_stats["force_library_mutate"] is False
@@ -207,14 +225,33 @@ def test_llm_slot_plan_forces_mutate_when_library_exists():
     assert skipped["skip_llm"] is True
     assert skipped["n_mutate"] == 0
 
+    compose_only = llm_slot_plan(
+        4, unused_compose=80, n_usable=4, ratio=0.45, has_parents=True, library_mutate_slots=0
+    )
+    assert compose_only["skip_llm"] is True
+    assert compose_only["n_mutate"] == 0
+    assert compose_only["n_template"] == 4
+
     forced = llm_slot_plan(
-        4, unused_compose=80, n_usable=4, ratio=0.45, has_parents=True
+        4,
+        unused_compose=80,
+        n_usable=4,
+        ratio=0.45,
+        has_parents=True,
+        library_mutate_slots=2,
     )
     assert forced["skip_llm"] is False
     assert forced["force_library_mutate"] is True
     assert forced["n_mutate"] == 2
     assert forced["n_fresh"] == 0
     assert forced["n_template"] == 2
+
+    thin = llm_slot_plan(
+        8, unused_compose=3, n_usable=4, ratio=0.45, has_parents=True
+    )
+    assert thin["skip_llm"] is False
+    assert thin["n_fresh"] >= 1
+    assert thin["n_mutate"] >= 1
 
 
 def test_validate_idea_rejects_unknown_fields():
@@ -281,17 +318,22 @@ def test_generate_forces_idea_then_dsl_when_candidates_exist(monkeypatch):
             return {
                 "candidates": [
                     {
-                        "expression": "div(ma(upper_shadow,10),ma(turnover_rate,10))",
+                        "expression": "add(rank(upper_shadow),neg(rank(turnover_rate)))",
                         "mechanism": "shadow",
                     }
                 ]
             }
 
     gen = CandidateGenerator(llm=_Fake())  # type: ignore[arg-type]
+    gen.llm_cfg["llm_library_mutate_slots"] = 2
+    monkeypatch.setattr(
+        "qfactor.agent.generator.is_cold_start", lambda existing, cfg=None: False
+    )
+    monkeypatch.setattr(gen, "_unused_compose_count", lambda bans: 80)
     parents = [
         {
-            "expression": "div(std(high,10),std(low,10))",
-            "mechanism": "amplitude",
+            "expression": "ma(overnight,20)",
+            "mechanism": "overnight",
             "status": "candidate",
             "summary": {
                 "rank_ic_mean": 0.04,
@@ -299,10 +341,21 @@ def test_generate_forces_idea_then_dsl_when_candidates_exist(monkeypatch):
                 "max_corr": 0.1,
                 "cost_adjusted_ls": 0.001,
             },
-        }
+        },
+        {
+            "expression": "div(ma(upper_shadow,10),ma(turnover_rate,10))",
+            "mechanism": "shadow",
+            "status": "screened",
+            "summary": {
+                "rank_ic_mean": 0.02,
+                "resid_ic_mean": 0.02,
+                "max_corr": 0.2,
+                "cost_adjusted_ls": 0.001,
+            },
+        },
     ]
     monkeypatch.setattr(gen, "_parent_pool", lambda existing: parents)
-    out = gen.generate_batch(n=4, theme="reversal")
+    out = gen.generate_batch(n=4, theme="reversal", existing=parents)
     assert calls[0] == "ideas"
     assert "compile" in calls
     assert gen.last_stats["force_library_mutate"] is True
@@ -312,8 +365,8 @@ def test_generate_forces_idea_then_dsl_when_candidates_exist(monkeypatch):
     mutated = [c for c in out if c.get("source") == "llm_mutate"]
     assert mutated
     sk = expression_fingerprint(mutated[0]["expression"])["skeleton"]
-    parent_sk = expression_fingerprint(parents[0]["expression"])["skeleton"]
-    assert sk != parent_sk
+    parent_sks = {expression_fingerprint(p["expression"])["skeleton"] for p in parents}
+    assert sk not in parent_sks
     assert mutated[0].get("idea")
 
 
@@ -330,7 +383,7 @@ def test_compile_drops_invalid_expression():
             return {
                 "candidates": [
                     {"expression": "close.pct_change(5)"},
-                    {"expression": "div(ma(upper_shadow,10),ma(turnover_rate,10))"},
+                    {"expression": "add(rank(upper_shadow),neg(rank(turnover_rate)))"},
                 ]
             }
 
@@ -349,4 +402,267 @@ def test_compile_drops_invalid_expression():
     out = gen._llm_compile_ideas(mech, ideas, [], bans)
     assert len(out) == 1
     assert "pct_change" not in out[0]["expression"]
+
+
+def test_llm_slot_plan_empty_catalog_fresh_crossover_mutate():
+    from qfactor.agent.generator import llm_slot_plan
+
+    plan = llm_slot_plan(
+        8, unused_compose=0, n_usable=4, ratio=0.45, has_parents=True
+    )
+    assert plan["n_fresh"] == 3
+    assert plan["n_mutate"] == 1
+    assert plan["n_crossover"] >= 3
+    assert plan["n_template"] == 0
+    assert plan["n_fresh"] + plan["n_crossover"] + plan["n_mutate"] + plan["n_template"] == 8
+
+
+def test_pick_theme_hard_excludes_families_with_candidates():
+    mechs = [
+        {"id": "amplitude"},
+        {"id": "overnight"},
+        {"id": "liquidity"},
+        {"id": "shadow"},
+    ]
+    theme = pick_theme_with_lessons(
+        mechs,
+        coverage={},
+        lessons=[],
+        usable_coverage={"amplitude": 3, "overnight": 1},
+        hard_rotate=False,
+    )
+    assert theme in {"liquidity", "shadow"}
+
+
+def test_priority_templates_are_new_skeletons():
+    import qfactor.agent.generator as gmod
+    from qfactor.dsl.validate import validate_expression
+
+    gmod.rebuild_compose_catalog(extra=[])
+    try:
+        assert len(gmod._PRIORITY_SPECS) >= 15
+        assert len(gmod._COMPOSE_PRIORITY) >= 10
+        pri_tmpls = {t for _m, t in gmod._PRIORITY_SPECS}
+        old_tmpls = {t for _m, t in gmod._COMPOSE_CATALOG if t not in pri_tmpls}
+        old_skels = {skeleton(parse_expression(t.format(w=20, w2=60))) for t in old_tmpls}
+        for _mech, tmpl in gmod._COMPOSE_PRIORITY:
+            expr = tmpl.format(w=20, w2=60)
+            v = validate_expression(expr)
+            assert v["ok"], (tmpl, v.get("errors"))
+            assert skeleton(parse_expression(expr)) not in old_skels
+    finally:
+        gmod.rebuild_compose_catalog()
+
+
+def test_crossover_different_mechanisms_new_skeleton():
+    gen = CandidateGenerator(llm=LLMClient(api_key="x"))
+    bans: dict[str, set[str]] = {"hashes": set(), "skeletons": set()}
+    parents = [
+        {
+            "expression": "mul(rank(turnover_rate),neg(roc(close_adj,20)))",
+            "mechanism": "reversal",
+        },
+        {
+            "expression": "div(ma(upper_shadow,10),ma(turnover_rate,10))",
+            "mechanism": "shadow",
+        },
+    ]
+    cand = gen._crossover_one(parents, bans, theme="reversal")
+    assert cand is not None
+    assert cand["source"] == "crossover"
+    sk = expression_fingerprint(cand["expression"])["skeleton"]
+    assert sk != expression_fingerprint(parents[0]["expression"])["skeleton"]
+    assert sk != expression_fingerprint(parents[1]["expression"])["skeleton"]
+
+
+def test_crossover_same_mechanism_rejected():
+    gen = CandidateGenerator(llm=LLMClient(api_key="x"))
+    bans: dict[str, set[str]] = {"hashes": set(), "skeletons": set()}
+    parents = [
+        {"expression": "neg(roc(close_adj,20))", "mechanism": "reversal"},
+        {"expression": "neg(ma(ret_1d,10))", "mechanism": "reversal"},
+    ]
+    assert gen._crossover_one(parents, bans) is None
+
+
+def test_fresh_empty_thin_catalog_does_not_compose(monkeypatch):
+    gen = CandidateGenerator(llm=LLMClient(api_key="x"))
+    monkeypatch.setattr(
+        "qfactor.agent.generator.is_cold_start", lambda existing, cfg=None: False
+    )
+    monkeypatch.setattr(gen, "_unused_compose_count", lambda bans: 0)
+    monkeypatch.setattr(gen, "_llm_fresh_batch", lambda *a, **k: [])
+    monkeypatch.setattr(gen, "_llm_mutate_batch", lambda *a, **k: [])
+    parents = [
+        {
+            "expression": "mul(rank(turnover_rate),neg(roc(close_adj,20)))",
+            "mechanism": "reversal",
+            "status": "screened",
+            "summary": {"resid_ic_mean": 0.02, "rank_ic_mean": 0.03},
+        },
+        {
+            "expression": "div(ma(upper_shadow,10),ma(turnover_rate,10))",
+            "mechanism": "shadow",
+            "status": "screened",
+            "summary": {"resid_ic_mean": 0.01, "rank_ic_mean": 0.02},
+        },
+    ]
+    monkeypatch.setattr(gen, "_parent_pool", lambda existing: parents)
+    out = gen.generate_batch(
+        n=8,
+        theme="reversal",
+        existing=[
+            {**parents[0], "status": "screened"},
+            {**parents[1], "status": "screened"},
+        ],
+    )
+    assert gen.last_stats["n_fresh"] == 3
+    assert gen.last_stats["n_crossover"] >= 3
+    assert all(c.get("source") != "compose" for c in out)
+    assert any(c.get("source") == "crossover" for c in out)
+
+
+def test_decide_theme_skips_amplitude_and_overnight(monkeypatch):
+    gen = CandidateGenerator(llm=LLMClient(api_key="x"))
+    gen.llm_cfg["llm_decide_theme"] = False
+    monkeypatch.setattr(
+        "qfactor.agent.generator.is_cold_start", lambda existing, cfg=None: False
+    )
+    existing = [
+        {"mechanism": "amplitude", "status": "candidate"},
+        {"mechanism": "amplitude", "status": "candidate"},
+        {"mechanism": "overnight", "status": "candidate"},
+        {"mechanism": "shadow", "status": "screened"},
+    ]
+    theme = gen.decide_theme({}, existing)
+    assert theme not in {"amplitude", "overnight"}
+
+
+def test_keep_mechanism_coverage_counts_keep_not_draft():
+    existing = [
+        {"mechanism": "liquidity", "status": "screened"},
+        {"mechanism": "liquidity", "status": "screened"},
+        {"mechanism": "reversal", "status": "draft"},
+        {"mechanism": "amplitude", "status": "candidate"},
+    ]
+    assert keep_mechanism_coverage(existing) == {"liquidity": 2, "amplitude": 1}
+
+
+def test_pick_theme_prefers_low_keep_inventory():
+    mechs = [{"id": "liquidity"}, {"id": "reversal"}, {"id": "shadow"}]
+    theme = pick_theme_with_lessons(
+        mechs,
+        coverage={"liquidity": 24, "reversal": 6, "shadow": 19},
+        lessons=[],
+        usable_coverage={},
+        hard_rotate=False,
+    )
+    assert theme == "reversal"
+
+
+def test_decide_theme_uses_keep_coverage_not_generation_hits(monkeypatch):
+    gen = CandidateGenerator(llm=LLMClient(api_key="x"))
+    gen.llm_cfg["llm_decide_theme"] = False
+    monkeypatch.setattr(
+        "qfactor.agent.generator.is_cold_start", lambda existing, cfg=None: False
+    )
+    existing = [
+        {"mechanism": "amplitude", "status": "candidate"},
+        {"mechanism": "overnight", "status": "candidate"},
+        {"mechanism": "reversal", "status": "screened"},
+        {"mechanism": "liquidity", "status": "screened"},
+    ]
+    theme = gen.decide_theme(
+        {
+            "liquidity": 24,
+            "shadow": 19,
+            "amplitude": 16,
+            "overnight": 10,
+            "volume_price": 10,
+            "volatility": 8,
+            "momentum": 7,
+            "reversal": 1,
+        },
+        existing,
+    )
+    assert theme == "reversal"
+
+
+def test_unused_compose_count_skips_blocked_mechanisms():
+    gen = CandidateGenerator(llm=LLMClient(api_key="x"))
+    bans: dict[str, set[str]] = {"hashes": set(), "skeletons": set()}
+    gen._blocked_mechs = set()
+    n_all = gen._unused_compose_count(bans)
+    gen._blocked_mechs = {"amplitude", "overnight", "liquidity"}
+    n_elig = gen._unused_compose_count(bans)
+    assert n_elig < n_all
+
+
+def test_crossover_skips_blocked_parents_and_fields():
+    gen = CandidateGenerator(llm=LLMClient(api_key="x"))
+    gen._blocked_mechs = {"amplitude", "overnight"}
+    bans: dict[str, set[str]] = {"hashes": set(), "skeletons": set()}
+    parents = [
+        {"expression": "ma(amplitude,20)", "mechanism": "amplitude"},
+        {"expression": "ma(overnight,20)", "mechanism": "overnight"},
+        {
+            "expression": "mul(rank(turnover_rate),neg(roc(close_adj,20)))",
+            "mechanism": "reversal",
+        },
+        {
+            "expression": "div(ma(upper_shadow,10),ma(turnover_rate,10))",
+            "mechanism": "shadow",
+        },
+    ]
+    cand = gen._crossover_one(parents, bans, theme="reversal")
+    assert cand is not None
+    fields, _ = collect_fields_windows(cand["expression"])
+    assert "amplitude" not in fields
+    assert "overnight" not in fields
+    assert cand["mechanism"] not in {"amplitude", "overnight"}
+
+
+def test_crossover_blocked_only_parents_returns_none():
+    gen = CandidateGenerator(llm=LLMClient(api_key="x"))
+    gen._blocked_mechs = {"amplitude", "overnight"}
+    bans: dict[str, set[str]] = {"hashes": set(), "skeletons": set()}
+    parents = [
+        {"expression": "ma(amplitude,20)", "mechanism": "amplitude"},
+        {"expression": "ma(overnight,20)", "mechanism": "overnight"},
+    ]
+    assert gen._crossover_one(parents, bans) is None
+
+
+def test_llm_item_named_by_expression_mechanism():
+    gen = CandidateGenerator(llm=LLMClient(api_key="x"))
+    mech = next(m for m in gen.mechanisms if m["id"] == "momentum")
+    bans: dict[str, set[str]] = {"hashes": set(), "skeletons": set()}
+    out = gen._normalize_llm_item(
+        {
+            "expression": "div(ma(turnover_rate,20),ma(abs(ret_1d),20))",
+            "mechanism": "liquidity",
+            "hypothesis": "amihud inverse",
+        },
+        mech,
+        "llm",
+        bans,
+    )
+    assert out is not None
+    assert out["mechanism"] == "liquidity"
+    assert out["name"].startswith("liquidity_")
+
+
+def test_llm_item_drops_blocked_fields():
+    gen = CandidateGenerator(llm=LLMClient(api_key="x"))
+    gen._blocked_mechs = {"overnight"}
+    mech = next(m for m in gen.mechanisms if m["id"] == "momentum")
+    bans: dict[str, set[str]] = {"hashes": set(), "skeletons": set()}
+    out = gen._normalize_llm_item(
+        {"expression": "ma(overnight,20)", "mechanism": "momentum"},
+        mech,
+        "llm",
+        bans,
+    )
+    assert out is None
+
 

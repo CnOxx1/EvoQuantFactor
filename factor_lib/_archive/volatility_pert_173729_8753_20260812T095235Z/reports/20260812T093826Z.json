@@ -1,0 +1,95 @@
+{
+  "name": "volatility_pert_173729_8753",
+  "gate_name": "research",
+  "metrics": {
+    "rank_ic_mean": 0.002013114573825198,
+    "rank_ic_std": 0.27980085392967385,
+    "icir": 0.007194812115659881,
+    "n": 576,
+    "recent_rank_ic_mean": 0.005735968109376418,
+    "coverage": 0.9667221297836939,
+    "daily_turnover": 0.0850574712643678,
+    "monotonic_score": 0.75,
+    "layered": {
+      "q1": 0.00041613991183501585,
+      "q2": 0.000634107905476552,
+      "q3": 0.0025258509086781285,
+      "q4": 0.0005167751705030544,
+      "q5": 0.0069281124354382915,
+      "long_short": 0.006511972523603276,
+      "monotonic_score": 0.75
+    },
+    "max_corr": 0.8199161814906215,
+    "max_corr_with": "volatility_10_4285",
+    "years": {
+      "years": {
+        "2024": -0.00963327953755526,
+        "2025": 0.01628894228604777,
+        "2026": -0.005946584897738952
+      },
+      "consistent": true,
+      "pos_years": 1,
+      "neg_years": 2,
+      "n_years": 3,
+      "dominant_years": 2
+    },
+    "years_consistent": true,
+    "cost_adjusted_ls": 0.00634185758107454,
+    "orientation": 1,
+    "no_lookahead": true,
+    "horizon": 5,
+    "data_version": "20260812T083430Z"
+  },
+  "gate": {
+    "passed": false,
+    "status": "reject",
+    "checks": {
+      "rank_ic_mean": false,
+      "abs_rank_ic": false,
+      "icir": false,
+      "coverage": true,
+      "max_corr": true,
+      "monotonic": true,
+      "turnover": true,
+      "years": true,
+      "no_lookahead": true
+    }
+  },
+  "summary": {
+    "rank_ic_mean": 0.002013114573825198,
+    "icir": 0.007194812115659881,
+    "coverage": 0.9667221297836939,
+    "max_corr": 0.8199161814906215,
+    "status": "reject"
+  },
+  "spec": {
+    "name": "volatility_pert_173729_8753",
+    "version": "0.1.0",
+    "status": "draft",
+    "family": "price_volume",
+    "category": "volatility",
+    "universe": "csi100",
+    "frequency": "daily",
+    "required_fields": [
+      "close",
+      "open",
+      "high",
+      "low"
+    ],
+    "lookback": 20,
+    "horizon": 5,
+    "neutralize": [],
+    "params": {
+      "expression": "std(ret_1d,20)"
+    },
+    "tags": [
+      "dsl",
+      "loop"
+    ],
+    "hypothesis": "波动率；模板启发表达式 std(ret_1d,10) | window perturb",
+    "entry_gate": "research",
+    "expression": "std(ret_1d,20)",
+    "mechanism": "volatility",
+    "expr_hash": null
+  }
+}

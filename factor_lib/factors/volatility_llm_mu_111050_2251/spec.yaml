@@ -1,0 +1,26 @@
+name: volatility_llm_mu_111050_2251
+version: 0.1.0
+status: screened
+family: price_volume
+category: volatility
+universe: csi100
+frequency: daily
+required_fields:
+- close
+- open
+- high
+- low
+lookback: 20
+horizon: 5
+neutralize: []
+params: {}
+tags:
+- dsl
+- loop
+- langgraph
+- llm_mutate
+hypothesis: 隔夜收益波动率高的股票未来5日收益倾向于更低，隔夜收益的标准差与未来收益负相关。；unlike 不同于library_cards中的div(std(overnight,40),std(amplitude,40))，该因子仅使用隔夜收益的标准差，不涉及振幅。
+entry_gate: research
+expression: neg(std(overnight,20))
+mechanism: volatility
+expr_hash: 121fc769c94e8638

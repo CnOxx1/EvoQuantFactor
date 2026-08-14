@@ -1,0 +1,27 @@
+name: momentum_llm_mu_104647_6042
+version: 0.1.0
+status: screened
+family: price_volume
+category: amplitude
+universe: csi100
+frequency: daily
+required_fields:
+- close
+- open
+- high
+- low
+lookback: 20
+horizon: 5
+neutralize: []
+params: {}
+tags:
+- dsl
+- loop
+- langgraph
+- llm_mutate
+hypothesis: T日收盘后，计算过去10日平均振幅（amplitude的10日均值）与过去40日平均振幅之差，该差值在截面上的排序与未来5日收益负相关。；unlike
+  该因子是振幅均值差，与library_cards中的振幅变化率（如delay(roc(amplitude,40),60)）不同，且不是简单改变窗口。
+entry_gate: research
+expression: sub(ma(amplitude,10),ma(amplitude,40))
+mechanism: amplitude
+expr_hash: 67ffedbb1a758018

@@ -1,0 +1,33 @@
+name: momentum_llm_143848_8537
+version: 0.1.0
+status: candidate
+family: price_volume
+category: liquidity
+universe: csi100
+frequency: daily
+required_fields:
+- close
+- open
+- high
+- low
+lookback: 20
+horizon: 5
+neutralize: []
+params: {}
+tags:
+- dsl
+- loop
+- langgraph
+- llm
+hypothesis: 'The ratio of the 20-day moving average of turnover rate to the 20-day
+  moving average of absolute return (ret_1d) predicts future 5-day returns: higher
+  turnover relative to absolute return (i.e., high turnover with low price movement)
+  is associated with higher future returns, indicating that active trading without
+  price change may precede upward moves.；unlike This is not the same as the candidate
+  ''div(abs(ret_1d),ma(turnover_rate,60))'' which uses absolute return in the numerator
+  and a longer moving average of turnover; here we use the inverse ratio with a shorter
+  window and no absolute value on return.'
+entry_gate: research
+expression: div(ma(turnover_rate,20),ma(abs(ret_1d),20))
+mechanism: liquidity
+expr_hash: cb6eac739eabc393

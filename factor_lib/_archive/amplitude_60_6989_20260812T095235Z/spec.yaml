@@ -1,0 +1,25 @@
+name: amplitude_60_6989
+version: 0.1.0
+status: draft
+family: price_volume
+category: amplitude
+universe: csi100
+frequency: daily
+required_fields:
+- close
+- open
+- high
+- low
+lookback: 20
+horizon: 5
+neutralize: []
+params:
+  expression: delta(amplitude,60)
+tags:
+- dsl
+- loop
+hypothesis: 振幅结构；模板启发表达式 delta(amplitude,60)
+entry_gate: research
+expression: delta(amplitude,60)
+mechanism: amplitude
+expr_hash: null

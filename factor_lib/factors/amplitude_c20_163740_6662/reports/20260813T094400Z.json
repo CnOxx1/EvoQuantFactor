@@ -1,0 +1,219 @@
+{
+  "name": "amplitude_c20_163740_6662",
+  "gate_name": "production",
+  "metrics": {
+    "rank_ic_mean": 0.03216512494979965,
+    "rank_ic_std": 0.16489706505412363,
+    "icir": 0.19506184018037068,
+    "icir_ann": 3.0965107163753243,
+    "n": 111,
+    "recent_rank_ic_mean": 0.08018020780107837,
+    "coverage": 0.9991379310344827,
+    "daily_turnover": 0.05807780320366136,
+    "monotonic_score": 0.4,
+    "monotonic_steps": 0.75,
+    "layered": {
+      "q1": -0.0006491057344606538,
+      "q2": -0.0009048675009355612,
+      "q3": -0.001024845056125381,
+      "q4": -0.0007079938329010112,
+      "q5": 0.0025859241143345734,
+      "long_short": 0.003235029848795227,
+      "monotonic_steps": 0.5,
+      "monotonic_score": 0.3,
+      "long_short_daily": 0.003235029848795227,
+      "long_short_cost_adj": 0.003176952045591566,
+      "cost_drag": 5.807780320366136e-05,
+      "cost_horizon": 1,
+      "horizon_layered": {
+        "q1": -0.003982510088037403,
+        "q2": -0.0062285235106780915,
+        "q3": -0.005004434957137714,
+        "q4": -0.004254909403128251,
+        "q5": 0.011069945383694619,
+        "long_short": 0.01505245547173202,
+        "monotonic_steps": 0.75,
+        "monotonic_score": 0.4
+      }
+    },
+    "max_corr": 0.7413247813169774,
+    "max_corr_with": "shadow_t5_142049_8374",
+    "corr_skipped": false,
+    "resid_ic_mean": -0.0005586524957582931,
+    "resid_icir": -0.0053235939968270885,
+    "resid_icir_ann": -0.08450943478008513,
+    "n_peers": 4,
+    "years": {
+      "years": {
+        "2024": 0.02099446828533583,
+        "2025": -0.0032587318460520587
+      },
+      "consistent": false,
+      "pos_years": 1,
+      "neg_years": 1,
+      "n_years": 2,
+      "dominant_years": 1
+    },
+    "years_consistent": false,
+    "cost_adjusted_ls": 0.003176952045591566,
+    "oos_ic_mean": 0.03216512494979965,
+    "oos_icir": 0.19506184018037068,
+    "oos_pos_folds": 1,
+    "oos": {
+      "folds": [
+        {
+          "fold": 1,
+          "start": "20260105",
+          "end": "20260623",
+          "orientation": 1,
+          "rank_ic_mean": 0.03216512494979965,
+          "rank_ic_std": 0.16489706505412363,
+          "icir": 0.19506184018037068,
+          "icir_ann": 3.0965107163753243,
+          "n": 111
+        }
+      ],
+      "oos_ic_mean": 0.03216512494979965,
+      "oos_icir": 0.19506184018037068,
+      "n_folds": 1,
+      "pos_folds": 1,
+      "period_stability": {
+        "folds": [
+          {
+            "fold": 1,
+            "start": "20260105",
+            "end": "20260330",
+            "rank_ic_mean": -0.01998771879689034,
+            "rank_ic_std": 0.12761045989506922,
+            "icir": -0.15663072457638444,
+            "icir_ann": -2.486435669405796,
+            "n": 55
+          },
+          {
+            "fold": 2,
+            "start": "20260331",
+            "end": "20260623",
+            "rank_ic_mean": 0.08338666791529874,
+            "rank_ic_std": 0.1805765713560313,
+            "icir": 0.46178010408055964,
+            "icir_ann": 7.330531894768103,
+            "n": 56
+          }
+        ],
+        "ic_mean": 0.0316994745592042,
+        "icir": 0.6132945610107587,
+        "n_folds": 2,
+        "pos_folds": 1
+      }
+    },
+    "period_stability": {
+      "folds": [
+        {
+          "fold": 1,
+          "start": "20260105",
+          "end": "20260330",
+          "rank_ic_mean": -0.01998771879689034,
+          "rank_ic_std": 0.12761045989506922,
+          "icir": -0.15663072457638444,
+          "icir_ann": -2.486435669405796,
+          "n": 55
+        },
+        {
+          "fold": 2,
+          "start": "20260331",
+          "end": "20260623",
+          "rank_ic_mean": 0.08338666791529874,
+          "rank_ic_std": 0.1805765713560313,
+          "icir": 0.46178010408055964,
+          "icir_ann": 7.330531894768103,
+          "n": 56
+        }
+      ],
+      "ic_mean": 0.0316994745592042,
+      "icir": 0.6132945610107587,
+      "n_folds": 2,
+      "pos_folds": 1
+    },
+    "orientation": 1,
+    "orientation_source": "train",
+    "no_lookahead": true,
+    "trade_lag": 1,
+    "horizon": 5,
+    "signal_hold_days": 5,
+    "recent_window": 55,
+    "neutralized": [
+      "industry",
+      "circ_mv",
+      "hold5"
+    ],
+    "eval_split": "holdout",
+    "train_end": "20251231",
+    "eval_start": "20260105",
+    "eval_end": "20260630",
+    "universe_mode": "latest_snapshot",
+    "data_version": "20260812T095118Z"
+  },
+  "gate": {
+    "passed": false,
+    "status": "reject",
+    "checks": {
+      "rank_ic_mean": true,
+      "abs_rank_ic": true,
+      "icir": true,
+      "coverage": true,
+      "max_corr": false,
+      "monotonic": false,
+      "turnover": true,
+      "years": false,
+      "no_lookahead": true,
+      "recent_ic": true,
+      "oos": true,
+      "cost_ls": true,
+      "resid_ic": false
+    },
+    "mode": "production"
+  },
+  "summary": {
+    "rank_ic_mean": 0.03216512494979965,
+    "icir": 0.19506184018037068,
+    "icir_ann": 3.0965107163753243,
+    "coverage": 0.9991379310344827,
+    "max_corr": 0.7413247813169774,
+    "resid_ic_mean": -0.0005586524957582931,
+    "oos_ic_mean": 0.03216512494979965,
+    "cost_adjusted_ls": 0.003176952045591566,
+    "status": "reject",
+    "trade_lag": 1,
+    "eval_split": "holdout"
+  },
+  "spec": {
+    "name": "amplitude_c20_163740_6662",
+    "version": "0.1.0",
+    "status": "draft",
+    "family": "price_volume",
+    "category": "amplitude",
+    "universe": "csi100",
+    "frequency": "daily",
+    "required_fields": [
+      "close",
+      "open",
+      "high",
+      "low"
+    ],
+    "lookback": 20,
+    "horizon": 5,
+    "neutralize": [],
+    "params": {
+      "expression": "div(ma(high,20),ma(low,20))"
+    },
+    "tags": [
+      "dsl",
+      "loop"
+    ],
+    "hypothesis": "振幅结构；compose div(ma(high,20),ma(low,20))",
+    "entry_gate": "research",
+    "expression": "div(ma(high,20),ma(low,20))",
+    "mechanism": "amplitude",
+    "expr_hash": null
+  }
+}

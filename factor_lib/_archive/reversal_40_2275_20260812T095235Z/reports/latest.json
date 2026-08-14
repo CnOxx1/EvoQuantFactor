@@ -1,0 +1,94 @@
+{
+  "name": "reversal_40_2275",
+  "gate_name": "research",
+  "metrics": {
+    "rank_ic_mean": -0.0001443504552653659,
+    "rank_ic_std": 0.2826624835139487,
+    "icir": -0.0005106813379365308,
+    "n": 556,
+    "recent_rank_ic_mean": 0.0015111369079546615,
+    "coverage": 0.9334442595673876,
+    "daily_turnover": 0.13214285714285712,
+    "monotonic_score": 0.75,
+    "layered": {
+      "q1": 0.003709152517616601,
+      "q2": -0.0009979693940971605,
+      "q3": 0.003004977793808489,
+      "q4": 0.0012528809968966983,
+      "q5": -0.00032034966288124934,
+      "long_short": -0.00402950218049785,
+      "monotonic_score": 0.75
+    },
+    "max_corr": 0.7624271626497663,
+    "max_corr_with": "ret_momentum_60d",
+    "years": {
+      "years": {
+        "2024": -0.020396751880527274,
+        "2025": 0.01840286733502785,
+        "2026": -0.00389199761867391
+      },
+      "consistent": true,
+      "pos_years": 1,
+      "neg_years": 2,
+      "n_years": 3,
+      "dominant_years": 2
+    },
+    "years_consistent": true,
+    "cost_adjusted_ls": -0.004293787894783564,
+    "no_lookahead": true,
+    "horizon": 5,
+    "data_version": "20260812T083430Z"
+  },
+  "gate": {
+    "passed": false,
+    "status": "reject",
+    "checks": {
+      "rank_ic_mean": false,
+      "abs_rank_ic": false,
+      "icir": false,
+      "coverage": true,
+      "max_corr": true,
+      "monotonic": true,
+      "turnover": true,
+      "years": true,
+      "no_lookahead": true
+    }
+  },
+  "summary": {
+    "rank_ic_mean": -0.0001443504552653659,
+    "icir": -0.0005106813379365308,
+    "coverage": 0.9334442595673876,
+    "max_corr": 0.7624271626497663,
+    "status": "reject"
+  },
+  "spec": {
+    "name": "reversal_40_2275",
+    "version": "0.1.0",
+    "status": "draft",
+    "family": "price_volume",
+    "category": "reversal",
+    "universe": "csi100",
+    "frequency": "daily",
+    "required_fields": [
+      "close",
+      "open",
+      "high",
+      "low"
+    ],
+    "lookback": 20,
+    "horizon": 5,
+    "neutralize": [],
+    "params": {
+      "expression": "neg(roc(close_adj,40))"
+    },
+    "tags": [
+      "dsl",
+      "loop"
+    ],
+    "hypothesis": "短期反转；模板启发表达式 neg(roc(close_adj,40))",
+    "entry_gate": "research",
+    "expression": "neg(roc(close_adj,40))",
+    "mechanism": "reversal",
+    "expr_hash": null
+  }
+}

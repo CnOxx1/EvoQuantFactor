@@ -1,0 +1,24 @@
+name: seed_volume_shock_20
+version: 0.1.0
+status: draft
+family: price_volume
+category: liquidity
+universe: csi100
+frequency: daily
+required_fields:
+- close
+- open
+- high
+- low
+lookback: 20
+horizon: 5
+neutralize: []
+params: {}
+tags:
+- dsl
+- seed
+hypothesis: 成交量相对20日均值
+entry_gate: research
+expression: div(vol,ma(vol,20))
+mechanism: liquidity
+expr_hash: null

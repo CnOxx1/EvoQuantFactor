@@ -77,6 +77,32 @@ def test_summarize_ic_annualizes():
     s = summarize_ic(ic)
     assert s["icir_ann"] == s["icir"] * (252 ** 0.5)
     assert s["n"] == 4
+    assert s["icir_nw"] == s["icir"]
+    assert s["n_independent"] == 4
+
+
+def test_newey_west_icir_shrinks_when_autocorrelated():
+    from qfactor.eval.ic import newey_west_variance
+
+    rng = np.random.default_rng(0)
+    e = rng.normal(scale=0.05, size=200)
+    ic = pd.Series(np.convolve(e, np.ones(5) / 5, mode="valid") + 0.03)
+    naive = summarize_ic(ic, nw_lags=0)
+    nw = summarize_ic(ic, nw_lags=4)
+    assert nw["icir_nw"] < naive["icir"]
+    assert nw["n_independent"] == round(len(ic) / 5)
+    assert newey_west_variance(ic.to_numpy(), 4) > newey_west_variance(ic.to_numpy(), 0)
+
+
+def test_drop_tail_trims_horizon_leak():
+    from qfactor.eval.timing import drop_tail
+
+    idx = pd.Index(["20251224", "20251225", "20251226", "20251229", "20251230", "20251231"])
+    panel = pd.DataFrame({"a": range(6)}, index=idx)
+    out = drop_tail(panel, 5)
+    assert list(out.index.astype(str)) == ["20251224"]
+    assert drop_tail(panel, 0).equals(panel)
+    assert drop_tail(panel, 10).empty
 
 
 def test_yearly_consistency_rejects_mixed_signs():

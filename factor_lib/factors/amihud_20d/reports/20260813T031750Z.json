@@ -1,0 +1,231 @@
+{
+  "name": "amihud_20d",
+  "gate_name": "research",
+  "metrics": {
+    "rank_ic_mean": 0.013525571508541013,
+    "rank_ic_std": 0.17799861133990713,
+    "icir": 0.07598694959879494,
+    "n": 575,
+    "recent_rank_ic_mean": 0.06845586454142066,
+    "coverage": 0.9613810316139767,
+    "daily_turnover": 0.046941187164803215,
+    "monotonic_score": 0.75,
+    "layered": {
+      "q1": 0.006429539811689701,
+      "q2": 0.0041287961906052795,
+      "q3": 0.005150928466883034,
+      "q4": 0.006110217322073571,
+      "q5": 0.008318247481747726,
+      "long_short": 0.0018887076700580246,
+      "monotonic_score": 0.75,
+      "long_short_cost_adj": 0.0017948252957284182,
+      "cost_drag": 9.388237432960644e-05
+    },
+    "max_corr": 0.9767442641665431,
+    "max_corr_with": "liquidity_40_4891",
+    "years": {
+      "years": {
+        "2024": -0.010501088064017032,
+        "2025": 0.0075067866360604765,
+        "2026": 0.07453869303600139
+      },
+      "consistent": true,
+      "pos_years": 2,
+      "neg_years": 1,
+      "n_years": 3,
+      "dominant_years": 2
+    },
+    "years_consistent": true,
+    "cost_adjusted_ls": 0.0017948252957284182,
+    "oos_ic_mean": -0.021863156279988704,
+    "oos_icir": -0.6942718282991593,
+    "oos_pos_folds": 1,
+    "oos": {
+      "folds": [
+        {
+          "fold": 1,
+          "start": "20240904",
+          "end": "20250411",
+          "orientation": 1,
+          "train_ic_mean": 0.012540090855318485,
+          "rank_ic_mean": 0.012248392779275658,
+          "rank_ic_std": 0.1727080835461748,
+          "icir": 0.07091962650376442,
+          "n": 143
+        },
+        {
+          "fold": 2,
+          "start": "20250414",
+          "end": "20251112",
+          "orientation": 1,
+          "train_ic_mean": 0.01239424181729707,
+          "rank_ic_mean": -0.014123673083751006,
+          "rank_ic_std": 0.1587504771220623,
+          "icir": -0.08896775203322001,
+          "n": 143
+        },
+        {
+          "fold": 3,
+          "start": "20251113",
+          "end": "20260623",
+          "orientation": 1,
+          "train_ic_mean": 0.003554936850281049,
+          "rank_ic_mean": -0.06371418853549077,
+          "rank_ic_std": 0.1886919296010574,
+          "icir": -0.33766249923989183,
+          "n": 146
+        }
+      ],
+      "oos_ic_mean": -0.021863156279988704,
+      "oos_icir": -0.6942718282991593,
+      "n_folds": 3,
+      "pos_folds": 1,
+      "period_stability": {
+        "folds": [
+          {
+            "fold": 1,
+            "start": "20240131",
+            "end": "20240903",
+            "rank_ic_mean": 0.012540090855318485,
+            "rank_ic_std": 0.17916893008366577,
+            "icir": 0.06999032058439313,
+            "n": 143
+          },
+          {
+            "fold": 2,
+            "start": "20240904",
+            "end": "20250411",
+            "rank_ic_mean": 0.012248392779275658,
+            "rank_ic_std": 0.1727080835461748,
+            "icir": 0.07091962650376442,
+            "n": 143
+          },
+          {
+            "fold": 3,
+            "start": "20250414",
+            "end": "20251112",
+            "rank_ic_mean": -0.014123673083751006,
+            "rank_ic_std": 0.1587504771220623,
+            "icir": -0.08896775203322001,
+            "n": 143
+          },
+          {
+            "fold": 4,
+            "start": "20251113",
+            "end": "20260623",
+            "rank_ic_mean": -0.06371418853549077,
+            "rank_ic_std": 0.1886919296010574,
+            "icir": -0.33766249923989183,
+            "n": 146
+          }
+        ],
+        "ic_mean": -0.013262344496161909,
+        "icir": -0.4267810788127366,
+        "n_folds": 4,
+        "pos_folds": 2
+      }
+    },
+    "period_stability": {
+      "folds": [
+        {
+          "fold": 1,
+          "start": "20240131",
+          "end": "20240903",
+          "rank_ic_mean": 0.012540090855318485,
+          "rank_ic_std": 0.17916893008366577,
+          "icir": 0.06999032058439313,
+          "n": 143
+        },
+        {
+          "fold": 2,
+          "start": "20240904",
+          "end": "20250411",
+          "rank_ic_mean": 0.012248392779275658,
+          "rank_ic_std": 0.1727080835461748,
+          "icir": 0.07091962650376442,
+          "n": 143
+        },
+        {
+          "fold": 3,
+          "start": "20250414",
+          "end": "20251112",
+          "rank_ic_mean": -0.014123673083751006,
+          "rank_ic_std": 0.1587504771220623,
+          "icir": -0.08896775203322001,
+          "n": 143
+        },
+        {
+          "fold": 4,
+          "start": "20251113",
+          "end": "20260623",
+          "rank_ic_mean": -0.06371418853549077,
+          "rank_ic_std": 0.1886919296010574,
+          "icir": -0.33766249923989183,
+          "n": 146
+        }
+      ],
+      "ic_mean": -0.013262344496161909,
+      "icir": -0.4267810788127366,
+      "n_folds": 4,
+      "pos_folds": 2
+    },
+    "orientation": -1,
+    "no_lookahead": true,
+    "trade_lag": 1,
+    "horizon": 5,
+    "data_version": "20260812T095118Z"
+  },
+  "gate": {
+    "passed": false,
+    "status": "reject",
+    "checks": {
+      "rank_ic_mean": true,
+      "abs_rank_ic": true,
+      "icir": false,
+      "coverage": true,
+      "max_corr": false,
+      "monotonic": true,
+      "turnover": true,
+      "years": true,
+      "no_lookahead": true
+    },
+    "mode": "research"
+  },
+  "summary": {
+    "rank_ic_mean": 0.013525571508541013,
+    "icir": 0.07598694959879494,
+    "coverage": 0.9613810316139767,
+    "max_corr": 0.9767442641665431,
+    "oos_ic_mean": -0.021863156279988704,
+    "cost_adjusted_ls": 0.0017948252957284182,
+    "status": "reject",
+    "trade_lag": 1
+  },
+  "spec": {
+    "name": "amihud_20d",
+    "version": "0.1.0",
+    "status": "draft",
+    "family": "price_volume",
+    "category": "liquidity",
+    "universe": "csi100",
+    "frequency": "daily",
+    "required_fields": [
+      "ret_1d",
+      "amount"
+    ],
+    "lookback": 20,
+    "horizon": 5,
+    "neutralize": [],
+    "params": {
+      "window": 20
+    },
+    "tags": [
+      "seed"
+    ],
+    "hypothesis": "Amihud非流动性",
+    "entry_gate": "research",
+    "expression": null,
+    "mechanism": null,
+    "expr_hash": null
+  }
+}

@@ -1,0 +1,26 @@
+name: amplitude_c40_120226_4503
+version: 0.1.0
+status: screened
+family: price_volume
+category: amplitude
+universe: csi100
+frequency: daily
+required_fields:
+- close
+- open
+- high
+- low
+lookback: 40
+horizon: 5
+neutralize: []
+params: {}
+tags:
+- dsl
+- loop
+- langgraph
+- compose
+hypothesis: 振幅结构；compose delta(ma(amplitude,40),10)
+entry_gate: research
+expression: delta(ma(amplitude,40),10)
+mechanism: amplitude
+expr_hash: 4f703514bf577ecd

@@ -1,0 +1,26 @@
+name: volume_price_xover_145027_6282
+version: 0.1.0
+status: screened
+family: price_volume
+category: volume_price
+universe: csi100
+frequency: daily
+required_fields:
+- close
+- open
+- high
+- low
+lookback: 20
+horizon: 5
+neutralize: []
+params: {}
+tags:
+- dsl
+- loop
+- langgraph
+- crossover
+hypothesis: crossover volatility x liquidity
+entry_gate: research
+expression: sub(rank(delta(ret_1d, 60)), ma(turnover_rate, 60))
+mechanism: volume_price
+expr_hash: 4b974f37da663356

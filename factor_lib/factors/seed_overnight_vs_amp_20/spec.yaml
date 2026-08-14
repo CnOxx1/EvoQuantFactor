@@ -1,0 +1,24 @@
+name: seed_overnight_vs_amp_20
+version: 0.1.0
+status: draft
+family: price_volume
+category: overnight
+universe: csi100
+frequency: daily
+required_fields:
+- close
+- open
+- high
+- low
+lookback: 20
+horizon: 5
+neutralize: []
+params: {}
+tags:
+- dsl
+- seed
+hypothesis: 跳空均值相对振幅均值的背离
+entry_gate: research
+expression: sub(ma(overnight,20),ma(amplitude,20))
+mechanism: overnight
+expr_hash: null

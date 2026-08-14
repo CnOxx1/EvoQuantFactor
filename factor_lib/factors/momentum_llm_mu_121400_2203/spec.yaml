@@ -1,0 +1,26 @@
+name: momentum_llm_mu_121400_2203
+version: 0.1.0
+status: screened
+family: price_volume
+category: amplitude
+universe: csi100
+frequency: daily
+required_fields:
+- close
+- open
+- high
+- low
+lookback: 20
+horizon: 5
+neutralize: []
+params: {}
+tags:
+- dsl
+- loop
+- langgraph
+- llm_mutate
+hypothesis: T日收盘后，用过去20日的平均真实波幅（以振幅近似）除以过去60日的平均振幅，得到的比值越高，未来5日收益越低。；unlike library_cards中的div(std(amplitude,40),std(overnight,40))是波动率比值，本因子是均值比值，且窗口不同，不是同一件事。
+entry_gate: research
+expression: div(ma(amplitude,20),ma(amplitude,60))
+mechanism: amplitude
+expr_hash: 3e5abb532cb29234

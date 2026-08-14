@@ -9,16 +9,22 @@ from typing import Any, Literal, TypedDict
 from langgraph.graph import END, START, StateGraph
 
 from qfactor.agent.checkpoint import CheckpointStore
+from qfactor.agent.coldstart import cold_start_cfg, ensure_dsl_seeds, is_cold_start
 from qfactor.agent.diversity import (
     expression_fingerprint,
     is_banned_expression,
+    keep_mechanism_coverage,
     library_diversity_index,
     merge_bans,
     record_lesson,
     active_skeleton_bans,
     skeleton_keep_counts,
 )
-from qfactor.agent.generator import CandidateGenerator, _production_llm_cfg
+from qfactor.agent.generator import (
+    CandidateGenerator,
+    _production_llm_cfg,
+    should_expand_compose_catalog,
+)
 from qfactor.agent.llm import LLMClient
 from qfactor.agent.reviewer import CandidateReviewer
 from qfactor.eval.service import EvalService
@@ -95,6 +101,8 @@ class ProductionState(TypedDict, total=False):
     banned_hashes: list[str]
     high_corr_skeletons: list[str]
     recent_themes: list[str]
+    cold_start: bool
+    last_catalog_expand_round: int | None
 
 
 class ProductionContext:
@@ -113,16 +121,18 @@ class ProductionContext:
 def _node_decide(ctx: ProductionContext):
     def decide(state: ProductionState) -> dict[str, Any]:
         existing = ctx.registry.existing_summaries()
-        coverage = dict(state.get("mechanism_hits") or {})
+        coverage = keep_mechanism_coverage(existing)
         lessons = list(state.get("lessons") or [])
         recent_themes = list(state.get("recent_themes") or [])
         forced = state.get("theme")
-        # Refresh bans from the live library. Do not replay checkpoint skeleton
-        # graveyards — that froze generation after the first two accepts.
+        cold = is_cold_start(existing, ctx.cfg)
+        disable_fsa = bool(cold_start_cfg(ctx.cfg)["disable_fsa"] and cold)
         index = library_diversity_index(ctx.cfg)
         banned_skels = sorted(
             active_skeleton_bans(
-                ctx.cfg, extra=list(state.get("high_corr_skeletons") or [])
+                ctx.cfg,
+                extra=list(state.get("high_corr_skeletons") or []),
+                cold_start=disable_fsa,
             )
         )
         banned_hashes = sorted(
@@ -145,6 +155,7 @@ def _node_decide(ctx: ProductionContext):
             "round_stats": {},
             "banned_skeletons": banned_skels,
             "banned_hashes": banned_hashes,
+            "cold_start": cold,
         }
 
     return decide
@@ -153,7 +164,7 @@ def _node_decide(ctx: ProductionContext):
 def _node_generate(ctx: ProductionContext):
     def generate(state: ProductionState) -> dict[str, Any]:
         existing = ctx.registry.existing_summaries()
-        coverage = dict(state.get("mechanism_hits") or {})
+        coverage = keep_mechanism_coverage(existing)
         lessons = list(state.get("lessons") or [])
         cands = ctx.generator.generate_batch(
             n=int(state.get("batch_size") or 8),
@@ -166,6 +177,7 @@ def _node_generate(ctx: ProductionContext):
             lessons=lessons,
             extra_banned_skeletons=list(state.get("banned_skeletons") or []),
             extra_banned_hashes=list(state.get("banned_hashes") or []),
+            round_idx=int(state.get("rounds_done") or 0),
         )
         src_counts: dict[str, int] = {}
         for c in cands:
@@ -189,9 +201,18 @@ def _node_generate(ctx: ProductionContext):
             "llm_skipped": gen_stats.get("llm_skipped"),
             "force_library_mutate": gen_stats.get("force_library_mutate"),
             "n_mutate": gen_stats.get("n_mutate"),
+            "n_crossover": gen_stats.get("n_crossover"),
             "n_usable": gen_stats.get("n_usable"),
             "llm_ideas": gen_stats.get("llm_ideas"),
             "unused_compose": gen_stats.get("unused_compose"),
+            "cold_start": gen_stats.get("cold_start"),
+            "n_fresh": gen_stats.get("n_fresh"),
+            "crossover_ok": gen_stats.get("crossover_ok"),
+            "blocked_mechanisms": gen_stats.get("blocked_mechanisms"),
+            "curriculum": gen_stats.get("curriculum"),
+            "keep_coverage": gen_stats.get("keep_coverage"),
+            "prior_refreshed": gen_stats.get("prior_refreshed"),
+            "catalog_expand": None,
             "reviewed_ok": 0,
             "saved": [],
             "rejected": 0,
@@ -226,6 +247,8 @@ def _node_review_validate(ctx: ProductionContext):
         max_per_skel = int(div_cfg.get("max_per_skeleton", 2))
         keep_counts = skeleton_keep_counts(ctx.cfg)
         round_eval_skels: set[str] = set()
+        cold = bool(state.get("cold_start"))
+        cheap_min = float(cold_start_cfg(ctx.cfg)["cheap_ic_min"])
 
         for i, cand in enumerate(cands):
             # hard diversity gate before review
@@ -234,7 +257,7 @@ def _node_review_validate(ctx: ProductionContext):
             try:
                 fp0 = expression_fingerprint(cand["expression"])
                 sk = fp0["skeleton"]
-                if not banned and sk in round_eval_skels:
+                if not banned and sk in round_eval_skels and not cold:
                     banned, why = True, "same_batch_skeleton"
             except Exception:
                 pass
@@ -277,10 +300,26 @@ def _node_review_validate(ctx: ProductionContext):
             tested.add(h)
             banned_hashes.add(h)
             bans.setdefault("hashes", set()).add(h)
-            if sk:
+            if sk and not cold:
                 round_eval_skels.add(sk)
 
             name = cand["name"]
+            if cold and cheap_min > 0:
+                try:
+                    ic_abs = ctx.eval.quick_rank_ic(cand["expression"])
+                except Exception:
+                    ic_abs = None
+                if ic_abs is not None and ic_abs < cheap_min:
+                    round_stats["rejected"] = int(round_stats.get("rejected") or 0) + 1
+                    round_stats["cheap_rejects"] = int(round_stats.get("cheap_rejects") or 0) + 1
+                    lessons = record_lesson(
+                        lessons,
+                        mechanism=str(cand.get("mechanism") or "unknown"),
+                        reason="weak_ic",
+                        expression=cand.get("expression"),
+                        detail={"rank_ic_mean": ic_abs, "cheap": True},
+                    )
+                    continue
             try:
                 report = ctx.eval.evaluate_dsl(
                     cand["expression"], name, gate_name=gate_name
@@ -330,8 +369,7 @@ def _node_review_validate(ctx: ProductionContext):
                 try:
                     sk_keep = expression_fingerprint(cand["expression"])["skeleton"]
                     keep_counts[sk_keep] = keep_counts.get(sk_keep, 0) + 1
-                    # Cap window variants of a kept skeleton; do not ban on first accept.
-                    if keep_counts[sk_keep] >= max_per_skel:
+                    if not cold and keep_counts[sk_keep] >= max_per_skel:
                         banned_skels.add(sk_keep)
                         bans.setdefault("skeletons", set()).add(sk_keep)
                 except Exception:
@@ -353,13 +391,14 @@ def _node_review_validate(ctx: ProductionContext):
                 reason = "gate_reject"
                 if max_corr >= corr_ban:
                     reason = "high_corr"
-                    try:
-                        sk_hc = expression_fingerprint(cand["expression"])["skeleton"]
-                        banned_skels.add(sk_hc)
-                        high_corr_skels.add(sk_hc)
-                        bans.setdefault("skeletons", set()).add(sk_hc)
-                    except Exception:
-                        pass
+                    if not cold:
+                        try:
+                            sk_hc = expression_fingerprint(cand["expression"])["skeleton"]
+                            banned_skels.add(sk_hc)
+                            high_corr_skels.add(sk_hc)
+                            bans.setdefault("skeletons", set()).add(sk_hc)
+                        except Exception:
+                            pass
                 elif ic < 0.01:
                     reason = "weak_ic"
                 lessons = record_lesson(
@@ -390,10 +429,42 @@ def _node_review_validate(ctx: ProductionContext):
     return review_validate
 
 
+def _maybe_expand_catalog(
+    ctx: ProductionContext, state: ProductionState, round_stats: dict[str, Any]
+) -> tuple[dict[str, Any], int | None]:
+    last = state.get("last_catalog_expand_round")
+    last_i = int(last) if last is not None else None
+    if round_stats.get("cold_start"):
+        return {"attempted": False, "reason": "cold_start"}, last_i
+    unused = round_stats.get("unused_compose")
+    unused_n = int(unused) if unused is not None else 0
+    llm_cfg = ctx.generator.llm_cfg
+    due = should_expand_compose_catalog(
+        unused_n,
+        int(state.get("rounds_done") or 0),
+        last_i,
+        every=int(llm_cfg.get("catalog_expand_every", 20)),
+        unused_lt=int(llm_cfg.get("catalog_expand_unused_lt", 0)),
+    )
+    if not due:
+        return {"attempted": False, "reason": "not_due"}, last_i
+    blocked = set(round_stats.get("blocked_mechanisms") or [])
+    try:
+        info = ctx.generator.expand_compose_catalog_via_llm(
+            max_accept=int(llm_cfg.get("catalog_expand_max", 10)),
+            blocked=blocked,
+        )
+    except Exception as e:
+        info = {"attempted": True, "ok": False, "error": str(e), "n_accepted": 0}
+    return info, int(state.get("rounds_done") or 0)
+
+
 def _node_persist(ctx: ProductionContext):
     def persist(state: ProductionState) -> dict[str, Any]:
         history = list(state.get("history") or [])
         round_stats = dict(state.get("round_stats") or {})
+        expand_info, last_expand = _maybe_expand_catalog(ctx, state, round_stats)
+        round_stats["catalog_expand"] = expand_info
         history.append(round_stats)
         history = history[-200:]
         cp = {
@@ -407,6 +478,7 @@ def _node_persist(ctx: ProductionContext):
             "banned_hashes": list(state.get("banned_hashes") or [])[-5000:],
             "high_corr_skeletons": list(state.get("high_corr_skeletons") or [])[-200:],
             "recent_themes": list(state.get("recent_themes") or [])[-12:],
+            "last_catalog_expand_round": last_expand,
         }
         ctx.checkpoint.save(cp)
         run_dir = Path(str(state.get("run_dir") or ""))
@@ -416,7 +488,11 @@ def _node_persist(ctx: ProductionContext):
             (run_dir / f"round_{iteration}.json").write_text(
                 json.dumps(round_stats, ensure_ascii=False, indent=2), encoding="utf-8"
             )
-        return {"history": history}
+        return {
+            "history": history,
+            "round_stats": round_stats,
+            "last_catalog_expand_round": last_expand,
+        }
 
     return persist
 
@@ -469,6 +545,7 @@ def run_production_graph(
 ) -> dict[str, Any]:
     ctx = ProductionContext(cfg, llm)
     ctx.llm.require_enabled()
+    ensure_dsl_seeds(ctx.cfg)
 
     llm_cfg = _production_llm_cfg(ctx.cfg)
     if llm_ratio is None:
@@ -487,6 +564,7 @@ def run_production_graph(
         "banned_hashes": [],
         "high_corr_skeletons": [],
         "recent_themes": [],
+        "last_catalog_expand_round": None,
     }
 
     run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
@@ -517,10 +595,12 @@ def run_production_graph(
         "banned_hashes": list(cp.get("banned_hashes") or []),
         "high_corr_skeletons": list(cp.get("high_corr_skeletons") or []),
         "recent_themes": list(cp.get("recent_themes") or []),
+        "last_catalog_expand_round": cp.get("last_catalog_expand_round"),
         "produced": [],
         "candidates": [],
         "round_stats": {},
         "orchestrator": "langgraph",
+        "cold_start": False,
     }
 
     graph = build_production_graph(ctx)

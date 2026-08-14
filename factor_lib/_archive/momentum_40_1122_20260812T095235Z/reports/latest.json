@@ -1,0 +1,95 @@
+{
+  "name": "momentum_40_1122",
+  "gate_name": "research",
+  "metrics": {
+    "rank_ic_mean": 0.0007614462235784068,
+    "rank_ic_std": 0.27398610755207436,
+    "icir": 0.0027791417250368606,
+    "n": 552,
+    "recent_rank_ic_mean": -0.015656500502259463,
+    "coverage": 0.9267886855241264,
+    "daily_turnover": 0.060551558752997586,
+    "monotonic_score": 0.75,
+    "layered": {
+      "q1": -0.0005109201699798252,
+      "q2": 0.0008659937092425992,
+      "q3": 0.002814771992482901,
+      "q4": 8.478134717219132e-05,
+      "q5": 0.003197402851480752,
+      "long_short": 0.003708323021460577,
+      "monotonic_score": 0.75
+    },
+    "max_corr": 0.2582877843524522,
+    "max_corr_with": "volatility_10_4285",
+    "years": {
+      "years": {
+        "2024": 0.026200576905288465,
+        "2025": -0.013488538479211328,
+        "2026": -0.0134205501025539
+      },
+      "consistent": true,
+      "pos_years": 1,
+      "neg_years": 2,
+      "n_years": 3,
+      "dominant_years": 2
+    },
+    "years_consistent": true,
+    "cost_adjusted_ls": 0.003587219903954582,
+    "orientation": 1,
+    "no_lookahead": true,
+    "horizon": 5,
+    "data_version": "20260812T083430Z"
+  },
+  "gate": {
+    "passed": false,
+    "status": "reject",
+    "checks": {
+      "rank_ic_mean": false,
+      "abs_rank_ic": false,
+      "icir": false,
+      "coverage": true,
+      "max_corr": true,
+      "monotonic": true,
+      "turnover": true,
+      "years": true,
+      "no_lookahead": true
+    }
+  },
+  "summary": {
+    "rank_ic_mean": 0.0007614462235784068,
+    "icir": 0.0027791417250368606,
+    "coverage": 0.9267886855241264,
+    "max_corr": 0.2582877843524522,
+    "status": "reject"
+  },
+  "spec": {
+    "name": "momentum_40_1122",
+    "version": "0.1.0",
+    "status": "draft",
+    "family": "price_volume",
+    "category": "momentum",
+    "universe": "csi100",
+    "frequency": "daily",
+    "required_fields": [
+      "close",
+      "open",
+      "high",
+      "low"
+    ],
+    "lookback": 20,
+    "horizon": 5,
+    "neutralize": [],
+    "params": {
+      "expression": "ma(roc(close_adj,5),40)"
+    },
+    "tags": [
+      "dsl",
+      "loop"
+    ],
+    "hypothesis": "中期动量；模板启发表达式 ma(roc(close_adj,5),40)",
+    "entry_gate": "research",
+    "expression": "ma(roc(close_adj,5),40)",
+    "mechanism": "momentum",
+    "expr_hash": null
+  }
+}

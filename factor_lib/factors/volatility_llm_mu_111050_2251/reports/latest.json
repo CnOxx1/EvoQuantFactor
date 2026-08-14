@@ -1,0 +1,229 @@
+{
+  "name": "volatility_llm_mu_111050_2251",
+  "gate_name": "production",
+  "metrics": {
+    "rank_ic_mean": 0.03717553798932297,
+    "rank_ic_std": 0.12514484676253781,
+    "icir": 0.29706007838951215,
+    "icir_ann": 4.7156825511840115,
+    "n": 111,
+    "recent_rank_ic_mean": 0.0582791615360416,
+    "coverage": 0.9991379310344827,
+    "daily_turnover": 0.08034324942791767,
+    "monotonic_score": 0.6,
+    "monotonic_steps": 0.5,
+    "layered": {
+      "q1": -0.004050424825825492,
+      "q2": -0.005276318184837717,
+      "q3": -0.006285905263952287,
+      "q4": -0.0018372788267308707,
+      "q5": 0.009128825459033828,
+      "long_short": 0.01317925028485932,
+      "monotonic_steps": 0.5,
+      "monotonic_score": 0.6,
+      "long_short_daily": 0.002635850056971864,
+      "long_short_cost_adj": 0.0025555068075439466,
+      "cost_drag": 8.034324942791766e-05,
+      "cost_horizon": 5,
+      "horizon_layered": {
+        "q1": -0.004050424825825492,
+        "q2": -0.005276318184837717,
+        "q3": -0.006285905263952287,
+        "q4": -0.0018372788267308707,
+        "q5": 0.009128825459033828,
+        "long_short": 0.01317925028485932,
+        "monotonic_steps": 0.5,
+        "monotonic_score": 0.6
+      }
+    },
+    "max_corr": 0.5390880544775097,
+    "max_corr_with": "shadow_t5_142049_8374",
+    "corr_skipped": false,
+    "resid_ic_mean": -0.009356896141021892,
+    "resid_icir": -0.09490294632294699,
+    "resid_icir_ann": -1.5065375679469768,
+    "n_peers": 5,
+    "years": {
+      "years": {
+        "2024": 0.006492655454635715,
+        "2025": 0.02348651197087697
+      },
+      "consistent": true,
+      "pos_years": 2,
+      "neg_years": 0,
+      "n_years": 2,
+      "dominant_years": 2
+    },
+    "years_consistent": true,
+    "cost_adjusted_ls": 0.0025555068075439466,
+    "oos_ic_mean": 0.03717553798932297,
+    "oos_icir": 0.29706007838951215,
+    "oos_pos_folds": 1,
+    "oos": {
+      "folds": [
+        {
+          "fold": 1,
+          "start": "20260105",
+          "end": "20260623",
+          "orientation": -1,
+          "rank_ic_mean": 0.03717553798932297,
+          "rank_ic_std": 0.12514484676253781,
+          "icir": 0.29706007838951215,
+          "icir_ann": 4.7156825511840115,
+          "n": 111
+        }
+      ],
+      "oos_ic_mean": 0.03717553798932297,
+      "oos_icir": 0.29706007838951215,
+      "n_folds": 1,
+      "pos_folds": 1,
+      "period_stability": {
+        "folds": [
+          {
+            "fold": 1,
+            "start": "20260105",
+            "end": "20260330",
+            "rank_ic_mean": 0.012824095486809217,
+            "rank_ic_std": 0.125755043260843,
+            "icir": 0.10197678879732311,
+            "icir_ann": 1.618831335952047,
+            "n": 55
+          },
+          {
+            "fold": 2,
+            "start": "20260331",
+            "end": "20260623",
+            "rank_ic_mean": 0.06109213330429185,
+            "rank_ic_std": 0.11981845102827311,
+            "icir": 0.5098725011048271,
+            "icir_ann": 8.09397502964327,
+            "n": 56
+          }
+        ],
+        "ic_mean": 0.03695811439555053,
+        "icir": 1.5313700770394416,
+        "n_folds": 2,
+        "pos_folds": 2
+      }
+    },
+    "freeze_sign_ok": true,
+    "period_stability": {
+      "folds": [
+        {
+          "fold": 1,
+          "start": "20260105",
+          "end": "20260330",
+          "rank_ic_mean": 0.012824095486809217,
+          "rank_ic_std": 0.125755043260843,
+          "icir": 0.10197678879732311,
+          "icir_ann": 1.618831335952047,
+          "n": 55
+        },
+        {
+          "fold": 2,
+          "start": "20260331",
+          "end": "20260623",
+          "rank_ic_mean": 0.06109213330429185,
+          "rank_ic_std": 0.11981845102827311,
+          "icir": 0.5098725011048271,
+          "icir_ann": 8.09397502964327,
+          "n": 56
+        }
+      ],
+      "ic_mean": 0.03695811439555053,
+      "icir": 1.5313700770394416,
+      "n_folds": 2,
+      "pos_folds": 2
+    },
+    "orientation": -1,
+    "orientation_source": "train",
+    "no_lookahead": true,
+    "trade_lag": 1,
+    "horizon": 5,
+    "signal_hold_days": 5,
+    "cost_horizon": 5,
+    "recent_window": 55,
+    "neutralized": [
+      "industry",
+      "circ_mv",
+      "hold5"
+    ],
+    "circ_mv_source": "estimated",
+    "eval_split": "holdout",
+    "train_end": "20251231",
+    "eval_start": "20260105",
+    "eval_end": "20260630",
+    "universe_mode": "latest_snapshot",
+    "data_version": "20260812T095118Z"
+  },
+  "gate": {
+    "passed": false,
+    "status": "reject",
+    "checks": {
+      "rank_ic_mean": true,
+      "abs_rank_ic": true,
+      "icir": true,
+      "coverage": true,
+      "max_corr": true,
+      "monotonic": false,
+      "turnover": true,
+      "years": true,
+      "no_lookahead": true,
+      "recent_ic": true,
+      "oos": true,
+      "cost_ls": true,
+      "resid_ic": false
+    },
+    "mode": "production"
+  },
+  "summary": {
+    "rank_ic_mean": 0.03717553798932297,
+    "icir": 0.29706007838951215,
+    "icir_ann": 4.7156825511840115,
+    "coverage": 0.9991379310344827,
+    "max_corr": 0.5390880544775097,
+    "resid_ic_mean": -0.009356896141021892,
+    "oos_ic_mean": 0.03717553798932297,
+    "cost_adjusted_ls": 0.0025555068075439466,
+    "status": "reject",
+    "trade_lag": 1,
+    "eval_split": "holdout",
+    "orientation_source": "train",
+    "universe_mode": "latest_snapshot",
+    "circ_mv_source": "estimated",
+    "freeze_sign_ok": true,
+    "horizon": 5,
+    "signal_hold_days": 5,
+    "cost_horizon": 5
+  },
+  "spec": {
+    "name": "volatility_llm_mu_111050_2251",
+    "version": "0.1.0",
+    "status": "draft",
+    "family": "price_volume",
+    "category": "volatility",
+    "universe": "csi100",
+    "frequency": "daily",
+    "required_fields": [
+      "close",
+      "open",
+      "high",
+      "low"
+    ],
+    "lookback": 20,
+    "horizon": 5,
+    "neutralize": [],
+    "params": {
+      "expression": "neg(std(overnight,20))"
+    },
+    "tags": [
+      "dsl",
+      "loop"
+    ],
+    "hypothesis": "隔夜收益波动率高的股票未来5日收益倾向于更低，隔夜收益的标准差与未来收益负相关。；unlike 不同于library_cards中的div(std(overnight,40),std(amplitude,40))，该因子仅使用隔夜收益的标准差，不涉及振幅。",
+    "entry_gate": "research",
+    "expression": "neg(std(overnight,20))",
+    "mechanism": "volatility",
+    "expr_hash": null
+  }
+}

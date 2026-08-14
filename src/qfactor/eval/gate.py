@@ -15,9 +15,22 @@ def _icir_annualized(thresholds: dict[str, Any]) -> bool:
     return bool(thresholds.get("icir_annualized", True))
 
 
+def _icir_mode(thresholds: dict[str, Any]) -> str:
+    mode = str(thresholds.get("icir_mode") or "").strip().lower()
+    if mode:
+        return mode
+    return "window" if not _icir_annualized(thresholds) else "annualized"
+
+
 def _icir_for_gate(metrics: dict[str, Any], thresholds: dict[str, Any]) -> float:
-    """Annualized ICIR unless the gate opts into window ICIR (holdout)."""
-    if not _icir_annualized(thresholds):
+    """Production holdout uses Newey-West ICIR when icir_mode=newey_west."""
+    mode = _icir_mode(thresholds)
+    if mode == "newey_west":
+        raw = metrics.get("icir_nw")
+        if raw is None:
+            raw = metrics.get("icir", 0.0)
+        return abs(float(raw))
+    if mode == "window" or not _icir_annualized(thresholds):
         return abs(float(metrics.get("icir", 0.0)))
     if "icir_ann" in metrics and metrics["icir_ann"] is not None:
         return abs(float(metrics["icir_ann"]))
@@ -25,13 +38,20 @@ def _icir_for_gate(metrics: dict[str, Any], thresholds: dict[str, Any]) -> float
 
 
 def _min_icir(thresholds: dict[str, Any]) -> float:
-    if not _icir_annualized(thresholds):
+    mode = _icir_mode(thresholds)
+    if mode in {"newey_west", "window"} or not _icir_annualized(thresholds):
         return float(thresholds.get("min_holdout_icir", thresholds.get("min_icir", 0.0)))
     return float(thresholds.get("min_icir", 0.0))
 
 
 def _resid_icir_for_gate(metrics: dict[str, Any], thresholds: dict[str, Any]) -> float:
-    if not _icir_annualized(thresholds):
+    mode = _icir_mode(thresholds)
+    if mode == "newey_west":
+        raw = metrics.get("resid_icir_nw")
+        if raw is None:
+            raw = metrics.get("resid_icir", 0.0)
+        return abs(float(raw))
+    if mode == "window" or not _icir_annualized(thresholds):
         return abs(float(metrics.get("resid_icir", 0.0)))
     return abs(float(metrics.get("resid_icir_ann", metrics.get("resid_icir", 0.0))))
 

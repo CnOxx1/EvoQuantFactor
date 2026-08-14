@@ -1,0 +1,26 @@
+name: shadow_c5_111914_4531
+version: 0.1.0
+status: screened
+family: price_volume
+category: shadow
+universe: csi100
+frequency: daily
+required_fields:
+- close
+- open
+- high
+- low
+lookback: 5
+horizon: 5
+neutralize: []
+params: {}
+tags:
+- dsl
+- loop
+- langgraph
+- compose
+hypothesis: 影线结构；compose div(ma(upper_shadow,5),ma(lower_shadow,5))
+entry_gate: research
+expression: div(ma(upper_shadow,5),ma(lower_shadow,5))
+mechanism: shadow
+expr_hash: 119c4ca6d1cfaef1

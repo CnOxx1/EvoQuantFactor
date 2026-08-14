@@ -1,0 +1,26 @@
+name: shadow_c40_154015_3774
+version: 0.1.0
+status: screened
+family: price_volume
+category: shadow
+universe: csi100
+frequency: daily
+required_fields:
+- close
+- open
+- high
+- low
+lookback: 40
+horizon: 5
+neutralize: []
+params: {}
+tags:
+- dsl
+- loop
+- langgraph
+- compose
+hypothesis: 影线结构；compose sub(rank(delta(upper_shadow,40)), rank(delta(lower_shadow,5)))
+entry_gate: research
+expression: sub(rank(delta(upper_shadow,40)), rank(delta(lower_shadow,5)))
+mechanism: shadow
+expr_hash: 58dceb4cab0615f2

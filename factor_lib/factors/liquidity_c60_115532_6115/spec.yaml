@@ -1,0 +1,26 @@
+name: liquidity_c60_115532_6115
+version: 0.1.0
+status: screened
+family: price_volume
+category: liquidity
+universe: csi100
+frequency: daily
+required_fields:
+- close
+- open
+- high
+- low
+lookback: 60
+horizon: 5
+neutralize: []
+params: {}
+tags:
+- dsl
+- loop
+- langgraph
+- compose
+hypothesis: 流动性/成交；compose div(ma(vol,60),ma(amount,60))
+entry_gate: research
+expression: div(ma(vol,60),ma(amount,60))
+mechanism: liquidity
+expr_hash: 32baf8005d7df565

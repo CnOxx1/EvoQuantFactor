@@ -1,0 +1,25 @@
+name: momentum_t40_173549_6221
+version: 0.1.0
+status: draft
+family: price_volume
+category: momentum
+universe: csi100
+frequency: daily
+required_fields:
+- close
+- open
+- high
+- low
+lookback: 20
+horizon: 5
+neutralize: []
+params:
+  expression: roc(close_adj,40)
+tags:
+- dsl
+- loop
+hypothesis: 中期动量；模板启发表达式 roc(close_adj,40)
+entry_gate: research
+expression: roc(close_adj,40)
+mechanism: momentum
+expr_hash: null

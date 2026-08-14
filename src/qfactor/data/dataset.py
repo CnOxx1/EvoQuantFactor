@@ -11,10 +11,30 @@ import pandas as pd
 from qfactor.data.akshare_adapter import AkshareAdapter
 from qfactor.data.baostock_adapter import BaostockAdapter, bs_session
 from qfactor.data.base import DataAdapter
-from qfactor.data.csindex import fetch_csindex_members, member_meta
+from qfactor.data.csindex import fetch_csindex_members
 from qfactor.data.quality import check_daily_panel
 from qfactor.data.tushare_adapter import TushareAdapter, adapter_kwargs_from_config
 from qfactor.settings import ProjectConfig, get_project_config, get_settings
+
+
+def _universe_limitations(umeta: dict, existing: list | None = None) -> list[str]:
+    mode = str(umeta.get("universe_mode") or "")
+    notes = [str(umeta.get("note") or "").strip()] if umeta.get("note") else []
+    if mode == "pit":
+        notes.append("Universe is point-in-time CSI100 reconstitutions (Tushare)")
+    elif mode == "freeze_start":
+        notes.append("Universe frozen at first reconstitution on/before window start")
+    elif mode == "snapshot":
+        notes.append("CSIndex file is latest snapshot (not full historical reconstitution)")
+    circ = "circ_mv estimated from amount/turnover when vendor cap unavailable"
+    extra = [x for x in (existing or []) if "snapshot" not in str(x).lower() and "reconstitution" not in str(x).lower()]
+    out: list[str] = []
+    for n in notes + extra:
+        if n and n not in out:
+            out.append(n)
+    if circ not in out:
+        out.append(circ)
+    return out
 
 
 def build_adapter(
@@ -51,6 +71,99 @@ class DataService:
     ) -> DataAdapter:
         return self.adapter or build_adapter(source, self.cfg)
 
+    def _tushare_universe_adapter(self) -> TushareAdapter | None:
+        if not get_settings().tushare_token:
+            return None
+        try:
+            return TushareAdapter(**adapter_kwargs_from_config(self.cfg.data_sources))
+        except Exception as e:
+            print(f"[sync] Tushare universe adapter failed: {e}", flush=True)
+            return None
+
+    def _load_universe_history(self, start: str, end: str) -> pd.DataFrame:
+        from qfactor.data.universe import shift_yyyymmdd, universe_policy
+
+        ts = self._tushare_universe_adapter()
+        if ts is None:
+            return pd.DataFrame(columns=["trade_date", "ts_code", "weight"])
+        lookback = int(universe_policy(self.cfg)["lookback_days"])
+        hist_start = shift_yyyymmdd(start, -lookback)
+        print(f"[sync] fetching PIT CSI100 {hist_start}–{end}", flush=True)
+        return ts.fetch_index_members_history(hist_start, end)
+
+    def _latest_csindex(self) -> pd.DataFrame:
+        try:
+            return fetch_csindex_members("000903")
+        except Exception as e:
+            print(f"[sync] CSIndex latest failed: {e}", flush=True)
+            return pd.DataFrame(columns=["trade_date", "ts_code", "weight"])
+
+    def resolve_and_persist_universe(self, start: str, end: str) -> tuple[pd.DataFrame, dict]:
+        from qfactor.data.universe import resolve_universe, universe_policy
+
+        policy = universe_policy(self.cfg)
+        history = None
+        latest = None
+        if policy["mode"] == "snapshot":
+            latest = self._latest_csindex()
+        else:
+            history = self._load_universe_history(start, end)
+        members, umeta = resolve_universe(
+            start=start,
+            end=end,
+            history=history,
+            latest_snapshot=latest,
+            cfg=self.cfg,
+        )
+        self.universe_path.parent.mkdir(parents=True, exist_ok=True)
+        members.to_parquet(self.universe_path, index=False)
+        print(
+            f"[sync] universe mode={umeta.get('universe_mode')} "
+            f"snapshots={umeta.get('n_snapshots')} union={umeta.get('n_codes_union')}",
+            flush=True,
+        )
+        return members, umeta
+
+    def sync_universe(self, start: str, end: str) -> dict:
+        """Refresh PIT constituents without re-downloading bars."""
+        members, umeta = self.resolve_and_persist_universe(start, end)
+        bars_codes: set[str] = set()
+        try:
+            bars = self.load_bars()
+            bars_codes = set(bars["ts_code"].astype(str).unique())
+        except Exception:
+            bars_codes = set()
+        union = set(members["ts_code"].astype(str).unique())
+        missing = sorted(union - bars_codes)
+        umeta["n_codes_missing_bars"] = len(missing)
+        umeta["missing_bars_sample"] = missing[:20]
+        if missing:
+            print(
+                f"[sync] {len(missing)} PIT names have no bars; re-run sync-data to download the union",
+                flush=True,
+            )
+        meta_path = self.cfg.path("data_processed") / "data_version.json"
+        meta = {}
+        if meta_path.exists():
+            try:
+                meta = json.loads(meta_path.read_text(encoding="utf-8"))
+            except Exception:
+                meta = {}
+        meta["members_provider"] = umeta
+        meta["universe_mode"] = umeta.get("universe_mode")
+        meta["limitations"] = _universe_limitations(umeta, meta.get("limitations") or [])
+        meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+        try:
+            from qfactor.db.repo import Database
+
+            db = Database()
+            db.replace_universe(self.cfg.universe, members)
+            db.save_data_version(meta)
+        except Exception as e:
+            print(f"[sync] universe db write failed: {e}", flush=True)
+            umeta["database_error"] = str(e)
+        return {**umeta, "start": start, "end": end}
+
     @property
     def bars_path(self) -> Path:
         return self.cfg.path("data_processed") / "bars" / "daily" / "bars.parquet"
@@ -80,20 +193,11 @@ class DataService:
         max_names: int | None = None,
     ) -> dict:
         adapter = self._adapter(source)
-        # Preferred no-Tushare path: CSIndex official members + Baostock bars.
-        use_csindex = adapter.name in {"baostock", "akshare"} or (
-            source in {"auto", "baostock"} and not get_settings().tushare_token
-        )
-
         if adapter.name == "baostock":
             with bs_session() as bs:
                 adapter.bind_session(bs)  # type: ignore[attr-defined]
-                return self._sync_with_adapter(
-                    adapter, start, end, max_names=max_names, use_csindex=use_csindex
-                )
-        return self._sync_with_adapter(
-            adapter, start, end, max_names=max_names, use_csindex=use_csindex
-        )
+                return self._sync_with_adapter(adapter, start, end, max_names=max_names)
+        return self._sync_with_adapter(adapter, start, end, max_names=max_names)
 
     def _sync_with_adapter(
         self,
@@ -101,7 +205,6 @@ class DataService:
         start: str,
         end: str,
         max_names: int | None,
-        use_csindex: bool,
     ) -> dict:
         calendar = adapter.fetch_trade_calendar(start, end)
         self.calendar_path.parent.mkdir(parents=True, exist_ok=True)
@@ -112,44 +215,8 @@ class DataService:
         if not open_dates:
             raise RuntimeError("No open trade dates in range")
 
-        member_meta_info = {}
-        if use_csindex:
-            try:
-                latest = fetch_csindex_members("000903")
-                member_meta_info = member_meta()
-                # Stamp latest official list onto research window endpoints for asof mask.
-                members = pd.concat(
-                    [
-                        latest.assign(trade_date=open_dates[0]),
-                        latest.assign(trade_date=open_dates[-1]),
-                    ],
-                    ignore_index=True,
-                )
-                print(
-                    f"[sync] CSIndex members={len(latest)} file_date={latest['trade_date'].iloc[0]}",
-                    flush=True,
-                )
-            except Exception as e:
-                print(f"[sync] CSIndex failed ({e}), fallback adapter members", flush=True)
-                members = adapter.fetch_index_members(open_dates[-1])
-                member_meta_info = {"provider": adapter.name, "note": "fallback members"}
-        else:
-            latest = adapter.fetch_index_members(open_dates[-1])
-            # Stamp window start+end so asof mask is non-empty for full history.
-            members = pd.concat(
-                [
-                    latest.assign(trade_date=open_dates[0]),
-                    latest.assign(trade_date=open_dates[-1]),
-                ],
-                ignore_index=True,
-            )
-            member_meta_info = {
-                "provider": adapter.name,
-                "note": "latest members stamped to start/end of sync window",
-            }
-
-        self.universe_path.parent.mkdir(parents=True, exist_ok=True)
-        members.to_parquet(self.universe_path, index=False)
+        members, umeta = self.resolve_and_persist_universe(start, end)
+        member_meta_info = umeta
 
         codes = sorted(members["ts_code"].dropna().astype(str).unique().tolist())
         if max_names is not None:
@@ -228,10 +295,8 @@ class DataService:
             else False,
             "quality": report.to_dict(),
             "data_version": datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"),
-            "limitations": [
-                "CSIndex file is latest snapshot (not full historical reconstitution)",
-                "circ_mv estimated from amount/turnover when vendor cap unavailable",
-            ],
+            "universe_mode": umeta.get("universe_mode"),
+            "limitations": _universe_limitations(umeta),
         }
         meta_path = self.cfg.path("data_processed") / "data_version.json"
         meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
@@ -310,6 +375,8 @@ class DataService:
         return pd.read_parquet(self.industry_path)
 
     def load_universe_mask(self) -> pd.DataFrame:
+        from qfactor.data.universe import build_universe_mask
+
         members = None
         try:
             from qfactor.db.repo import Database
@@ -324,25 +391,7 @@ class DataService:
         bars = self.load_bars()
         dates = sorted(bars["trade_date"].astype(str).unique())
         codes = sorted(bars["ts_code"].astype(str).unique())
-        members = members.copy()
-        members["trade_date"] = members["trade_date"].astype(str)
-        snaps = {
-            d: set(g["ts_code"].astype(str)) for d, g in members.groupby("trade_date")
-        }
-        snap_dates = sorted(snaps)
-        mask = pd.DataFrame(False, index=dates, columns=codes)
-        j = -1
-        active: set[str] = set()
-        for d in dates:
-            while j + 1 < len(snap_dates) and snap_dates[j + 1] <= d:
-                j += 1
-                active = snaps[snap_dates[j]]
-            if active:
-                cols = [c for c in active if c in mask.columns]
-                if cols:
-                    mask.loc[d, cols] = True
-        mask.index.name = "trade_date"
-        return mask
+        return build_universe_mask(dates, codes, members)
 
     def data_version(self) -> str | None:
         try:

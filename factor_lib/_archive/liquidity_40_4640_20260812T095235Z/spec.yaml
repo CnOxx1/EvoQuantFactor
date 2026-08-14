@@ -1,0 +1,25 @@
+name: liquidity_40_4640
+version: 0.1.0
+status: draft
+family: price_volume
+category: liquidity
+universe: csi100
+frequency: daily
+required_fields:
+- close
+- open
+- high
+- low
+lookback: 20
+horizon: 5
+neutralize: []
+params:
+  expression: ma(div(abs(ret_1d),amount),40)
+tags:
+- dsl
+- loop
+hypothesis: 流动性/成交；模板启发表达式 ma(div(abs(ret_1d),amount),40)
+entry_gate: research
+expression: ma(div(abs(ret_1d),amount),40)
+mechanism: liquidity
+expr_hash: null

@@ -1,0 +1,26 @@
+name: reversal_c5_103534_7470
+version: 0.1.0
+status: screened
+family: price_volume
+category: reversal
+universe: csi100
+frequency: daily
+required_fields:
+- close
+- open
+- high
+- low
+lookback: 5
+horizon: 5
+neutralize: []
+params: {}
+tags:
+- dsl
+- loop
+- langgraph
+- compose
+hypothesis: 短期反转；compose std(roc(ret_1d,5),10)
+entry_gate: research
+expression: std(roc(ret_1d,5),10)
+mechanism: reversal
+expr_hash: d08e36c3acb099bd
