@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import math
+
 import numpy as np
 import pandas as pd
 
@@ -98,6 +100,9 @@ def summarize_ic(ic: pd.Series, nw_lags: int = 0) -> dict:
         "n": 0,
         "n_independent": 0,
         "nw_lags": int(max(0, nw_lags)),
+        "se_nw": 0.0,
+        "t_stat_nw": 0.0,
+        "p_value_nw_one_sided": 1.0,
     }
     if ic.empty:
         return empty
@@ -110,6 +115,11 @@ def summarize_ic(ic: pd.Series, nw_lags: int = 0) -> dict:
     icir_nw = float(mean / std_nw) if std_nw > 1e-12 else 0.0
     n = int(len(ic))
     n_independent = max(1, int(round(n / (lags + 1)))) if lags else n
+    se_nw = float(std_nw / np.sqrt(n_independent)) if std_nw > 1e-12 else 0.0
+    t_stat_nw = float(mean / se_nw) if se_nw > 1e-12 else 0.0
+    # Normal approximation is deliberately disclosed; the release gate applies
+    # a conservative family-wise correction on top of this statistic.
+    p_one_sided = float(0.5 * math.erfc(t_stat_nw / math.sqrt(2.0))) if se_nw > 0 else 1.0
     return {
         "rank_ic_mean": mean,
         "rank_ic_std": std,
@@ -119,6 +129,9 @@ def summarize_ic(ic: pd.Series, nw_lags: int = 0) -> dict:
         "n": n,
         "n_independent": n_independent,
         "nw_lags": lags,
+        "se_nw": se_nw,
+        "t_stat_nw": t_stat_nw,
+        "p_value_nw_one_sided": p_one_sided,
     }
 
 

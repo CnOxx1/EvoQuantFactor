@@ -1,4 +1,3 @@
-from qfactor.db.migrate import import_processed_to_db
 from qfactor.db.models import init_db
 from qfactor.db.repo import Database
 

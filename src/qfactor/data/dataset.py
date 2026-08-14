@@ -9,6 +9,7 @@ import numpy as np
 import pandas as pd
 
 from qfactor.data.akshare_adapter import AkshareAdapter
+from qfactor.data.archive_adapter import ArchiveAdapter
 from qfactor.data.baostock_adapter import BaostockAdapter, bs_session
 from qfactor.data.base import DataAdapter
 from qfactor.data.csindex import fetch_csindex_members
@@ -17,8 +18,10 @@ from qfactor.data.tushare_adapter import TushareAdapter, adapter_kwargs_from_con
 from qfactor.settings import ProjectConfig, get_project_config, get_settings
 
 
-def overlay_daily_basic(panel: pd.DataFrame, basic: pd.DataFrame) -> tuple[pd.DataFrame, dict]:
-    """Prefer Tushare daily_basic circ_mv / turnover; keep bar estimates as fallback."""
+def overlay_daily_basic(
+    panel: pd.DataFrame, basic: pd.DataFrame, provider: str = "tushare"
+) -> tuple[pd.DataFrame, dict]:
+    """Prefer verified provider circ_mv / turnover; keep estimates only as research fallback."""
     out = panel.copy()
     if "circ_mv" not in out.columns:
         out["circ_mv"] = np.nan
@@ -33,10 +36,24 @@ def overlay_daily_basic(panel: pd.DataFrame, basic: pd.DataFrame) -> tuple[pd.Da
     use = basic.copy()
     use["trade_date"] = use["trade_date"].astype(str).str.replace("-", "", regex=False).str[:8]
     use["ts_code"] = use["ts_code"].astype(str)
-    cols = [c for c in ("trade_date", "ts_code", "circ_mv", "turnover_rate") if c in use.columns]
+    for col in ("free_float_shares", "adv_20d"):
+        if col not in out.columns:
+            out[col] = np.nan
+    cols = [
+        c
+        for c in (
+            "trade_date", "ts_code", "circ_mv", "turnover_rate", "free_float_shares", "adv_20d"
+        )
+        if c in use.columns
+    ]
     use = use[cols].drop_duplicates(["trade_date", "ts_code"])
     renamed = use.rename(
-        columns={"circ_mv": "circ_mv_ts", "turnover_rate": "turnover_rate_ts"}
+        columns={
+            "circ_mv": "circ_mv_ts",
+            "turnover_rate": "turnover_rate_ts",
+            "free_float_shares": "free_float_shares_ts",
+            "adv_20d": "adv_20d_ts",
+        }
     )
     out["trade_date"] = out["trade_date"].astype(str)
     out["ts_code"] = out["ts_code"].astype(str)
@@ -46,14 +63,87 @@ def overlay_daily_basic(panel: pd.DataFrame, basic: pd.DataFrame) -> tuple[pd.Da
         out["circ_mv"] = out["circ_mv_ts"].fillna(out["circ_mv"])
     if "turnover_rate_ts" in out.columns:
         out["turnover_rate"] = out["turnover_rate_ts"].fillna(out["turnover_rate"])
-    out = out.drop(columns=["circ_mv_ts", "turnover_rate_ts"], errors="ignore")
+    for col in ("free_float_shares", "adv_20d"):
+        vendor_col = f"{col}_ts"
+        if vendor_col in out.columns:
+            out[col] = out[vendor_col].fillna(out[col])
+    # A transparently derived 20-day ADV is valid capacity input only where there
+    # are 20 prior positive notional observations; missing values remain unknown.
+    if "amount" in out.columns:
+        out["adv_20d"] = out["adv_20d"].fillna(
+            out.sort_values(["ts_code", "trade_date"])
+            .groupby("ts_code")["amount"]
+            .transform(lambda s: s.where(s > 0).rolling(20, min_periods=20).mean())
+        )
+    out = out.drop(
+        columns=["circ_mv_ts", "turnover_rate_ts", "free_float_shares_ts", "adv_20d_ts"],
+        errors="ignore",
+    )
     info["daily_basic_coverage"] = vendor
     if vendor >= 0.3:
-        info["circ_mv_source"] = "tushare_daily_basic"
+        info["circ_mv_source"] = f"{provider}_daily_basic"
     elif out["circ_mv"].notna().any():
         info["circ_mv_source"] = "estimated"
     else:
         info["circ_mv_source"] = "none"
+    return out, info
+
+
+def overlay_execution_evidence(
+    panel: pd.DataFrame,
+    security_status: pd.DataFrame | None,
+    corporate_actions: pd.DataFrame | None,
+    *,
+    status_provider: str | None = None,
+    actions_provider: str | None = None,
+) -> tuple[pd.DataFrame, dict]:
+    """Merge archived PIT execution evidence without treating missing data as safe."""
+    out = panel.copy()
+    out["trade_date"] = out["trade_date"].astype(str).str.replace("-", "", regex=False).str[:8]
+    out["ts_code"] = out["ts_code"].astype(str)
+    keys = ["trade_date", "ts_code"]
+    status_cols = ["is_st", "is_suspended", "limit_up", "limit_down"]
+    action_cols = ["corporate_action", "adj_factor_vendor"]
+    for col in status_cols + action_cols:
+        if col not in out.columns:
+            out[col] = pd.NA if col in {"is_st", "is_suspended", "corporate_action"} else np.nan
+
+    def merge_evidence(frame: pd.DataFrame | None, cols: list[str], suffix: str) -> None:
+        nonlocal out
+        if frame is None or frame.empty:
+            return
+        use = frame.copy()
+        if not set(keys).issubset(use.columns):
+            raise ValueError(f"execution evidence missing keys: {sorted(set(keys) - set(use.columns))}")
+        use["trade_date"] = use["trade_date"].astype(str).str.replace("-", "", regex=False).str[:8]
+        use["ts_code"] = use["ts_code"].astype(str)
+        for col in cols:
+            if col not in use.columns:
+                use[col] = pd.NA
+        renamed = use[keys + cols].drop_duplicates(keys).rename(
+            columns={col: f"{col}_{suffix}" for col in cols}
+        )
+        out = out.merge(renamed, on=keys, how="left")
+        for col in cols:
+            staged = f"{col}_{suffix}"
+            out[col] = out[staged].where(out[staged].notna(), out[col])
+            out = out.drop(columns=[staged])
+
+    merge_evidence(security_status, status_cols, "pit")
+    merge_evidence(corporate_actions, action_cols, "pit")
+    for col in ("is_st", "is_suspended"):
+        if col in out.columns:
+            out[col] = out[col].map(
+                {True: True, False: False, 1: True, 0: False, "1": True, "0": False,
+                 "true": True, "false": False, "True": True, "False": False}
+            ).astype("boolean")
+    info = {
+        "security_status_provider": status_provider,
+        "corporate_actions_provider": actions_provider,
+        "security_status_coverage": float(out[["is_st", "is_suspended"]].notna().all(axis=1).mean()),
+        "limit_price_coverage": float(out[["limit_up", "limit_down"]].notna().all(axis=1).mean()),
+        "corporate_action_coverage": float(out["corporate_action"].notna().mean()),
+    }
     return out, info
 
 
@@ -65,14 +155,14 @@ def _universe_limitations(
     mode = str(umeta.get("universe_mode") or "")
     notes = [str(umeta.get("note") or "").strip()] if umeta.get("note") else []
     if mode == "pit":
-        notes.append("Universe is point-in-time CSI100 reconstitutions (Tushare)")
+        notes.append(f"Universe is point-in-time CSI100 reconstitutions ({umeta.get('provider') or 'verified provider'})")
     elif mode == "freeze_start":
         notes.append("Universe frozen at first reconstitution on/before window start")
     elif mode == "snapshot":
         notes.append("CSIndex file is latest snapshot (not full historical reconstitution)")
     src = str(circ_mv_source or "").strip()
-    if src == "tushare_daily_basic":
-        circ = "circ_mv from Tushare daily_basic"
+    if src.endswith("_daily_basic") and src not in {"estimated", "none"}:
+        circ = f"circ_mv from verified {src}"
     else:
         circ = "circ_mv estimated from amount/turnover when vendor cap unavailable"
     extra = [
@@ -92,7 +182,7 @@ def _universe_limitations(
 
 
 def build_adapter(
-    source: Literal["tushare", "akshare", "baostock", "auto"] = "auto",
+    source: str = "auto",
     cfg: ProjectConfig | None = None,
 ) -> DataAdapter:
     cfg = cfg or get_project_config()
@@ -109,6 +199,19 @@ def build_adapter(
     if source == "akshare":
         ak_cfg = dsc.get("akshare", {})
         return AkshareAdapter(index_symbol=ak_cfg.get("index_symbol", "sh000903"))
+    if source == "archive":
+        arc = dsc.get("archive", {}) or {}
+        def path(key: str) -> Path | None:
+            raw = arc.get(key)
+            return (cfg.root / str(raw)).resolve() if raw else None
+        return ArchiveAdapter(
+            universe_history=path("universe_history"),
+            daily_basic=path("daily_basic"),
+            security_status=path("security_status"),
+            corporate_actions=path("corporate_actions"),
+            risk_exposures=path("risk_exposures"),
+            industry_history=path("industry_history"),
+        )
     raise ValueError(f"Unknown source: {source}")
 
 
@@ -120,30 +223,34 @@ class DataService:
         self.cfg.ensure_dirs()
         self.adapter = adapter
 
-    def _adapter(
-        self, source: Literal["tushare", "akshare", "baostock", "auto"] = "auto"
-    ) -> DataAdapter:
+    def _adapter(self, source: str = "auto") -> DataAdapter:
         return self.adapter or build_adapter(source, self.cfg)
 
-    def _tushare_universe_adapter(self) -> TushareAdapter | None:
-        if not get_settings().tushare_token:
+    def _provider_adapter(self, role: str) -> DataAdapter | None:
+        """Resolve a separately configured evidence provider without silent fallbacks."""
+        providers = self.cfg.data_sources.get("providers") or {}
+        source = str(providers.get(role, "auto")).strip().lower()
+        if source in {"", "none", "disabled"}:
             return None
+        if source == "auto":
+            if not get_settings().tushare_token:
+                return None
+            source = "tushare"
         try:
-            return TushareAdapter(**adapter_kwargs_from_config(self.cfg.data_sources))
+            return build_adapter(source, self.cfg)
         except Exception as e:
-            print(f"[sync] Tushare universe adapter failed: {e}", flush=True)
-            return None
+            raise RuntimeError(f"Configured {role} provider '{source}' is unavailable: {e}") from e
 
-    def _load_universe_history(self, start: str, end: str) -> pd.DataFrame:
+    def _load_universe_history(self, start: str, end: str) -> tuple[pd.DataFrame, str | None]:
         from qfactor.data.universe import shift_yyyymmdd, universe_policy
 
-        ts = self._tushare_universe_adapter()
-        if ts is None:
-            return pd.DataFrame(columns=["trade_date", "ts_code", "weight"])
+        provider = self._provider_adapter("universe")
+        if provider is None:
+            return pd.DataFrame(columns=["trade_date", "ts_code", "weight"]), None
         lookback = int(universe_policy(self.cfg)["lookback_days"])
         hist_start = shift_yyyymmdd(start, -lookback)
-        print(f"[sync] fetching PIT CSI100 {hist_start}–{end}", flush=True)
-        return ts.fetch_index_members_history(hist_start, end)
+        print(f"[sync] fetching PIT CSI100 {hist_start}–{end} via {provider.name}", flush=True)
+        return provider.fetch_index_members_history(hist_start, end), provider.name
 
     def _latest_csindex(self) -> pd.DataFrame:
         try:
@@ -158,16 +265,18 @@ class DataService:
         policy = universe_policy(self.cfg)
         history = None
         latest = None
+        provider_name: str | None = None
         if policy["mode"] == "snapshot":
             latest = self._latest_csindex()
         else:
-            history = self._load_universe_history(start, end)
+            history, provider_name = self._load_universe_history(start, end)
         members, umeta = resolve_universe(
             start=start,
             end=end,
             history=history,
             latest_snapshot=latest,
             cfg=self.cfg,
+            provider=provider_name,
         )
         self.universe_path.parent.mkdir(parents=True, exist_ok=True)
         members.to_parquet(self.universe_path, index=False)
@@ -238,6 +347,10 @@ class DataService:
     @property
     def calendar_path(self) -> Path:
         return self.cfg.path("data_processed") / "calendar" / "trade_cal.parquet"
+
+    @property
+    def risk_exposures_path(self) -> Path:
+        return self.cfg.path("data_processed") / "meta" / "risk_exposures.parquet"
 
     def sync(
         self,
@@ -348,12 +461,12 @@ class DataService:
         panel = pd.concat(parts, ignore_index=True)
 
         basic_info = {"circ_mv_source": "estimated", "daily_basic_coverage": 0.0}
-        ts = self._tushare_universe_adapter()
-        if ts is not None:
+        basic_provider = self._provider_adapter("daily_basic")
+        if basic_provider is not None:
             basic_frames: list[pd.DataFrame] = []
             for i, code in enumerate(codes, 1):
                 try:
-                    basic = ts.fetch_daily_basic(code, start, end)
+                    basic = basic_provider.fetch_daily_basic(code, start, end)
                     if basic is not None and not basic.empty:
                         basic_frames.append(basic)
                     print(f"[sync] daily_basic {i}/{len(codes)} {code}", flush=True)
@@ -362,24 +475,95 @@ class DataService:
             stacked = (
                 pd.concat(basic_frames, ignore_index=True) if basic_frames else pd.DataFrame()
             )
-            panel, basic_info = overlay_daily_basic(panel, stacked)
+            panel, basic_info = overlay_daily_basic(panel, stacked, provider=basic_provider.name)
         else:
             panel, basic_info = overlay_daily_basic(panel, pd.DataFrame())
-            print("[sync] no TUSHARE_TOKEN; circ_mv stays estimated", flush=True)
+            print("[sync] no verified daily-basic provider; circ_mv stays estimated", flush=True)
 
-        # Industry map for diagnostics / future neutralize
+        status_provider = self._provider_adapter("security_status")
+        actions_provider = self._provider_adapter("corporate_actions")
+        security_status = pd.DataFrame()
+        corporate_actions = pd.DataFrame()
+        if status_provider is not None:
+            try:
+                security_status = status_provider.fetch_security_status(start, end)
+            except Exception as e:
+                print(f"[sync] security-status provider failed: {e}", flush=True)
+        if actions_provider is not None:
+            try:
+                corporate_actions = actions_provider.fetch_corporate_actions(start, end)
+            except Exception as e:
+                print(f"[sync] corporate-actions provider failed: {e}", flush=True)
+        panel, execution_info = overlay_execution_evidence(
+            panel,
+            security_status,
+            corporate_actions,
+            status_provider=status_provider.name if status_provider is not None else None,
+            actions_provider=actions_provider.name if actions_provider is not None else None,
+        )
+
+        risk_provider = self._provider_adapter("risk_exposures")
+        risk_exposures = pd.DataFrame(columns=["trade_date", "ts_code"])
+        if risk_provider is not None:
+            try:
+                risk_exposures = risk_provider.fetch_risk_exposures(start, end)
+            except Exception as e:
+                print(f"[sync] risk-exposures provider failed: {e}", flush=True)
+        if not risk_exposures.empty:
+            self.risk_exposures_path.parent.mkdir(parents=True, exist_ok=True)
+            risk_exposures.to_parquet(self.risk_exposures_path, index=False)
+        risk_coverage = 0.0
+        if not risk_exposures.empty and {"trade_date", "ts_code"}.issubset(risk_exposures.columns):
+            risk_keys = set(
+                zip(
+                    risk_exposures["trade_date"].astype(str).str.replace("-", "", regex=False).str[:8],
+                    risk_exposures["ts_code"].astype(str),
+                )
+            )
+            panel_keys = set(zip(panel["trade_date"].astype(str), panel["ts_code"].astype(str)))
+            risk_coverage = float(len(risk_keys & panel_keys) / len(panel_keys)) if panel_keys else 0.0
+
+        # Prefer date-keyed PIT industry classifications. A static map is preserved
+        # only as a diagnostic fallback and cannot satisfy production neutralization.
+        industry_provider = self._provider_adapter("industry")
+        industry_history = pd.DataFrame(columns=["trade_date", "ts_code", "industry"])
+        if industry_provider is not None:
+            try:
+                industry_history = industry_provider.fetch_industry_history(start, end)
+            except Exception as e:
+                print(f"[sync] PIT industry provider failed: {e}", flush=True)
+        industry_pit_coverage = 0.0
         industry = pd.DataFrame(columns=["ts_code", "industry", "industry_source"])
-        if hasattr(adapter, "fetch_industry_map"):
+        if not industry_history.empty:
+            hist = industry_history.copy()
+            hist["trade_date"] = hist["trade_date"].astype(str).str.replace("-", "", regex=False).str[:8]
+            hist["ts_code"] = hist["ts_code"].astype(str)
+            hist = hist[["trade_date", "ts_code", "industry"]].drop_duplicates(
+                ["trade_date", "ts_code"]
+            )
+            panel = panel.merge(hist.rename(columns={"industry": "industry_pit"}), on=["trade_date", "ts_code"], how="left")
+            if "industry" not in panel.columns:
+                panel["industry"] = pd.NA
+            panel["industry"] = panel["industry_pit"].where(
+                panel["industry_pit"].notna(), panel["industry"]
+            )
+            industry_pit_coverage = float(panel["industry_pit"].notna().mean())
+            industry = (
+                hist.sort_values("trade_date")
+                .drop_duplicates("ts_code", keep="last")
+                .assign(industry_source=f"{industry_provider.name}_pit")[["ts_code", "industry", "industry_source"]]
+            )
+        elif hasattr(adapter, "fetch_industry_map"):
             try:
                 industry = adapter.fetch_industry_map(  # type: ignore[attr-defined]
                     sorted(panel["ts_code"].unique().tolist())
                 )
-                self.industry_path.parent.mkdir(parents=True, exist_ok=True)
-                industry.to_parquet(self.industry_path, index=False)
                 if not industry.empty:
                     panel = panel.merge(industry, on="ts_code", how="left")
             except Exception as e:
-                print(f"[sync] industry map failed: {e}", flush=True)
+                print(f"[sync] static industry map failed: {e}", flush=True)
+        self.industry_path.parent.mkdir(parents=True, exist_ok=True)
+        industry.to_parquet(self.industry_path, index=False)
 
         self.bars_path.parent.mkdir(parents=True, exist_ok=True)
         panel.to_parquet(self.bars_path, index=False)
@@ -399,11 +583,22 @@ class DataService:
             "n_codes_failed": len(failed),
             "failed_codes": failed[:50],
             "has_industry": bool(len(industry)),
+            "industry_provider": industry_provider.name if industry_provider is not None else None,
+            "industry_pit_coverage": industry_pit_coverage,
             "has_circ_mv": bool(panel["circ_mv"].notna().any())
             if "circ_mv" in panel.columns
             else False,
             "circ_mv_source": basic_info.get("circ_mv_source"),
             "daily_basic_coverage": basic_info.get("daily_basic_coverage"),
+            "adv_20d_coverage": float(panel["adv_20d"].notna().mean()) if "adv_20d" in panel.columns else 0.0,
+            "free_float_shares_coverage": float(panel["free_float_shares"].notna().mean()) if "free_float_shares" in panel.columns else 0.0,
+            "security_status_provider": execution_info.get("security_status_provider"),
+            "corporate_actions_provider": execution_info.get("corporate_actions_provider"),
+            "security_status_coverage": execution_info.get("security_status_coverage"),
+            "limit_price_coverage": execution_info.get("limit_price_coverage"),
+            "corporate_action_coverage": execution_info.get("corporate_action_coverage"),
+            "risk_exposures_provider": risk_provider.name if risk_provider is not None else None,
+            "risk_exposures_coverage": risk_coverage,
             "quality": report.to_dict(),
             "data_version": datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"),
             "calendar_source": calendar_source,
@@ -471,7 +666,7 @@ class DataService:
             print(f"[data] load_bars db fallback: {e}", flush=True)
         if not self.bars_path.exists():
             raise FileNotFoundError(
-                f"Missing bars in DB/parquet. Run: qfactor sync-data --start ... --end ..."
+                "Missing bars in DB/parquet. Run: qfactor sync-data --start ... --end ..."
             )
         return pd.read_parquet(self.bars_path)
 

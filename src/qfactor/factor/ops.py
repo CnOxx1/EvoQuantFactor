@@ -6,6 +6,7 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Any, Literal
 
+from qfactor.db.repo import Database
 from qfactor.eval.service import EvalService
 from qfactor.factor.registry import FactorRegistry
 from qfactor.settings import ProjectConfig, get_project_config
@@ -395,6 +396,19 @@ class LibraryOps:
         }
         min_daily_basic = float(production.get("min_daily_basic_coverage", 0.0))
         min_independent = int(production.get("min_independent_observations", 0))
+        active_releases = {
+            str(item.get("name")): item
+            for item in Database().list_releases(state="active")
+            if item.get("data_version") == data_version
+        }
+        execution_requirements = {
+            "security_status_coverage": float(production.get("min_security_status_coverage", 1.0)),
+            "limit_price_coverage": float(production.get("min_limit_price_coverage", 1.0)),
+            "adv_20d_coverage": float(production.get("min_adv_20d_coverage", 1.0)),
+            "corporate_action_coverage": float(production.get("min_corporate_action_coverage", 1.0)),
+            "industry_pit_coverage": float(production.get("min_industry_pit_coverage", 1.0)),
+            "risk_exposures_coverage": float(production.get("min_risk_exposures_coverage", 1.0)),
+        }
         factors: list[dict[str, Any]] = []
         excluded: list[dict[str, Any]] = []
 
@@ -405,6 +419,10 @@ class LibraryOps:
             if item.get("status") not in {"candidate", "approved"}:
                 continue
             reasons: list[str] = []
+            release = active_releases.get(name)
+            if release is None:
+                excluded.append({"name": name, "reasons": ["no_current_active_release"]})
+                continue
             latest = self.registry.factor_dir(name) / "reports" / "latest.json"
             if not latest.exists():
                 excluded.append({"name": name, "reasons": ["missing_latest_report"]})
@@ -429,6 +447,10 @@ class LibraryOps:
                 reasons.append("daily_basic_coverage_below_contract")
             if int(metrics.get("n_independent") or 0) < min_independent:
                 reasons.append("insufficient_independent_observations")
+            if production.get("require_execution_data", False):
+                for metric, minimum in execution_requirements.items():
+                    if float(metrics.get(metric) or 0.0) < minimum:
+                        reasons.append(f"{metric}_below_contract")
             if reasons:
                 excluded.append({"name": name, "reasons": reasons})
                 continue
@@ -447,6 +469,8 @@ class LibraryOps:
                     "mechanism": spec.mechanism or spec.category,
                     "expression": spec.expression or (spec.params or {}).get("expression"),
                     "data_version": metrics.get("data_version"),
+                    "release_id": release.get("release_id"),
+                    "release_path": str((self.cfg.path("factor_lib") / "releases" / str(release.get("release_id"))).relative_to(self.cfg.root)),
                     "factor_path": factor_path,
                     "quality": {
                         key: metrics.get(key)
@@ -465,13 +489,19 @@ class LibraryOps:
                             "n_independent",
                             "signal_hold_days",
                             "trade_lag",
+                            "security_status_coverage",
+                            "limit_price_coverage",
+                            "adv_20d_coverage",
+                            "corporate_action_coverage",
+                            "industry_pit_coverage",
+                            "risk_exposures_coverage",
                         )
                     },
                 }
             )
         factors.sort(key=lambda x: (str(x["mechanism"]), str(x["name"])))
         return {
-            "contract_version": "multifactor-input-v1",
+            "contract_version": "multifactor-input-v3-active-releases-only",
             "data_version": data_version,
             "n_eligible": len(factors),
             "n_excluded": len(excluded),

@@ -8,6 +8,8 @@ from uuid import uuid4
 
 from qfactor.data.dataset import DataService
 from qfactor.db.repo import Database
+from qfactor.eval.multiple_testing import familywise_ic_audit
+from qfactor.eval.partitions import EvaluationPartitions
 from qfactor.eval.service import EvalService
 from qfactor.factor.provenance import definition_hash, definition_payload
 from qfactor.factor.registry import FactorRegistry
@@ -92,26 +94,53 @@ class AcceptanceService:
             raise RuntimeError(
                 f"Sealed end {sealed_end} exceeds available data end {data_end}"
             )
-        if data_end and sealed_end != data_end:
+        part_cfg = (self.cfg.eval.get("eval") or {}).get("partitions") or {}
+        discovery_start = str(part_cfg.get("discovery_start") or "")
+        discovery_end = str(part_cfg.get("discovery_end") or "")
+        if not discovery_start or not discovery_end:
             raise RuntimeError(
-                "The current evaluator uses all dates after train_end as holdout. "
-                "Use the available data end as sealed_end until interval-scoped evaluation is implemented."
+                "Configure eval.partitions.discovery_start/discovery_end before consuming sealed OOS."
             )
+        expected_start = str(part_cfg.get("sealed_start") or sealed_start)
+        expected_end = str(part_cfg.get("sealed_end") or sealed_end)
+        if expected_start != sealed_start or expected_end != sealed_end:
+            raise RuntimeError("sealed window must match the frozen eval.partitions contract")
+        EvaluationPartitions(
+            discovery_start=discovery_start,
+            discovery_end=discovery_end,
+            selection_start=part_cfg.get("selection_start"),
+            selection_end=part_cfg.get("selection_end"),
+            sealed_start=sealed_start,
+            sealed_end=sealed_end,
+        ).validate()
 
         evaluator = self.evaluator or EvalService(self.cfg)
         factor = self.registry.load_factor(name)
-        old_train_end = self.cfg.eval.setdefault("eval", {}).get("train_end")
-        try:
-            # The existing production evaluator uses dates after train_end as holdout.
-            # Pinning the boundary here makes the sealed interval explicit and prevents
-            # the acceptance report from being confused with a research walk-forward run.
-            self.cfg.eval["eval"]["train_end"] = sealed_start
-            report = evaluator.evaluate_factor(factor, gate_name="production")
-        finally:
-            self.cfg.eval["eval"]["train_end"] = old_train_end
+        report = evaluator.evaluate_factor(
+            factor,
+            gate_name="production",
+            interval_start=sealed_start,
+            interval_end=sealed_end,
+            sealed=True,
+        )
 
+        experiment_ref = frozen.get("experiment_id")
+        trial_events = self.db.list_experiment_trials(str(experiment_ref)) if experiment_ref else []
+        generated_trials = sum(1 for event in trial_events if event.get("stage") == "generated")
+        if generated_trials > 0:
+            selection_audit = familywise_ic_audit(
+                report.get("metrics") or {}, n_trials=generated_trials
+            )
+        else:
+            selection_audit = {
+                "contract_version": "familywise_ic_audit_v1",
+                "state": "familywise_failed",
+                "passed": False,
+                "n_trials": 0,
+                "reason": "missing_experiment_trial_ledger",
+            }
         acceptance_id = f"acc_{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}_{uuid4().hex[:10]}"
-        passed = (report.get("gate") or {}).get("status") == "candidate"
+        passed = bool((report.get("gate") or {}).get("status") == "candidate" and selection_audit.get("passed"))
         payload = {
             "schema_version": 1,
             "acceptance_id": acceptance_id,
@@ -120,7 +149,8 @@ class AcceptanceService:
             "created_at": _utc_now(),
             "definition_hash": frozen["definition_hash"],
             "data_version": data_version,
-            "experiment_id": frozen.get("experiment_id"),
+            "experiment_id": experiment_ref,
+            "selection_bias_audit": selection_audit,
             "sealed_window": {"start": sealed_start, "end": sealed_end},
             "frozen_definition": frozen,
             "report": report,

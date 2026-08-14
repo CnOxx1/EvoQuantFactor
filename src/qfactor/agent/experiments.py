@@ -9,6 +9,7 @@ from uuid import uuid4
 
 from qfactor.data.dataset import DataService
 from qfactor.db.repo import Database
+from qfactor.eval.partitions import EvaluationPartitions
 from qfactor.settings import ProjectConfig, get_project_config
 
 
@@ -173,17 +174,70 @@ class ExperimentLedger:
 
 
 def build_date_partitions(cfg: ProjectConfig | None = None) -> dict[str, Any]:
-    """Declare available windows without claiming the final OOS is already sealed."""
+    """Return the frozen experiment windows without claiming OOS when incomplete."""
     cfg = cfg or get_project_config()
     meta = DataService(cfg).status().get("meta") or {}
-    train_end = str((cfg.eval.get("eval") or {}).get("train_end") or "")
+    raw = ((cfg.eval.get("eval") or {}).get("partitions") or {})
+    discovery_start = str(raw.get("discovery_start") or "")
+    discovery_end = str(raw.get("discovery_end") or "")
+    configured = bool(discovery_start and discovery_end)
+    windows: dict[str, Any] = {}
+    if configured:
+        parts = EvaluationPartitions(
+            discovery_start=discovery_start,
+            discovery_end=discovery_end,
+            selection_start=raw.get("selection_start") or None,
+            selection_end=raw.get("selection_end") or None,
+            sealed_start=raw.get("sealed_start") or None,
+            sealed_end=raw.get("sealed_end") or None,
+        )
+        windows = parts.as_dict()
     return {
         "data_start": meta.get("start"),
         "data_end": meta.get("end"),
-        "discovery_end": train_end or None,
-        "selection_window": "configured walk-forward folds ending at discovery_end",
+        "state": "configured" if configured else "unconfigured",
+        "windows": windows,
         "sealed_oos": {
-            "state": "unconfigured",
-            "note": "No sealed OOS is claimed until a release-specific acceptance manifest is created.",
+            "state": "configured" if windows.get("sealed_start") else "unconfigured",
+            "note": "Sealed OOS can be consumed only through a frozen acceptance run.",
         },
     }
+
+
+def require_discovery_contract(cfg: ProjectConfig | None = None) -> dict[str, Any]:
+    """Fail closed before an LLM can search a non-production research sample."""
+    cfg = cfg or get_project_config()
+    status = DataService(cfg).status()
+    meta = status.get("meta") or {}
+    production = cfg.eval.get("production") or {}
+    partitions = build_date_partitions(cfg)
+    issues: list[str] = []
+    if str(meta.get("universe_mode") or "").lower() not in {
+        str(x).lower() for x in production.get("allowed_universe_modes", ["pit"])
+    }:
+        issues.append("universe_not_pit")
+    source = str(meta.get("circ_mv_source") or "").lower()
+    allowed = {str(x).lower() for x in production.get("allowed_circ_mv_sources", [])}
+    if allowed and source not in allowed:
+        issues.append("circ_mv_not_verified_provider")
+    if float(meta.get("daily_basic_coverage") or 0.0) < float(production.get("min_daily_basic_coverage", 0.0)):
+        issues.append("daily_basic_coverage_below_contract")
+    if production.get("require_execution_data", False):
+        requirements = {
+            "security_status_coverage": "min_security_status_coverage",
+            "limit_price_coverage": "min_limit_price_coverage",
+            "adv_20d_coverage": "min_adv_20d_coverage",
+            "corporate_action_coverage": "min_corporate_action_coverage",
+            "industry_pit_coverage": "min_industry_pit_coverage",
+            "risk_exposures_coverage": "min_risk_exposures_coverage",
+        }
+        for metric, threshold in requirements.items():
+            if float(meta.get(metric) or 0.0) < float(production.get(threshold, 1.0)):
+                issues.append(f"{metric}_below_contract")
+    if partitions["state"] != "configured":
+        issues.append("discovery_partitions_unconfigured")
+    if issues:
+        raise RuntimeError(
+            "LLM discovery is blocked until the data/time contract passes: " + ", ".join(issues)
+        )
+    return partitions

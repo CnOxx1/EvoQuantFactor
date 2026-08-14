@@ -127,7 +127,88 @@ fields:
     trade_lag: 0
     family: style
     optional: true
-    desc: 行业（预留中性化）
+    desc: 行业（必须使用点时分类；用于中性化）
+
+  # 以下字段用于可交易性、容量、复权与风险控制，不进入 DSL/LLM 因子搜索空间。
+  - name: is_st
+    table: security_status
+    dtype: bool
+    availability: eod
+    trade_lag: 1
+    optional: true
+    llm_eligible: false
+    role: execution_constraint
+    desc: 点时 ST 标记
+
+  - name: is_suspended
+    table: security_status
+    dtype: bool
+    availability: eod
+    trade_lag: 1
+    optional: true
+    llm_eligible: false
+    role: execution_constraint
+    desc: 点时停牌标记
+
+  - name: limit_up
+    table: security_status
+    dtype: float
+    availability: eod
+    trade_lag: 1
+    optional: true
+    llm_eligible: false
+    role: execution_constraint
+    desc: 当日涨停价（点时供应商记录）
+
+  - name: limit_down
+    table: security_status
+    dtype: float
+    availability: eod
+    trade_lag: 1
+    optional: true
+    llm_eligible: false
+    role: execution_constraint
+    desc: 当日跌停价（点时供应商记录）
+
+  - name: free_float_shares
+    table: daily_basic
+    dtype: float
+    availability: eod
+    trade_lag: 1
+    optional: true
+    llm_eligible: false
+    role: capacity
+    desc: 流通股本（容量及流通市值核验）
+
+  - name: adv_20d
+    table: daily_basic
+    dtype: float
+    availability: eod
+    trade_lag: 1
+    optional: true
+    llm_eligible: false
+    role: capacity
+    desc: 过去 20 个已完成交易日平均成交额
+
+  - name: corporate_action
+    table: corporate_actions
+    dtype: str
+    availability: eod
+    trade_lag: 1
+    optional: true
+    llm_eligible: false
+    role: adjustment_audit
+    desc: 供应商公司行动编码；显式 none 表示无事件
+
+  - name: adj_factor_vendor
+    table: corporate_actions
+    dtype: float
+    availability: eod
+    trade_lag: 1
+    optional: true
+    llm_eligible: false
+    role: adjustment_audit
+    desc: 供应商复权因子，用于核验行情复权链
 
   - name: amplitude
     table: derived

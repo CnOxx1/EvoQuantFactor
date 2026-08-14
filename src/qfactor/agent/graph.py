@@ -10,7 +10,7 @@ from langgraph.graph import END, START, StateGraph
 
 from qfactor.agent.checkpoint import CheckpointStore
 from qfactor.agent.coldstart import cold_start_cfg, ensure_dsl_seeds, is_cold_start
-from qfactor.agent.experiments import ExperimentLedger, build_date_partitions
+from qfactor.agent.experiments import ExperimentLedger, require_discovery_contract
 from qfactor.agent.diversity import (
     expression_fingerprint,
     is_banned_expression,
@@ -662,8 +662,11 @@ def run_production_graph(
     run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     run_dir = ctx.cfg.path("runs") / f"loop_{run_id}"
     run_dir.mkdir(parents=True, exist_ok=True)
+    # No model call occurs before the immutable PIT data and discovery-window
+    # contract has passed. This prevents more snapshot-data candidates from
+    # accumulating while data remediation is outstanding.
+    date_partitions = require_discovery_contract(ctx.cfg)
     ctx.experiment = ExperimentLedger(ctx.cfg, run_dir=run_dir / "experiment")
-    date_partitions = build_date_partitions(ctx.cfg)
     manifest = ctx.experiment.start(
         run_id=run_id,
         data_version=ctx.eval.data.status().get("data_version"),

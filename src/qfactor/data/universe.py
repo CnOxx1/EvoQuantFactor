@@ -186,6 +186,7 @@ def resolve_universe(
     history: pd.DataFrame | None,
     latest_snapshot: pd.DataFrame | None = None,
     cfg: ProjectConfig | None = None,
+    provider: str | None = None,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     """
     pit: all reconstitutions in [start-lookback, end].
@@ -220,15 +221,15 @@ def resolve_universe(
 
     if hist.empty:
         raise RuntimeError(
-            "Point-in-time CSI100 constituents require Tushare index history "
-            "(index_weight / index_member). Set TUSHARE_TOKEN, or set "
-            "universe_policy.mode: snapshot to keep the old latest-file behavior."
+            "Point-in-time CSI100 constituents require a verified historical "
+            "reconstitution provider (for example Tushare, RQData, or a vetted local archive). "
+            "Configure data_sources.providers.universe; do not downgrade to snapshot for production."
         )
 
     hist = hist[(hist["trade_date"] >= shift_yyyymmdd(start, -lookback)) & (hist["trade_date"] <= end)]
     if hist.empty:
         raise RuntimeError(
-            f"Tushare returned no CSI100 reconstitutions in {shift_yyyymmdd(start, -lookback)}–{end}"
+            f"Configured PIT provider returned no CSI100 reconstitutions in {shift_yyyymmdd(start, -lookback)}–{end}"
         )
 
     if mode == "freeze_start" or classify_mode(hist, "pit") == "freeze_start":
@@ -255,7 +256,7 @@ def resolve_universe(
 
     meta = {
         "universe_mode": actual,
-        "provider": "tushare",
+        "provider": provider or "verified_provider",
         "index_code": policy["index_code"],
         "lookback_days": lookback,
         "requested_mode": mode,

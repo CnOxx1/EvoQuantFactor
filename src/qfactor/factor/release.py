@@ -9,6 +9,8 @@ from uuid import uuid4
 
 from qfactor.data.dataset import DataService
 from qfactor.db.repo import Database
+from qfactor.eval.service import EvalService
+from qfactor.eval.trading import simulate_non_overlapping_long_short
 from qfactor.factor.acceptance import AcceptanceService
 from qfactor.factor.provenance import definition_hash
 from qfactor.factor.registry import FactorRegistry
@@ -17,6 +19,27 @@ from qfactor.settings import ProjectConfig, get_project_config
 
 def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _execution_contract_reasons(meta: dict[str, Any], production: dict[str, Any]) -> list[str]:
+    """Return fail-closed data-contract violations for a tradable release."""
+    if not production.get("require_execution_data", False):
+        return []
+    requirements = {
+        "security_status_coverage": "min_security_status_coverage",
+        "limit_price_coverage": "min_limit_price_coverage",
+        "adv_20d_coverage": "min_adv_20d_coverage",
+        "corporate_action_coverage": "min_corporate_action_coverage",
+        "industry_pit_coverage": "min_industry_pit_coverage",
+        "risk_exposures_coverage": "min_risk_exposures_coverage",
+    }
+    reasons: list[str] = []
+    for metric, threshold in requirements.items():
+        value = float(meta.get(metric, 0.0) or 0.0)
+        minimum = float(production.get(threshold, 1.0))
+        if value < minimum:
+            reasons.append(f"{metric}_below_contract")
+    return reasons
 
 
 class TradabilityService:
@@ -44,6 +67,7 @@ class TradabilityService:
         allowed = {str(x).lower() for x in production.get("allowed_circ_mv_sources", [])}
         if allowed and circ_mv not in allowed:
             reasons.append("circ_mv_not_vendor")
+        reasons.extend(_execution_contract_reasons(meta, production))
         reasons.append("missing_order_level_execution_simulator")
         report = {
             "schema_version": 1,
@@ -62,6 +86,12 @@ class TradabilityService:
             "data_meta": {
                 "universe_provider": universe,
                 "circ_mv_source": circ_mv,
+                "security_status_coverage": meta.get("security_status_coverage"),
+                "limit_price_coverage": meta.get("limit_price_coverage"),
+                "adv_20d_coverage": meta.get("adv_20d_coverage"),
+                "corporate_action_coverage": meta.get("corporate_action_coverage"),
+                "industry_pit_coverage": meta.get("industry_pit_coverage"),
+                "risk_exposures_coverage": meta.get("risk_exposures_coverage"),
                 "limitations": limitations,
             },
         }
@@ -70,6 +100,71 @@ class TradabilityService:
         (root / "latest.json").write_text(
             json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8"
         )
+        return report
+
+    def simulate(self, name: str) -> dict[str, Any]:
+        """Run the non-overlapping execution ledger; never upgrades missing data."""
+        factor = self.registry.load_factor(name)
+        evaluator = EvalService(self.cfg)
+        signal = factor.compute(evaluator._context())
+        bars = DataService(self.cfg).load_bars().copy()
+        bars["trade_date"] = bars["trade_date"].astype(str)
+        def panel(field: str) -> Any:
+            if field not in bars.columns:
+                return None
+            return bars.pivot(index="trade_date", columns="ts_code", values=field).sort_index()
+        open_px = panel("open")
+        close_px = panel("close")
+        pre_close = panel("pre_close")
+        amount = panel("amount")
+        is_st = panel("is_st")
+        is_suspended = panel("is_suspended")
+        limit_up = panel("limit_up")
+        limit_down = panel("limit_down")
+        adv_20d = panel("adv_20d")
+        free_float_shares = panel("free_float_shares")
+        if open_px is None or close_px is None or pre_close is None:
+            raise RuntimeError("Execution simulation requires open, close, and pre_close panels")
+        ev = self.cfg.eval.get("eval") or {}
+        execution = simulate_non_overlapping_long_short(
+            signal,
+            open_px,
+            close_px,
+            pre_close,
+            amount,
+            is_st=is_st,
+            is_suspended=is_suspended,
+            limit_up=limit_up,
+            limit_down=limit_down,
+            adv_20d=adv_20d,
+            free_float_shares=free_float_shares,
+            trade_lag=int(ev.get("trade_lag", 1)),
+            hold_days=int(ev.get("signal_hold_days", 5)),
+            quantiles=int(ev.get("n_quantiles", 5)),
+            cost_bps=float(ev.get("cost_bps", 10)),
+        )
+        readiness = self.assess_readiness(name)
+        reasons = [r for r in readiness.get("reasons", []) if r != "missing_order_level_execution_simulator"]
+        reasons.extend(execution.get("limitations") or [])
+        if int(execution.get("n_filled") or 0) < 20:
+            reasons.append("insufficient_non_overlapping_rebalances")
+        if float(execution.get("net_long_short_mean") or 0.0) <= 0.0:
+            reasons.append("net_execution_return_not_positive")
+        state = "tradability_passed" if not reasons else "tradability_blocked"
+        report = {
+            "schema_version": 3,
+            "name": name,
+            "definition_hash": definition_hash(factor.spec),
+            "data_version": DataService(self.cfg).data_version(),
+            "state": state,
+            "created_at": _utc_now(),
+            "reasons": sorted(set(reasons)),
+            "execution": execution,
+            "note": "Only a PIT/ST/limit/capacity-complete execution report may become tradability_passed.",
+        }
+        root = self.registry.factor_dir(name) / "tradability"
+        root.mkdir(parents=True, exist_ok=True)
+        (root / "latest.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
         return report
 
     def latest(self, name: str) -> dict[str, Any] | None:
@@ -100,8 +195,11 @@ class ReleaseService:
         latest_report = self._load_json(self.registry.factor_dir(name) / "reports" / "latest.json")
         acceptance = self.acceptance.latest(name)
         tradability = self.tradability.latest(name)
-        data_version = DataService(self.cfg).status().get("data_version")
-        reasons: list[str] = []
+        data_status = DataService(self.cfg).status()
+        data_version = data_status.get("data_version")
+        reasons: list[str] = _execution_contract_reasons(
+            (data_status.get("meta") or {}), self.cfg.eval.get("production") or {}
+        )
         if latest_report is None:
             reasons.append("missing_production_report")
         else:
@@ -119,6 +217,8 @@ class ReleaseService:
             reasons.append("definition_changed_after_acceptance")
         elif data_version and acceptance.get("data_version") != data_version:
             reasons.append("sealed_acceptance_stale_data_version")
+        elif not bool((acceptance.get("selection_bias_audit") or {}).get("passed")):
+            reasons.append("selection_bias_audit_not_passed")
         if tradability is None:
             reasons.append("missing_tradability_report")
         elif tradability.get("state") != "tradability_passed":

@@ -180,19 +180,33 @@ def walk_forward_after(
     }
 
 
-def holdout_oos(
+def holdout_window(
     ic: pd.Series,
-    after: str,
+    start: str,
+    end: str,
     orientation: int = 1,
     min_days: int = 40,
     nw_lags: int = 0,
     n_folds: int = 2,
 ) -> dict[str, Any]:
-    """Holdout after `after`, frozen sign, split into contiguous folds.
+    """Frozen-sign OOS statistics over an explicit inclusive date interval."""
+    if str(start) > str(end):
+        raise ValueError("sealed start must be <= sealed end")
+    subset = ic.loc[(ic.index.astype(str) >= str(start)) & (ic.index.astype(str) <= str(end))]
+    # Reuse holdout implementation with a synthetic predecessor below the interval.
+    if subset.empty:
+        return holdout_oos(pd.Series(dtype=float), after=start, orientation=orientation, min_days=min_days, nw_lags=nw_lags, n_folds=n_folds)
+    return _holdout_stats(subset * int(orientation), orientation, min_days, nw_lags, n_folds)
 
-    Two folds catch a first-half spike that reverses later. A single window
-    mean is not an extra OOS check beyond the production IC gate.
-    """
+
+def _holdout_stats(
+    hold: pd.Series,
+    orientation: int,
+    min_days: int,
+    nw_lags: int,
+    n_folds: int,
+) -> dict[str, Any]:
+    """Compute fold statistics on a preselected, already oriented holdout IC series."""
     empty = {
         "folds": [],
         "oos_ic_mean": 0.0,
@@ -201,12 +215,9 @@ def holdout_oos(
         "n_folds": 0,
         "pos_folds": 0,
         "period_stability": period_stability_ic(
-            ic, n_folds=2, min_days=min_days, nw_lags=nw_lags
+            hold, n_folds=2, min_days=min_days, nw_lags=nw_lags
         ),
     }
-    if ic.empty:
-        return empty
-    hold = ic.loc[ic.index.astype(str) > str(after)] * int(orientation)
     folds_n = max(2, int(n_folds or 2))
     min_fold = max(20, int(min_days) // 2)
     if hold.empty or len(hold) < min_days or len(hold) < folds_n * min_fold:
@@ -242,6 +253,25 @@ def holdout_oos(
             hold, n_folds=2, min_days=min_days, nw_lags=nw_lags
         ),
     }
+
+
+def holdout_oos(
+    ic: pd.Series,
+    after: str,
+    orientation: int = 1,
+    min_days: int = 40,
+    nw_lags: int = 0,
+    n_folds: int = 2,
+) -> dict[str, Any]:
+    """Holdout after `after`, frozen sign, split into contiguous folds.
+
+    Two folds catch a first-half spike that reverses later. A single window
+    mean is not an extra OOS check beyond the production IC gate.
+    """
+    if ic.empty:
+        return _holdout_stats(pd.Series(dtype=float), orientation, min_days, nw_lags, n_folds)
+    hold = ic.loc[ic.index.astype(str) > str(after)] * int(orientation)
+    return _holdout_stats(hold, orientation, min_days, nw_lags, n_folds)
 
 
 def cost_layered(

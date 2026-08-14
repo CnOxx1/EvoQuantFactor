@@ -48,7 +48,7 @@ production:
   min_holdout_icir: 0.07   # NW ICIR; equivalent of former 0.10 overlapping window
   min_coverage: 0.70
   max_corr_existing: 0.70
-  min_years_consistent: 2
+  min_years_consistent: 3
   max_daily_turnover: 1.20
   require_no_lookahead: true
   min_layered_monotonic_score: 0.75
@@ -68,8 +68,17 @@ production:
   require_pit_universe: true
   allowed_universe_modes: [pit]
   require_vendor_circ_mv: true
-  allowed_circ_mv_sources: [tushare_daily_basic]
+  allowed_circ_mv_sources: [tushare_daily_basic, archive_daily_basic, rqdata_daily_basic]
   min_daily_basic_coverage: 0.80
+  # Execution and risk evidence must be point-in-time and near-complete. Unknown
+  # is not treated as tradable; the release service applies these fail-closed.
+  require_execution_data: true
+  min_security_status_coverage: 0.98
+  min_limit_price_coverage: 0.98
+  min_adv_20d_coverage: 0.95
+  min_corporate_action_coverage: 0.98
+  min_industry_pit_coverage: 0.95
+  min_risk_exposures_coverage: 0.95
   # H-day IC observations overlap. Require a material count of independent
   # observations before a single factor becomes strategy input.
   min_independent_observations: 60
@@ -77,7 +86,16 @@ production:
 eval:
   forward_horizon: 5
   trade_lag: 1          # override project.defaults.trade_lag if set
-  train_end: "20251231" # research/mining window; production scores dates after this
+  train_end: "20251231" # legacy research boundary; sealed acceptance uses partitions below
+  # Leave all fields blank until PIT long history has passed the data contract.
+  # Once filled, the three windows are immutable for an experiment/release.
+  partitions:
+    discovery_start: ""
+    discovery_end: ""
+    selection_start: ""
+    selection_end: ""
+    sealed_start: ""
+    sealed_end: ""
   n_quantiles: 5
   cost_bps: 10
   min_obs_per_day: 30

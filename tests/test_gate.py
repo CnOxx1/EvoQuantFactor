@@ -83,6 +83,12 @@ def _production_ok_metrics(**overrides):
         "universe_mode": "pit",
         "circ_mv_source": "tushare_daily_basic",
         "daily_basic_coverage": 0.9,
+        "security_status_coverage": 1.0,
+        "limit_price_coverage": 1.0,
+        "adv_20d_coverage": 1.0,
+        "corporate_action_coverage": 1.0,
+        "industry_pit_coverage": 1.0,
+        "risk_exposures_coverage": 1.0,
         "n_independent": 80,
     }
     metrics.update(overrides)
