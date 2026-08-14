@@ -171,22 +171,49 @@ class FactoryRuntime:
                 "reason": "cadence" if contract["state"] == "passed" else contract.get("reason"),
             }
 
-        # Re-score the small candidate book every cycle. A larger screened book is
-        # intentionally revisited much less often to avoid recurrent search bias.
-        self._write_progress(cycle, "refresh_candidates", started)
+        # A candidate cannot remain production-eligible when the immutable
+        # production data contract is already blocked. Demote immediately rather
+        # than spending CPU on a full production evaluation that must fail.
+        if contract["state"] == "blocked":
+            self._write_progress(cycle, "demote_candidates_for_data_contract", started)
+            demoted_for_contract: list[str] = []
+            demote_errors: list[dict[str, str]] = []
+            for item in self.registry.list_factors():
+                if item.get("status") != "candidate":
+                    continue
+                name = str(item["name"])
+                try:
+                    self.ops.demote(
+                        name,
+                        to="screened",
+                        reason="runtime_production_data_contract_blocked",
+                    )
+                    demoted_for_contract.append(name)
+                except Exception as exc:
+                    demote_errors.append({"name": name, "error": str(exc)})
+            result["actions"]["refresh_candidates"] = {
+                "state": "blocked_data_contract",
+                "demoted_candidates": demoted_for_contract,
+                "errors": demote_errors,
+            }
+            result["errors"].extend({"stage": "demote_candidate", **error} for error in demote_errors)
+        else:
+            # Re-score the small candidate book every cycle. A larger screened
+            # book is intentionally revisited less often to avoid search bias.
+            self._write_progress(cycle, "refresh_candidates", started)
 
-        def _candidate_progress(event: dict[str, Any]) -> None:
-            name = str(event.get("name") or "unknown")
-            stage = str(event.get("stage") or "candidate")
-            self._write_progress(cycle, f"refresh_{stage}:{name}", started)
+            def _candidate_progress(event: dict[str, Any]) -> None:
+                name = str(event.get("name") or "unknown")
+                stage = str(event.get("stage") or "candidate")
+                self._write_progress(cycle, f"refresh_{stage}:{name}", started)
 
-        try:
-            result["actions"]["refresh_candidates"] = self.ops.refresh_production(
-                include_screened=False, on_progress=_candidate_progress
-            )
-        except Exception as exc:
-            result["actions"]["refresh_candidates"] = {"state": "error", "error": str(exc)}
-            result["errors"].append({"stage": "refresh_candidates", "error": str(exc)})
+            try:
+                result["actions"]["refresh_candidates"] = self.ops.refresh_production(
+                    include_screened=False, on_progress=_candidate_progress
+                )
+            except Exception as exc:
+                result["actions"]["refresh_candidates"] = {"state": "error", "error": str(exc)}
+                result["errors"].append({"stage": "refresh_candidates", "error": str(exc)})
         if cycle % self.screened_every == 0:
             self._write_progress(cycle, "recheck_screened", started)
             try:

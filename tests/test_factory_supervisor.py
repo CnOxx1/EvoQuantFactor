@@ -11,6 +11,7 @@ class _Data:
 class _Ops:
     def __init__(self):
         self.refresh_calls = 0
+        self.demotions = []
 
     def refresh_production(self, include_screened=False, on_progress=None):
         assert include_screened is False
@@ -19,6 +20,10 @@ class _Ops:
             on_progress({"stage": "candidate_start", "name": "candidate_a", "index": 1, "total": 1})
             on_progress({"stage": "candidate_done", "name": "candidate_a", "index": 1, "total": 1, "outcome": "demoted"})
         return {"kept_candidates": [], "demoted_candidates": []}
+
+    def demote(self, name, to, reason):
+        self.demotions.append({"name": name, "to": to, "reason": reason})
+        return {"name": name, "status": to}
 
     def promote_screened(self):
         raise AssertionError("screened recheck should not run off cadence")
@@ -32,6 +37,11 @@ class _Release:
         return {"n_active": 0}
 
 
+class _Registry:
+    def list_factors(self):
+        return [{"name": "candidate_a", "status": "candidate"}]
+
+
 def test_runtime_cycle_is_fail_closed_and_auditable(tmp_path: Path):
     runtime = object.__new__(FactoryRuntime)
     runtime.runtime_dir = tmp_path
@@ -40,6 +50,7 @@ def test_runtime_cycle_is_fail_closed_and_auditable(tmp_path: Path):
     runtime.stop_path = tmp_path / "STOP"
     runtime.data = _Data()
     runtime.ops = _Ops()
+    runtime.registry = _Registry()
     runtime.release = _Release()
     runtime.discovery_every = 1
     runtime.screened_every = 10
@@ -57,7 +68,9 @@ def test_runtime_cycle_is_fail_closed_and_auditable(tmp_path: Path):
 
     assert result["state"] == "ok"
     assert result["actions"]["research_discovery"]["state"] == "blocked"
-    assert result["actions"]["refresh_candidates"]["demoted_candidates"] == []
+    assert result["actions"]["refresh_candidates"]["state"] == "blocked_data_contract"
+    assert result["actions"]["refresh_candidates"]["demoted_candidates"] == ["candidate_a"]
+    assert runtime.ops.refresh_calls == 0
     assert result["actions"]["recheck_screened"]["state"] == "skipped"
     assert result["actions"]["trading_releases"]["n_active"] == 0
     assert runtime.status_path.exists()
