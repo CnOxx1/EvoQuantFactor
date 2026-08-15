@@ -77,6 +77,9 @@ class FactoryRuntime:
         self.ops = LibraryOps(self.cfg)
         self.release = ReleaseService(self.cfg)
         self.data = DataService(self.cfg)
+        # Keep one research loop alive across cycles so its data context and peer
+        # factor cache are reused. This never reuses a production gate decision.
+        self.research_loop = FactorLoop(self.cfg)
         self.runtime_dir = runtime_dir or self.cfg.path("runs") / "factory_monitor"
         self.status_path = self.runtime_dir / "status.json"
         self.events_path = self.runtime_dir / "events.jsonl"
@@ -182,14 +185,30 @@ class FactoryRuntime:
         # production contract used below.
         if research_contract["state"] == "passed" and cycle % self.discovery_every == 0:
             self._write_progress(cycle, "research_discovery", started)
+
+            def _research_progress(event: dict[str, Any]) -> None:
+                stage = str(event.get("stage") or "candidate_eval")
+                name = str(event.get("name") or "")
+                suffix = f":{name}" if name else ""
+                self._write_progress(cycle, f"research_{stage}{suffix}", started)
+                self._append_event(
+                    {
+                        "event": "research_progress",
+                        "cycle": int(cycle),
+                        "timestamp": utc_now(),
+                        **event,
+                    }
+                )
+
             try:
-                result["actions"]["research_discovery"] = FactorLoop(self.cfg).run(
+                result["actions"]["research_discovery"] = self.research_loop.run(
                     rounds=1,
                     batch_size=2,
                     gate_name="research",
                     llm_ratio=self.llm_ratio,
                     llm_review_ratio=0.0,
                     research_contract=self.research_contract,
+                    on_progress=_research_progress,
                 )
             except Exception as exc:
                 result["actions"]["research_discovery"] = {"state": "error", "error": str(exc)}

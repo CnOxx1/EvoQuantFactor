@@ -4,7 +4,7 @@ import json
 import random
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Literal, TypedDict
+from typing import Any, Callable, Literal, TypedDict
 
 from langgraph.graph import END, START, StateGraph
 
@@ -124,11 +124,18 @@ class ProductionState(TypedDict, total=False):
 class ProductionContext:
     """Non-serializable services closed over by graph nodes."""
 
-    def __init__(self, cfg: ProjectConfig | None = None, llm: LLMClient | None = None):
+    def __init__(
+        self,
+        cfg: ProjectConfig | None = None,
+        llm: LLMClient | None = None,
+        eval_service: EvalService | None = None,
+        on_progress: Callable[[dict[str, Any]], None] | None = None,
+    ):
         self.cfg = cfg or get_project_config()
         self.llm = llm or LLMClient()
         self.registry = FactorRegistry(self.cfg)
-        self.eval = EvalService(self.cfg)
+        self.eval = eval_service or EvalService(self.cfg)
+        self.on_progress = on_progress
         self.generator = CandidateGenerator(self.cfg, self.llm)
         self.reviewer = CandidateReviewer(self.llm)
         self.checkpoint = CheckpointStore("loop_csi100", self.cfg)
@@ -363,6 +370,21 @@ def _node_review_validate(ctx: ProductionContext):
                 round_eval_skels.add(sk)
 
             name = cand["name"]
+
+            def _candidate_progress(event: dict[str, Any]) -> None:
+                if ctx.on_progress is None:
+                    return
+                ctx.on_progress(
+                    {
+                        "stage": str(event.get("stage") or "candidate_eval"),
+                        "name": name,
+                        "candidate_index": i + 1,
+                        "candidate_total": len(cands),
+                        **{k: v for k, v in event.items() if k != "stage"},
+                    }
+                )
+
+            _candidate_progress({"stage": "candidate_review"})
             if cold and cheap_min > 0:
                 try:
                     ic_abs = ctx.eval.quick_rank_ic(cand["expression"])
@@ -388,8 +410,9 @@ def _node_review_validate(ctx: ProductionContext):
                     )
                     continue
             try:
+                _candidate_progress({"stage": "candidate_eval_start"})
                 report = ctx.eval.evaluate_dsl(
-                    cand["expression"], name, gate_name=gate_name
+                    cand["expression"], name, gate_name=gate_name, on_progress=_candidate_progress
                 )
                 status = report.get("gate", {}).get("status", "reject")
             except Exception as e:
@@ -625,6 +648,8 @@ def run_production_graph(
     *,
     cfg: ProjectConfig | None = None,
     llm: LLMClient | None = None,
+    eval_service: EvalService | None = None,
+    on_progress: Callable[[dict[str, Any]], None] | None = None,
     rounds: int = 5,
     batch_size: int = 8,
     theme: str | None = None,
@@ -640,7 +665,7 @@ def run_production_graph(
             "Mining loops are research-only. Run library-reeval-screened and "
             "library-refresh-production for production promotion."
         )
-    ctx = ProductionContext(cfg, llm)
+    ctx = ProductionContext(cfg, llm, eval_service=eval_service, on_progress=on_progress)
     ctx.llm.require_enabled()
     ensure_dsl_seeds(ctx.cfg)
 

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Literal
+from typing import Any, Callable, Literal
 
 from qfactor.agent.graph import run_production_graph
 from qfactor.agent.llm import LLMClient
@@ -59,6 +59,7 @@ class FactorLoop:
     def __init__(self, cfg: ProjectConfig | None = None, llm: LLMClient | None = None):
         self.cfg = cfg or get_project_config()
         self.llm = llm or LLMClient()
+        self.eval = EvalService(self.cfg)
 
     def run(
         self,
@@ -71,6 +72,7 @@ class FactorLoop:
         llm_review_ratio: float | None = None,
         llm_spotcheck_every: int | None = None,
         research_contract: Literal["production", "observational"] = "production",
+        on_progress: Callable[[dict[str, Any]], None] | None = None,
     ) -> dict[str, Any]:
         if gate_name != "research":
             raise RuntimeError(
@@ -79,6 +81,8 @@ class FactorLoop:
         return run_production_graph(
             cfg=self.cfg,
             llm=self.llm,
+            eval_service=self.eval,
+            on_progress=on_progress,
             rounds=rounds,
             batch_size=batch_size,
             theme=theme,

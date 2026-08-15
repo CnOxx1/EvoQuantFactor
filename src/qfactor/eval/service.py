@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Callable
 
 import numpy as np
 import pandas as pd
@@ -113,16 +113,31 @@ class EvalService:
         exclude_names: set[str],
         statuses: tuple[str, ...] | None = None,
         hold: int = 0,
+        on_progress: Callable[[dict[str, Any]], None] | None = None,
     ) -> dict[str, pd.DataFrame]:
         lag = self.trade_lag()
         statuses = statuses or KEEP_STATUSES
+        eligible = [
+            item
+            for item in self.registry.list_factors()
+            if item["name"] != name
+            and item["name"] not in exclude_names
+            and item.get("status") in statuses
+        ]
         others: dict[str, pd.DataFrame] = {}
-        for item in self.registry.list_factors():
+        total = len(eligible)
+        for ordinal, item in enumerate(eligible, 1):
             fname = item["name"]
-            if fname == name or fname in exclude_names:
-                continue
-            if item.get("status") not in statuses:
-                continue
+            if on_progress is not None and (ordinal == 1 or ordinal % 10 == 0 or ordinal == total):
+                on_progress(
+                    {
+                        "stage": "peer_cache",
+                        "peer": fname,
+                        "peer_index": ordinal,
+                        "peer_total": total,
+                        "cached": len(self._peer_cache),
+                    }
+                )
             key = f"{fname}:h{hold}" if hold > 1 else fname
             if key not in self._peer_cache:
                 try:
@@ -214,6 +229,7 @@ class EvalService:
         interval_start: str | None = None,
         interval_end: str | None = None,
         sealed: bool = False,
+        on_progress: Callable[[dict[str, Any]], None] | None = None,
     ) -> dict[str, Any]:
         ev = self.cfg.eval.get("eval", {})
         thresholds = self.cfg.eval.get(gate_name, self.cfg.eval["default"])
@@ -308,12 +324,20 @@ class EvalService:
         peer_hold = hold if hold > 1 else 0
         others_full = {}
         corr = {"max_corr": 0.0, "max_corr_with": None, "skipped": True}
-        if abs(float(ic_summary.get("rank_ic_mean", 0.0))) >= max(0.005, min_abs * 0.5):
+        # A research candidate below its own minimum absolute-IC gate cannot
+        # become screened regardless of library correlation. Avoid cold-loading
+        # every peer for that guaranteed reject. Candidates that can pass still
+        # run the unchanged complete correlation check against the full library.
+        corr_floor = max(0.005, min_abs * 0.5) if is_prod else min_abs
+        if abs(float(ic_summary.get("rank_ic_mean", 0.0))) >= corr_floor:
+            if on_progress is not None:
+                on_progress({"stage": "peer_correlation_start", "corr_floor": corr_floor})
             others_full = self._peer_panels(
                 name,
                 exclude_names or set(),
                 statuses=peer_status,
                 hold=peer_hold,
+                on_progress=on_progress,
             )
             others = {
                 k: (
@@ -441,6 +465,15 @@ class EvalService:
         }
         gate_mode = "production" if is_prod else "research"
         gate = apply_gate(metrics, thresholds, mode=gate_mode)
+        if on_progress is not None:
+            on_progress(
+                {
+                    "stage": "gate_complete",
+                    "status": gate.get("status"),
+                    "rank_ic_mean": metrics.get("rank_ic_mean"),
+                    "max_corr": metrics.get("max_corr"),
+                }
+            )
         summary = {
             "rank_ic_mean": metrics["rank_ic_mean"],
             "train_rank_ic_mean": train_rank_ic_mean,
@@ -480,6 +513,7 @@ class EvalService:
         expression: str,
         name: str,
         gate_name: str = "research",
+        on_progress: Callable[[dict[str, Any]], None] | None = None,
     ) -> dict[str, Any]:
         """Evaluate a DSL expression in memory without writing the library."""
         from qfactor.dsl.eval_expr import evaluate_expression
@@ -488,7 +522,7 @@ class EvalService:
 
         raw = evaluate_expression(parse_expression(expression), self._context())
         panel = zscore(winsorize(raw))
-        return self.evaluate_panel(panel, name, gate_name=gate_name)
+        return self.evaluate_panel(panel, name, gate_name=gate_name, on_progress=on_progress)
 
     def quick_rank_ic(self, expression: str, recent_days: int = 120) -> float:
         """Cheap |train Rank IC| for cold-start pre-screen; no peers / OOS."""
