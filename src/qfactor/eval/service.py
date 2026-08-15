@@ -319,6 +319,38 @@ class EvalService:
         coverage = float(signed.notna().mean().mean()) if not signed.empty else 0.0
         turnover = approx_daily_turnover(signed)
 
+        # OOS uses only the candidate's signal and forward returns, so calculate
+        # it before the optional peer-library scan. The research pre-gate below
+        # must see the same OOS values as the final gate.
+        if is_prod and sealed:
+            oos = holdout_window(
+                ic_raw,
+                start=str(interval_start),
+                end=str(interval_end),
+                orientation=orient,
+                min_days=int(ev.get("oos_min_days", 40)),
+                nw_lags=nw_lags,
+                n_folds=2,
+            )
+        elif is_prod and train_end:
+            oos = holdout_oos(
+                ic_raw,
+                after=train_end,
+                orientation=orient,
+                min_days=int(ev.get("oos_min_days", 40)),
+                nw_lags=nw_lags,
+                n_folds=2,
+            )
+        else:
+            oos = walk_forward_ic(
+                tradable,
+                fwd,
+                n_folds=int(ev.get("oos_folds", 4)),
+                min_days=int(ev.get("oos_min_days", 40)),
+                min_obs=min_obs,
+                ic=ic_raw,
+            )
+
         min_abs = float(thresholds.get("min_abs_rank_ic_mean", 0.0))
         peer_status = USABLE_STATUSES if is_prod else KEEP_STATUSES
         peer_hold = hold if hold > 1 else 0
@@ -389,35 +421,6 @@ class EvalService:
         )
         layered_cost["horizon_layered"] = layered_h
         cost_ret = float(layered_cost.get("long_short_cost_adj", 0.0))
-
-        if is_prod and sealed:
-            oos = holdout_window(
-                ic_raw,
-                start=str(interval_start),
-                end=str(interval_end),
-                orientation=orient,
-                min_days=int(ev.get("oos_min_days", 40)),
-                nw_lags=nw_lags,
-                n_folds=2,
-            )
-        elif is_prod and train_end:
-            oos = holdout_oos(
-                ic_raw,
-                after=train_end,
-                orientation=orient,
-                min_days=int(ev.get("oos_min_days", 40)),
-                nw_lags=nw_lags,
-                n_folds=2,
-            )
-        else:
-            oos = walk_forward_ic(
-                tradable,
-                fwd,
-                n_folds=int(ev.get("oos_folds", 4)),
-                min_days=int(ev.get("oos_min_days", 40)),
-                min_obs=min_obs,
-                ic=ic_raw,
-            )
 
         eval_start = str(tradable.index.min()) if len(tradable.index) else None
         eval_end = str(tradable.index.max()) if len(tradable.index) else None
