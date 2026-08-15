@@ -1,6 +1,6 @@
 name: amplitude_c10_163144_8115
 version: 0.1.0
-status: candidate
+status: screened
 family: price_volume
 category: amplitude
 universe: csi100
@@ -12,7 +12,6 @@ required_fields:
 - low
 lookback: 10
 horizon: 5
-signal_hold_days: 5
 neutralize: []
 params: {}
 tags:
@@ -25,3 +24,4 @@ entry_gate: research
 expression: div(std(high,10),std(low,10))
 mechanism: amplitude
 expr_hash: 2198ee7dd719dd40
+signal_hold_days: 5

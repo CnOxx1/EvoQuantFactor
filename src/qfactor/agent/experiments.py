@@ -204,6 +204,102 @@ def build_date_partitions(cfg: ProjectConfig | None = None) -> dict[str, Any]:
     }
 
 
+def require_observational_research_contract(
+    cfg: ProjectConfig | None = None,
+) -> dict[str, Any]:
+    """Validate a bounded non-production data set for interim research.
+
+    This is deliberately separate from ``require_discovery_contract``.  It can
+    permit reproducible snapshot price/volume research only when an operator
+    explicitly enables it, and returns provenance stating that the result is
+    not eligible for production promotion, sealed acceptance, or release.
+    """
+    cfg = cfg or get_project_config()
+    runtime = cfg.project.get("research_runtime") or {}
+    if not bool(runtime.get("allow_observational_data", False)):
+        raise RuntimeError("observational_research_disabled")
+
+    data = DataService(cfg)
+    status = data.status()
+    meta = status.get("meta") or {}
+    partitions = build_date_partitions(cfg)
+    issues: list[str] = []
+    if not status.get("has_bars"):
+        issues.append("bars_missing")
+    if not status.get("has_universe"):
+        issues.append("universe_missing")
+    if not status.get("data_version"):
+        issues.append("data_version_missing")
+    if partitions["state"] != "configured":
+        issues.append("research_partitions_unconfigured")
+
+    allowed_modes = {
+        str(x).strip().lower()
+        for x in runtime.get("allowed_universe_modes", ["snapshot"])
+    }
+    mode = str(meta.get("universe_mode") or "").strip().lower()
+    if not mode:
+        members_provider = meta.get("members_provider")
+        if isinstance(members_provider, dict):
+            mode = str(members_provider.get("universe_mode") or "").strip().lower()
+    if not mode:
+        limitations = str(meta.get("limitations") or "").lower()
+        # This inference is intentionally available only to the observational
+        # contract. The production contract still requires an explicit PIT mode.
+        if "latest snapshot" in limitations:
+            mode = "snapshot"
+    mode = mode or "unknown"
+    if allowed_modes and mode not in allowed_modes:
+        issues.append(f"universe_mode_not_allowed:{mode}")
+
+    dates: list[str] = []
+    n_codes = 0
+    try:
+        bars = data.load_bars()
+        dates = sorted(
+            bars["trade_date"]
+            .astype(str)
+            .str.replace("-", "", regex=False)
+            .str[:8]
+            .unique()
+        )
+        n_codes = int(bars["ts_code"].astype(str).nunique())
+    except Exception as exc:
+        issues.append(f"bars_unreadable:{exc}")
+    min_days = max(1, int(runtime.get("min_trading_days", 252)))
+    min_codes = max(1, int(runtime.get("min_securities", 50)))
+    if len(dates) < min_days:
+        issues.append(f"insufficient_trading_days:{len(dates)}<{min_days}")
+    if n_codes < min_codes:
+        issues.append(f"insufficient_securities:{n_codes}<{min_codes}")
+    if dates and partitions["state"] == "configured":
+        bounds = [
+            value
+            for value in (partitions.get("windows") or {}).values()
+            if value is not None
+        ]
+        if bounds and (min(bounds) < dates[0] or max(bounds) > dates[-1]):
+            issues.append("configured_partitions_outside_data_range")
+
+    if issues:
+        raise RuntimeError(
+            "Observational research is blocked until its explicit research contract passes: "
+            + ", ".join(issues)
+        )
+    return {
+        **partitions,
+        "contract_kind": "observational_research_only",
+        "production_eligible": False,
+        "data_version": status.get("data_version"),
+        "universe_mode": mode,
+        "data_start": dates[0] if dates else meta.get("start"),
+        "data_end": dates[-1] if dates else meta.get("end"),
+        "n_trading_days": len(dates),
+        "n_securities": n_codes,
+        "limitations": meta.get("limitations") or [],
+    }
+
+
 def require_discovery_contract(cfg: ProjectConfig | None = None) -> dict[str, Any]:
     """Fail closed before an LLM can search a non-production research sample."""
     cfg = cfg or get_project_config()

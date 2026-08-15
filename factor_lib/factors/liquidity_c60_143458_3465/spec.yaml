@@ -1,6 +1,6 @@
 name: liquidity_c60_143458_3465
 version: 0.1.0
-status: candidate
+status: screened
 family: price_volume
 category: liquidity
 universe: csi100
@@ -12,7 +12,6 @@ required_fields:
 - low
 lookback: 60
 horizon: 5
-signal_hold_days: 5
 neutralize: []
 params: {}
 tags:
@@ -25,3 +24,4 @@ entry_gate: research
 expression: div(abs(ret_1d),ma(turnover_rate,60))
 mechanism: liquidity
 expr_hash: ff2d2014ecaa4680
+signal_hold_days: 5

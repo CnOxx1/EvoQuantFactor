@@ -86,3 +86,17 @@
 ## 官网数据服务范围核验
 
 中证指数官网的“证券所属指数检索”页面用于按证券代码查询其当前所属指数及“上月末数据”的权重；页面没有历史日期选择器。因此该公开服务不能替代逐日 PIT 成分历史。中证A100详情页的 `indexInfo/index-nicons` 接口当前返回 `拟生效文件=null` 与 `拟生效历史文件=null`，说明在本次抓取时官网未对该指数公开可下载的历史拟生效样本文件。
+
+## 新浪财经成分历史核查
+
+新浪财经提供中证A100的“最新成分”和“历史成分”页面：
+
+- 最新成分页列出当前 100 只成分及每只证券的纳入日期；可作为与中证指数当前官方快照的公开交叉核对。
+- 历史成分页提供历史纳入/剔除日期，但本次可获取内容最后更新到 2012 年，未包含 2024–2026 年调出名单，不能单独重建研究窗口内的 PIT 成分。
+- 互联网档案馆中该页面的可用快照仅为 2011、2015、2022 年，未覆盖所需的 2024–2026 年度截面。
+
+来源：[新浪中证A100最新成分](http://vip.stock.finance.sina.com.cn/corp/go.php/vII_NewestComponent/indexid/000903.phtml)，[新浪中证A100历史成分](http://vip.stock.finance.sina.com.cn/corp/go.php/vII_HistoryComponent/indexid/000903.phtml)，[Internet Archive CDX](https://web.archive.org/cdx/search/cdx?url=vip.stock.finance.sina.com.cn/corp/go.php/vII_NewestComponent/indexid/000903.phtml&output=json&filter=statuscode:200&fl=timestamp,original,statuscode,digest&collapse=digest)。
+
+## BaoStock 正式公司行动数据
+
+实际探测显示 BaoStock 的 `query_dividend_data()` 提供除权除息的预披露、方案、登记、除权和派息日期及现金/送转字段；`query_adjust_factor()` 提供逐次除权日的前复权、后复权和复权因子。该公开数据可升级公司行动的**研究证据**，但不自动证明指数成员、点时行业或完整代码变更，并仍受公共服务的可用性与字段覆盖限制约束。

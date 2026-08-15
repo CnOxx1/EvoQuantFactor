@@ -53,9 +53,11 @@ def test_runtime_cycle_is_fail_closed_and_auditable(tmp_path: Path):
     runtime.registry = _Registry()
     runtime.release = _Release()
     runtime.discovery_every = 1
-    runtime.screened_every = 10
+    runtime.screened_every = 1
     runtime.llm_ratio = 0.0
+    runtime.research_contract = "production"
     runtime._discovery_contract = lambda: {"state": "blocked", "reason": "universe_not_pit"}
+    runtime._research_contract = lambda: {"state": "blocked", "mode": "production", "reason": "universe_not_pit"}
     snapshots = iter(
         [
             {"total": 3, "screened": 3, "candidate": 0, "active_release": 0},
@@ -71,7 +73,7 @@ def test_runtime_cycle_is_fail_closed_and_auditable(tmp_path: Path):
     assert result["actions"]["refresh_candidates"]["state"] == "blocked_data_contract"
     assert result["actions"]["refresh_candidates"]["demoted_candidates"] == ["candidate_a"]
     assert runtime.ops.refresh_calls == 0
-    assert result["actions"]["recheck_screened"]["state"] == "skipped"
+    assert result["actions"]["recheck_screened"]["state"] == "blocked"
     assert result["actions"]["trading_releases"]["n_active"] == 0
     assert runtime.status_path.exists()
     assert "universe_not_pit" in runtime.events_path.read_text(encoding="utf-8")

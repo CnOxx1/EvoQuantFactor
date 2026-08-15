@@ -17,7 +17,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from qfactor.agent.experiments import require_discovery_contract
+from qfactor.agent.experiments import (
+    require_discovery_contract,
+    require_observational_research_contract,
+)
 from qfactor.agent.loop import FactorLoop
 from qfactor.data.dataset import DataService
 from qfactor.db.repo import Database
@@ -52,6 +55,7 @@ class FactoryRuntime:
         discovery_every: int = 12,
         screened_every: int = 72,
         llm_ratio: float | None = None,
+        research_contract: str = "production",
         runtime_dir: Path | None = None,
     ):
         self.cfg = cfg or get_project_config()
@@ -59,7 +63,16 @@ class FactoryRuntime:
         self.discovery_every = max(1, int(discovery_every))
         self.screened_every = max(1, int(screened_every))
         production = (self.cfg.project.get("production") or {}).get("llm") or {}
-        self.llm_ratio = float(production.get("llm_ratio", 0.0) if llm_ratio is None else llm_ratio)
+        research_runtime = self.cfg.project.get("research_runtime") or {}
+        default_llm_ratio = (
+            research_runtime.get("llm_ratio", production.get("llm_ratio", 0.0))
+            if research_contract == "observational"
+            else production.get("llm_ratio", 0.0)
+        )
+        self.llm_ratio = float(default_llm_ratio if llm_ratio is None else llm_ratio)
+        if research_contract not in {"production", "observational"}:
+            raise ValueError("research_contract must be production|observational")
+        self.research_contract = research_contract
         self.registry = FactorRegistry(self.cfg)
         self.ops = LibraryOps(self.cfg)
         self.release = ReleaseService(self.cfg)
@@ -118,6 +131,16 @@ class FactoryRuntime:
         except Exception as exc:
             return {"state": "blocked", "reason": str(exc)}
 
+    def _research_contract(self) -> dict[str, Any]:
+        try:
+            if self.research_contract == "observational":
+                partitions = require_observational_research_contract(self.cfg)
+            else:
+                partitions = require_discovery_contract(self.cfg)
+            return {"state": "passed", "mode": self.research_contract, "partitions": partitions}
+        except Exception as exc:
+            return {"state": "blocked", "mode": self.research_contract, "reason": str(exc)}
+
     def _write_progress(self, cycle: int, stage: str, started_at: str) -> None:
         """Refresh the heartbeat before each potentially expensive stage."""
         _write_json_atomic(
@@ -137,22 +160,27 @@ class FactoryRuntime:
         started = utc_now()
         self._write_progress(cycle, "data_status", started)
         data_status = self.data.status()
-        self._write_progress(cycle, "discovery_contract", started)
-        contract = self._discovery_contract()
+        self._write_progress(cycle, "production_data_contract", started)
+        production_contract = self._discovery_contract()
+        self._write_progress(cycle, "research_data_contract", started)
+        research_contract = self._research_contract()
         result: dict[str, Any] = {
             "schema_version": STATUS_VERSION,
             "cycle": int(cycle),
             "started_at": started,
             "data_version": data_status.get("data_version"),
-            "data_contract": contract,
+            "data_contract": production_contract,
+            "research_contract": research_contract,
             "counts_before": self.lifecycle_counts(),
             "actions": {},
             "errors": [],
         }
 
-        # Discovery may execute only when complete PIT/time evidence is present,
-        # and only on its configured cadence. It remains research-only.
-        if contract["state"] == "passed" and cycle % self.discovery_every == 0:
+        # Discovery may execute only when its explicitly selected research
+        # contract has passed and only on its configured cadence. Observational
+        # mode creates screened research inventory only; it never relaxes the
+        # production contract used below.
+        if research_contract["state"] == "passed" and cycle % self.discovery_every == 0:
             self._write_progress(cycle, "research_discovery", started)
             try:
                 result["actions"]["research_discovery"] = FactorLoop(self.cfg).run(
@@ -161,20 +189,21 @@ class FactoryRuntime:
                     gate_name="research",
                     llm_ratio=self.llm_ratio,
                     llm_review_ratio=0.0,
+                    research_contract=self.research_contract,
                 )
             except Exception as exc:
                 result["actions"]["research_discovery"] = {"state": "error", "error": str(exc)}
                 result["errors"].append({"stage": "research_discovery", "error": str(exc)})
         else:
             result["actions"]["research_discovery"] = {
-                "state": "skipped" if contract["state"] == "passed" else "blocked",
-                "reason": "cadence" if contract["state"] == "passed" else contract.get("reason"),
+                "state": "skipped" if research_contract["state"] == "passed" else "blocked",
+                "reason": "cadence" if research_contract["state"] == "passed" else research_contract.get("reason"),
             }
 
         # A candidate cannot remain production-eligible when the immutable
         # production data contract is already blocked. Demote immediately rather
         # than spending CPU on a full production evaluation that must fail.
-        if contract["state"] == "blocked":
+        if production_contract["state"] == "blocked":
             self._write_progress(cycle, "demote_candidates_for_data_contract", started)
             demoted_for_contract: list[str] = []
             demote_errors: list[dict[str, str]] = []
@@ -214,7 +243,7 @@ class FactoryRuntime:
             except Exception as exc:
                 result["actions"]["refresh_candidates"] = {"state": "error", "error": str(exc)}
                 result["errors"].append({"stage": "refresh_candidates", "error": str(exc)})
-        if cycle % self.screened_every == 0:
+        if production_contract["state"] == "passed" and cycle % self.screened_every == 0:
             self._write_progress(cycle, "recheck_screened", started)
             try:
                 result["actions"]["recheck_screened"] = self.ops.promote_screened()
@@ -222,7 +251,10 @@ class FactoryRuntime:
                 result["actions"]["recheck_screened"] = {"state": "error", "error": str(exc)}
                 result["errors"].append({"stage": "recheck_screened", "error": str(exc)})
         else:
-            result["actions"]["recheck_screened"] = {"state": "skipped", "reason": "cadence"}
+            result["actions"]["recheck_screened"] = {
+                "state": "skipped" if production_contract["state"] == "passed" else "blocked",
+                "reason": "cadence" if production_contract["state"] == "passed" else production_contract.get("reason"),
+            }
 
         self._write_progress(cycle, "export_inventories", started)
         try:
@@ -275,11 +307,14 @@ def main() -> int:
     sub = parser.add_subparsers(dest="command", required=True)
     run_once = sub.add_parser("run-once")
     run_once.add_argument("--cycle", type=int, default=1)
+    run_once.add_argument("--llm-ratio", type=float, default=None)
+    run_once.add_argument("--research-contract", choices=["production", "observational"], default="production")
     run_forever = sub.add_parser("run-forever")
     run_forever.add_argument("--interval-seconds", type=int, default=300)
     run_forever.add_argument("--discovery-every", type=int, default=12)
     run_forever.add_argument("--screened-every", type=int, default=72)
     run_forever.add_argument("--llm-ratio", type=float, default=None)
+    run_forever.add_argument("--research-contract", choices=["production", "observational"], default="production")
     run_forever.add_argument("--start-cycle", type=int, default=1)
     sub.add_parser("status")
     sub.add_parser("stop")
@@ -289,6 +324,7 @@ def main() -> int:
         discovery_every=getattr(args, "discovery_every", 12),
         screened_every=getattr(args, "screened_every", 72),
         llm_ratio=getattr(args, "llm_ratio", None),
+        research_contract=getattr(args, "research_contract", "production"),
     )
     if args.command == "run-once":
         print(json.dumps(runtime.run_cycle(args.cycle), ensure_ascii=False, indent=2, default=str))

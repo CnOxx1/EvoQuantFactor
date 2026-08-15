@@ -87,15 +87,16 @@ eval:
   forward_horizon: 5
   trade_lag: 1          # override project.defaults.trade_lag if set
   train_end: "20251231" # legacy research boundary; sealed acceptance uses partitions below
-  # Leave all fields blank until PIT long history has passed the data contract.
-  # Once filled, the three windows are immutable for an experiment/release.
+  # Fixed, non-overlapping windows for the interim observational research
+  # ledger. They do not make snapshot-data results eligible for production
+  # acceptance; PIT remediation must create a new data version and rerun gates.
   partitions:
-    discovery_start: ""
-    discovery_end: ""
-    selection_start: ""
-    selection_end: ""
-    sealed_start: ""
-    sealed_end: ""
+    discovery_start: "20240102"
+    discovery_end: "20241231"
+    selection_start: "20250102"
+    selection_end: "20251231"
+    sealed_start: "20260105"
+    sealed_end: "20260630"
   n_quantiles: 5
   cost_bps: 10
   min_obs_per_day: 30

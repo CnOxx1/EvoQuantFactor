@@ -1,0 +1,29 @@
+name: overnight_c5_093202_3250
+version: 0.1.0
+status: screened
+family: price_volume
+category: overnight
+universe: csi100
+frequency: daily
+required_fields:
+- close
+- open
+- high
+- low
+lookback: 5
+horizon: 5
+neutralize: []
+params:
+  experiment_id: exp_20260815T093154Z_0afd2d33a0
+tags:
+- dsl
+- loop
+- langgraph
+- compose
+- experiment:exp_20260815T093154Z_0afd2d33a0
+hypothesis: 跳空/隔夜；compose div(overnight,std(amplitude,5))
+entry_gate: research
+expression: div(overnight,std(amplitude,5))
+mechanism: overnight
+expr_hash: 476e0b0c890be6e6
+signal_hold_days: 5

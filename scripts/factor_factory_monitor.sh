@@ -9,6 +9,7 @@ INTERVAL_SECONDS="${FACTOR_INTERVAL_SECONDS:-300}"
 DISCOVERY_EVERY="${FACTOR_DISCOVERY_EVERY:-12}"
 SCREENED_EVERY="${FACTOR_SCREENED_EVERY:-72}"
 LLM_RATIO="${FACTOR_LLM_RATIO:-0.25}"
+RESEARCH_CONTRACT="${FACTOR_RESEARCH_CONTRACT:-production}"
 # A candidate evaluation may legitimately take a few minutes. Treat no heartbeat
 # beyond two cycles plus a five-minute allowance as stalled rather than looping.
 MAX_STALE_SECONDS="${FACTOR_MAX_STALE_SECONDS:-900}"
@@ -53,10 +54,11 @@ run_worker() {
     --interval-seconds "$INTERVAL_SECONDS" \
     --discovery-every "$DISCOVERY_EVERY" \
     --screened-every "$SCREENED_EVERY" \
-    --llm-ratio "$LLM_RATIO" >> "$MONITOR_LOG" 2>&1 &
+    --llm-ratio "$LLM_RATIO" \
+    --research-contract "$RESEARCH_CONTRACT" >> "$MONITOR_LOG" 2>&1 &
   local worker=$!
   printf '%s\n' "$worker" > "$WORKER_PID_FILE"
-  log "worker_started pid=$worker interval=$INTERVAL_SECONDS discovery_every=$DISCOVERY_EVERY screened_every=$SCREENED_EVERY llm_ratio=$LLM_RATIO" >&2
+  log "worker_started pid=$worker interval=$INTERVAL_SECONDS discovery_every=$DISCOVERY_EVERY screened_every=$SCREENED_EVERY llm_ratio=$LLM_RATIO research_contract=$RESEARCH_CONTRACT" >&2
   echo "$worker"
 }
 

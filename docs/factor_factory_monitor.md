@@ -6,7 +6,9 @@
 
 ## 1. 生命周期与执行节奏
 
-每个运行周期均记录数据版本、数据合同状态、操作结果、错误、前后因子数量和完成时间。默认周期为五分钟；候选因子每周期重新通过 production gate，screened 库存以较低频率重评，研究 discovery 仅在数据合同通过且满足调度频率时启动。
+每个运行周期均记录数据版本、生产数据合同、研究数据合同、操作结果、错误、前后因子数量和完成时间。默认周期为五分钟；候选因子每周期重新通过 production gate，screened 库存以较低频率重评，研究 discovery 仅在所选研究合同通过且满足调度频率时启动。
+
+当公开数据尚不能满足 PIT 与执行证据的生产合同时，可在 `research_runtime.allow_observational_data=true` 的显式配置下选择 `observational` 研究合同。它只允许当前可复现的快照量价面板生成带完整实验账本的 `screened` 研究库存；**不会**放宽 `data_contract`，不会重评或晋升 `screened`，更不会生成 `candidate`、密封验收或 `active release`。
 
 | 阶段 | 周期内行为 | 可能状态 | 是否可被交易模块使用 |
 |---|---|---|---:|
@@ -35,6 +37,7 @@ scripts/factor_factory_monitor.sh stop
 | `FACTOR_DISCOVERY_EVERY` | `12` | discovery 的周期倍数；默认每小时最多一次 |
 | `FACTOR_SCREENED_EVERY` | `72` | screened 全量重评的周期倍数；默认约每六小时一次 |
 | `FACTOR_LLM_RATIO` | `0.25` | discovery 进入 LLM 发现的候选比例；仍受实验试验上限和数据合同约束 |
+| `FACTOR_RESEARCH_CONTRACT` | `production` | `production` 要求完整 PIT 合同；`observational` 仅在显式研究配置通过时生成 screened 研究库存 |
 | `FACTOR_MAX_STALE_SECONDS` | `900` | 未更新心跳多久后认定 worker 卡死并重启 |
 
 ## 3. 审计与因子数量
@@ -42,6 +45,8 @@ scripts/factor_factory_monitor.sh stop
 运行状态保存在 `runs/factory_monitor/status.json`，逐周期事件保存在 `runs/factory_monitor/events.jsonl`。`counts_before` 与 `counts_after` 至少包括 `draft`、`screened`、`candidate`、`approved`、已冻结定义、已通过密封验收、已通过可交易性和 `active_release`。
 
 当前数据若缺失 PIT 历史成分、供应商流通市值、ST/停牌/涨跌停、ADV、公司行动、点时行业、风险暴露或三段日期分区，`data_contract.state` 会是 `blocked`。在这一状态下可生产的 **active release 数量应为 0**；这是预期的 fail-closed 行为。
+
+`status.json` 同时写入 `research_contract`。若它的 `mode` 为 `observational`，必须检查其 `partitions.contract_kind` 为 `observational_research_only` 且 `production_eligible=false`。这份状态是研究可运行性的审计记录，不是生产合同通过的证据。
 
 ## 4. 长期主机部署建议
 

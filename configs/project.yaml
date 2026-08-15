@@ -49,6 +49,17 @@ production:
     cheap_ic_min: 0.008         # skip full gate when |train IC| below this
     parent_top_screened: 12     # screened parent budget, split across unblocked mechanisms
 
+# Interim research may use the reproducible CSI100 snapshot price/volume panel
+# while PIT membership and vendor-grade execution evidence are remediated. This
+# never changes the production gate: resulting factors remain screened-only.
+research_runtime:
+  allow_observational_data: true
+  allowed_universe_modes: [snapshot]
+  min_trading_days: 252
+  min_securities: 80
+  llm_ratio: 0.25
+  provenance_label: observational_snapshot_research_only
+
 # Every discovery run receives an append-only experiment manifest and complete
 # trial ledger. Search outputs remain research-only until separately frozen,
 # sealed, tradability-tested, and released.

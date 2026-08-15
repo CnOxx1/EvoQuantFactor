@@ -56,8 +56,21 @@ class LLMClient:
         }
         with httpx.Client(timeout=120) as client:
             r = client.post(url, headers=headers, json=payload)
-            r.raise_for_status()
-            content = r.json()["choices"][0]["message"]["content"]
+            try:
+                body = r.json()
+            except ValueError as exc:
+                r.raise_for_status()
+                raise RuntimeError("LLM completion returned non-JSON content") from exc
+            if not r.is_success:
+                detail = body.get("error", body) if isinstance(body, dict) else body
+                raise RuntimeError(f"LLM completion failed (HTTP {r.status_code}): {detail}")
+            try:
+                content = body["choices"][0]["message"]["content"]
+            except (KeyError, IndexError, TypeError) as exc:
+                detail = body.get("error", body) if isinstance(body, dict) else body
+                raise RuntimeError(f"LLM completion missing choices: {detail}") from exc
+        if not isinstance(content, str) or not content.strip():
+            raise RuntimeError("LLM completion returned empty message content")
         return _extract_json(content)
 
 

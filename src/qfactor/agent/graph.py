@@ -10,7 +10,11 @@ from langgraph.graph import END, START, StateGraph
 
 from qfactor.agent.checkpoint import CheckpointStore
 from qfactor.agent.coldstart import cold_start_cfg, ensure_dsl_seeds, is_cold_start
-from qfactor.agent.experiments import ExperimentLedger, require_discovery_contract
+from qfactor.agent.experiments import (
+    ExperimentLedger,
+    require_discovery_contract,
+    require_observational_research_contract,
+)
 from qfactor.agent.diversity import (
     expression_fingerprint,
     is_banned_expression,
@@ -629,6 +633,7 @@ def run_production_graph(
     llm_ratio: float | None = None,
     llm_review_ratio: float | None = None,
     llm_spotcheck_every: int | None = None,
+    research_contract: Literal["production", "observational"] = "production",
 ) -> dict[str, Any]:
     if gate_name != "research":
         raise RuntimeError(
@@ -662,10 +667,15 @@ def run_production_graph(
     run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     run_dir = ctx.cfg.path("runs") / f"loop_{run_id}"
     run_dir.mkdir(parents=True, exist_ok=True)
-    # No model call occurs before the immutable PIT data and discovery-window
-    # contract has passed. This prevents more snapshot-data candidates from
-    # accumulating while data remediation is outstanding.
-    date_partitions = require_discovery_contract(ctx.cfg)
+    # No model call occurs before either the immutable PIT contract or the
+    # separately enabled observational *research-only* contract has passed.
+    # The latter is never a substitute for production promotion or releases.
+    if research_contract == "production":
+        date_partitions = require_discovery_contract(ctx.cfg)
+    elif research_contract == "observational":
+        date_partitions = require_observational_research_contract(ctx.cfg)
+    else:  # defensive because this function can be called outside typed code
+        raise ValueError("research_contract must be production|observational")
     ctx.experiment = ExperimentLedger(ctx.cfg, run_dir=run_dir / "experiment")
     manifest = ctx.experiment.start(
         run_id=run_id,
@@ -678,6 +688,7 @@ def run_production_graph(
             "theme": theme,
             "llm_ratio": llm_ratio,
             "llm_review_ratio": llm_review_ratio,
+            "research_contract": research_contract,
             "llm_config": llm_cfg,
         },
         date_partitions=date_partitions,
@@ -746,6 +757,8 @@ def run_production_graph(
         "experiment_manifest": str(ctx.experiment.manifest_path),
         "mode": "llm_first",
         "orchestrator": "langgraph",
+        "research_contract": research_contract,
+        "data_contract": date_partitions,
         "theme": theme,
         "round_theme_last": final_state.get("round_theme"),
         "llm_ratio": llm_ratio,
