@@ -60,11 +60,18 @@ python -m qfactor.cli --help
 
 ## 因子生命周期
 
-```
-draft ──research闸──► screened ──production闸──► candidate ──人工──► approved
-                │                         │
-                └──────── reject ─────────┘
-approved ──freeze──► sealed OOS ──tradability──► active release
+```mermaid
+flowchart LR
+    draft[draft] -->|research 闸| screened[screened]
+    draft -->|未过| reject[reject]
+    screened -->|production 闸<br/>且 candidate 合同| candidate[candidate]
+    screened -->|合同或闸未过| stay1[保持 screened]
+    candidate -->|人工| approved[approved]
+    approved --> freeze[freeze 定义]
+    freeze --> sealed[sealed OOS]
+    sealed --> trad[tradability]
+    trad -->|release 合同| active[active release]
+    trad -->|执行数据不足| blocked[不能交易]
 ```
 
 | 状态 | 含义 | 用途 |
@@ -92,35 +99,91 @@ USABLE = `candidate` + `approved`。
 
 ## 生产流程
 
-挖矿前必须先经过数据准备：检查目标窗口覆盖、缺了再拉、再跑三层合同。`loop` 默认仍不下载；`prepare-data` / `produce` / supervisor 会走这个门。窗口没覆盖或 research 合同没过，就不能调用 LLM。
+挖矿前必须先经过数据准备：检查目标窗口覆盖、缺了再拉、再跑三层合同。`loop` 默认仍不下载；`prepare-data` / `produce` / supervisor 会走这个门。窗口没覆盖或 research 合同没过，就不能调用 LLM。缺哪一层证据，就停在哪一层，不会为了出因子而降门槛。
+
+### 总览：四段门闩
+
+```mermaid
+flowchart TB
+    start[git pull main + OPENAI_API_KEY] --> prep["prepare-data / produce / supervisor"]
+
+    subgraph PREP["1. 数据准备"]
+        prep --> cov{20200101 起到今天<br/>是否已有至少 50 只覆盖?}
+        cov -->|不够| pit[先试 PIT sync]
+        pit -->|PIT 失败且允许 snapshot| snap[snapshot 研究回拉]
+        pit -->|PIT 失败且不允许| stop1[停止: 不假造宇宙]
+        cov -->|已覆盖| skip[跳过下载]
+        snap --> bars[写入 bars + data_version]
+        skip --> check[三层合同]
+        bars --> check
+        check --> mineok{窗口覆盖 且 research 通过?}
+        mineok -->|否| stop2[mining_allowed=false]
+    end
+
+    subgraph DISC["2. 研究挖掘 只产 screened"]
+        mineok -->|是| loop[干净实验 FactorLoop]
+        loop --> decide[decide 选机制主题]
+        decide --> gen[generate: LLM / compose / mutate]
+        gen --> parse{DSL 解析合法?}
+        parse -->|否| invalid[trial=invalid]
+        parse -->|是| calc[discovery 窗口算因子]
+        calc --> rgate{research 闸<br/>IC / ICIR / 覆盖 / 换手 / 两年同号 / 弱 OOS}
+        rgate -->|不过| rej[reject + lesson]
+        rgate -->|过| screened[入库 screened]
+        invalid --> more{还有 rounds?}
+        rej --> more
+        screened --> more
+        more -->|有| decide
+        more -->|无| onlys[本轮结束: 不自动晋升]
+    end
+
+    subgraph CAND["3. 生产晋升"]
+        onlys --> ccon{candidate 合同<br/>PIT + 供应商 circ_mv + PIT 行业 + selection?}
+        ccon -->|否 当前快照数据走这里| keep[保持 screened<br/>candidate 仍为 0]
+        ccon -->|是| pgate[production 闸]
+        pgate -->|过| cand[candidate]
+        pgate -->|不过| keep
+    end
+
+    subgraph REL["4. 交易发布"]
+        cand --> freeze[freeze 定义]
+        freeze --> oos[sealed OOS]
+        oos --> trad[simulate-tradability]
+        trad --> rcon{release 执行合同<br/>ST / 涨跌停 / ADV / 行动 / 风险?}
+        rcon -->|否| notr[不能交易]
+        rcon -->|是| active[active release]
+    end
+```
+
+当前快照成分 + 估算市值只能走到第 2 段的 `screened`。第 3、4 段保持为 0 是预期的 fail-closed，不是故障。
+
+### 数据准备在检查什么
+
+`DataPrepareService` 对照 `data_prepare.start`（默认 `20200101`）看覆盖，不够才调用底层 `sync-data`。已有 2024–2026 切片**不会**被当成 2020 年起的完整窗口。
 
 ```mermaid
 flowchart TD
-    A[服务器 pull main] --> B[prepare-data 检查覆盖]
-    B --> C{2020 起到今天的行情够不够?}
-    C -->|不够| D[先试 PIT sync, 失败才 snapshot 回拉]
-    C -->|已覆盖| E[跳过下载]
-    D --> F[data-contract-readiness]
-    E --> F
-    F --> G{research: 有行情且 discovery 窗口在数据范围内?}
-    G -->|否| H[停止 discovery]
-    G -->|是| I[干净实验生成 DSL]
-    I --> J[research 闸]
-    J -->|过| K[screened]
-    J -->|不过| L[reject]
-    K --> M{candidate: PIT + 供应商市值 + selection?}
-    M -->|否| N[保持 screened]
-    M -->|是| O[production 闸]
-    O -->|过| P[candidate]
-    P --> Q[freeze / sealed OOS / tradability]
-    Q --> R{release 执行数据齐全?}
-    R -->|否| S[不能交易]
-    R -->|是| T[active release]
+    A[prepare-data] --> B[读 bars / calendar / data_version]
+    B --> C{codes_covering_window<br/>覆盖 start-end 的股票数}
+    C -->|少于 min_covering_names=50| D[需要同步]
+    C -->|已够| E[skipped_sync]
+    D --> F{PIT 宇宙是否覆盖窗口起点?}
+    F -->|archive 或 Tushare 可用| G["sync allow_snapshot=false"]
+    F -->|没有 2020 调样| H{allow_snapshot_universe?}
+    H -->|否| I[sync_failed 停止]
+    H -->|是| J["sync allow_snapshot=true<br/>宇宙仍标 snapshot"]
+    G --> K[复用已覆盖代码, 只补缺的前缀]
+    J --> K
+    K --> L[写 parquet + SQLite]
+    L --> M[factor_contract_readiness]
+    E --> M
+    M --> N{research.passed 且窗口覆盖?}
+    N -->|是| O[mining_allowed=true]
+    N -->|否| P[mining_allowed=false 退出码 2]
+    M --> Q[candidate / release 只报告, 不解锁挖掘]
 ```
 
-当前快照数据只能走到 `screened`。`candidate` 和 `active release` 继续为 0，直到 PIT 证据补齐。
-
-仓库里现成的是 2024–2026 切片。直接 `loop` 仍会用这两年数据开挖。要先拿长历史再挖：
+直接 `loop`（不加 `--prepare-data`）仍可能用仓库里的两年切片开挖，因为当前 discovery 窗口就在 `20240102–20251231`。要先拿长历史：
 
 ```bash
 qfactor prepare-data
@@ -129,11 +192,63 @@ qfactor produce --rounds 5 --batch-size 8 --gate research
 qfactor loop --prepare-data --rounds 5 --batch-size 8 --gate research --clean-experiment
 ```
 
+### 工厂 supervisor 一个周期
+
+supervisor **不会**每个周期重下行情。启动时 prepare；之后窗口完整则只检查。discovery 默认每 12 个周期一次。
+
+```mermaid
+flowchart TD
+    A["run-forever / run-once"] --> P[prepare: 检查覆盖, 缺了再拉]
+    P --> B[读 data_version]
+    B --> C[research 合同]
+    B --> D[candidate 合同]
+    P -->|mining_allowed=false| E0[research_discovery = blocked]
+    C -->|未过| E[research_discovery = blocked]
+    C -->|通过且本周期该开挖| F["FactorLoop 1 round / batch 2"]
+    C -->|通过但未到 cadence| G[research_discovery = skipped]
+    D -->|未过| H[recheck_screened = blocked]
+    D -->|通过| I[refresh_candidates / promote_screened]
+    F --> J[export-trading-releases]
+    E0 --> J
+    E --> J
+    G --> J
+    H --> J
+    I --> J
+    J --> K[library-export-candidates]
+    K --> L[library-reconcile]
+    L --> M[写 status.json / events.jsonl]
+```
+
 ---
 
 ## 分层数据合同
 
 研究、candidate、交易 release 用不同证据，缺哪一层就停在哪一层，不降门槛。
+
+```mermaid
+flowchart LR
+    subgraph research["research 才能开挖"]
+        R1[日行情 has_bars]
+        R2[discovery 分区已配置]
+        R3[discovery 落在已同步范围内]
+    end
+    subgraph candidate["candidate 才能晋升生产因子"]
+        C1[universe_mode = pit]
+        C2[供应商 circ_mv]
+        C3[PIT 行业]
+        C4[selection 分区]
+        C5[选择偏差审计]
+        C6[独立观测 >= 60]
+        C7[至少 3 年同号]
+    end
+    subgraph release["release 才能交易"]
+        L1[ST / 停牌 / 涨跌停]
+        L2[ADV / 公司行动]
+        L3[风险暴露]
+        L4[密封 OOS + 可交易账本]
+    end
+    research --> candidate --> release
+```
 
 | 层 | 最低要求 | 通过后可以做什么 |
 |---|---|---|
