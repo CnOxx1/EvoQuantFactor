@@ -204,21 +204,29 @@ def build_date_partitions(cfg: ProjectConfig | None = None) -> dict[str, Any]:
     }
 
 
-def require_discovery_contract(cfg: ProjectConfig | None = None) -> dict[str, Any]:
-    """Fail closed before an LLM can search a non-production research sample."""
+def discovery_contract_readiness(
+    cfg: ProjectConfig | None = None,
+) -> dict[str, Any]:
+    """Return the structured data/time readiness behind the discovery gate."""
     cfg = cfg or get_project_config()
     status = DataService(cfg).status()
     meta = status.get("meta") or {}
     production = cfg.eval.get("production") or {}
     partitions = build_date_partitions(cfg)
     issues: list[str] = []
-    if str(meta.get("universe_mode") or "").lower() not in {
+    limitations = " ".join(str(x) for x in (meta.get("limitations") or [])).lower()
+    universe_mode = str(meta.get("universe_mode") or "").lower()
+    if not universe_mode and "snapshot" in limitations:
+        universe_mode = "snapshot"
+    circ_mv_source = str(meta.get("circ_mv_source") or "").lower()
+    if not circ_mv_source and "circ_mv estimated" in limitations:
+        circ_mv_source = "estimated"
+    if universe_mode not in {
         str(x).lower() for x in production.get("allowed_universe_modes", ["pit"])
     }:
         issues.append("universe_not_pit")
-    source = str(meta.get("circ_mv_source") or "").lower()
     allowed = {str(x).lower() for x in production.get("allowed_circ_mv_sources", [])}
-    if allowed and source not in allowed:
+    if allowed and circ_mv_source not in allowed:
         issues.append("circ_mv_not_verified_provider")
     if float(meta.get("daily_basic_coverage") or 0.0) < float(production.get("min_daily_basic_coverage", 0.0)):
         issues.append("daily_basic_coverage_below_contract")
@@ -236,8 +244,32 @@ def require_discovery_contract(cfg: ProjectConfig | None = None) -> dict[str, An
                 issues.append(f"{metric}_below_contract")
     if partitions["state"] != "configured":
         issues.append("discovery_partitions_unconfigured")
+    coverage_keys = (
+        "daily_basic_coverage",
+        "security_status_coverage",
+        "limit_price_coverage",
+        "adv_20d_coverage",
+        "corporate_action_coverage",
+        "industry_pit_coverage",
+        "risk_exposures_coverage",
+    )
+    return {
+        "state": "passed" if not issues else "blocked",
+        "data_version": status.get("data_version"),
+        "issues": issues,
+        "universe_mode": universe_mode or "unknown",
+        "circ_mv_source": circ_mv_source or "none",
+        "coverage": {key: float(meta.get(key) or 0.0) for key in coverage_keys},
+        "partitions": partitions,
+    }
+
+
+def require_discovery_contract(cfg: ProjectConfig | None = None) -> dict[str, Any]:
+    """Fail closed before an LLM can search a non-production research sample."""
+    readiness = discovery_contract_readiness(cfg)
+    issues = readiness["issues"]
     if issues:
         raise RuntimeError(
             "LLM discovery is blocked until the data/time contract passes: " + ", ".join(issues)
         )
-    return partitions
+    return readiness["partitions"]

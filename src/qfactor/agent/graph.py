@@ -387,6 +387,19 @@ def _node_review_validate(ctx: ProductionContext):
                 report = ctx.eval.evaluate_dsl(
                     cand["expression"], name, gate_name=gate_name
                 )
+                if ledger is not None:
+                    from qfactor.eval.multiple_testing import (
+                        research_selection_bias_preview,
+                    )
+
+                    preview = research_selection_bias_preview(
+                        report.get("metrics") or {},
+                        n_trials=ledger.trial_count,
+                    )
+                    report["research_selection_bias_preview"] = preview
+                    report.setdefault("summary", {})[
+                        "selection_bias_preview_state"
+                    ] = preview["state"]
                 status = report.get("gate", {}).get("status", "reject")
             except Exception as e:
                 report = {"error": str(e)}

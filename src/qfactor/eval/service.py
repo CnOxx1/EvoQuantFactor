@@ -6,7 +6,13 @@ import numpy as np
 import pandas as pd
 
 from qfactor.data.dataset import DataService
-from qfactor.eval.oos import cost_layered, holdout_oos, holdout_window, walk_forward_ic
+from qfactor.eval.oos import (
+    cost_layered,
+    cost_scenario_table,
+    holdout_oos,
+    holdout_window,
+    walk_forward_ic,
+)
 from qfactor.eval.corr import max_corr_with_library
 from qfactor.eval.gate import KEEP_STATUSES, USABLE_STATUSES, apply_gate, route_library_status
 from qfactor.eval.ic import rank_ic, summarize_ic, yearly_ic_sign_consistency
@@ -346,6 +352,17 @@ class EvalService:
         layered_cost = cost_layered(
             cost_layered_src, turnover, cost_bps, horizon=cost_horizon
         )
+        scenario_values = [
+            float(x) for x in (ev.get("cost_scenarios_bps") or [5, 10, 20])
+        ]
+        if cost_bps not in scenario_values:
+            scenario_values.append(cost_bps)
+        cost_scenarios = cost_scenario_table(
+            cost_layered_src,
+            turnover,
+            scenario_values,
+            horizon=cost_horizon,
+        )
         layered_cost["horizon_layered"] = layered_h
         cost_ret = float(layered_cost.get("long_short_cost_adj", 0.0))
 
@@ -400,6 +417,8 @@ class EvalService:
             "years": years,
             "years_consistent": years_ok,
             "cost_adjusted_ls": cost_ret,
+            "cost_scenarios": cost_scenarios,
+            "gate_cost_bps": cost_bps,
             "oos_ic_mean": oos.get("oos_ic_mean", 0.0),
             "oos_icir": oos.get("oos_icir", 0.0),
             "oos_pos_folds": oos.get("pos_folds", 0),

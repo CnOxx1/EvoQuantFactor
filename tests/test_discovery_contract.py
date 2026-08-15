@@ -1,6 +1,9 @@
 import pytest
 
-from qfactor.agent.experiments import require_discovery_contract
+from qfactor.agent.experiments import (
+    discovery_contract_readiness,
+    require_discovery_contract,
+)
 
 
 class _Cfg:
@@ -81,3 +84,27 @@ def test_discovery_accepts_archive_vendor_cap_without_tushare(monkeypatch):
     )
     out = require_discovery_contract(cfg)
     assert out["state"] == "configured"
+
+
+def test_discovery_readiness_returns_structured_blockers(monkeypatch):
+    import qfactor.agent.experiments as experiments
+
+    monkeypatch.setattr(experiments, "DataService", _DataService)
+    cfg = _Cfg(
+        {
+            "universe_mode": "snapshot",
+            "circ_mv_source": "estimated",
+            "daily_basic_coverage": 0.0,
+        },
+        {},
+    )
+    out = discovery_contract_readiness(cfg)
+    assert out["state"] == "blocked"
+    assert out["universe_mode"] == "snapshot"
+    assert out["coverage"]["daily_basic_coverage"] == 0.0
+    assert out["issues"] == [
+        "universe_not_pit",
+        "circ_mv_not_verified_provider",
+        "daily_basic_coverage_below_contract",
+        "discovery_partitions_unconfigured",
+    ]

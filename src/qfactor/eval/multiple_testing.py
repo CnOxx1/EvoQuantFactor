@@ -46,3 +46,24 @@ def familywise_ic_audit(
             "PBO/CSCV requires retained fold-level candidate score matrices and remains a future enhancement.",
         ],
     }
+
+
+def research_selection_bias_preview(
+    metrics: dict[str, Any],
+    *,
+    n_trials: int,
+    alpha: float = 0.05,
+) -> dict[str, Any]:
+    """Expose trial-count risk without turning the research gate into production.
+
+    Screened factors are hypotheses and may remain useful parents even when this
+    conservative preview fails.  Sealed acceptance remains the binding
+    family-wise gate.
+    """
+    audit = familywise_ic_audit(metrics, n_trials=n_trials, alpha=alpha)
+    return {
+        **audit,
+        "contract_version": "research_selection_bias_preview_v1",
+        "informational_only": True,
+        "research_status_unchanged": True,
+    }

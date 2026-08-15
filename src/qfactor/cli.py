@@ -327,9 +327,25 @@ def library_demote(name: str, to: str = typer.Option("deprecated"), reason: str 
     print(LibraryOps().demote(name, to=to, reason=reason))  # type: ignore[arg-type]
 
 
+@app.command("library-reconcile")
+def library_reconcile():
+    """Report catalog/spec/report/SQLite drift; never repairs automatically."""
+    from qfactor.factor.reconcile import reconcile_library_state
+
+    print(reconcile_library_state())
+
+
 @app.command("data-status")
 def data_status():
     print(DataService().status())
+
+
+@app.command("data-contract-readiness")
+def data_contract_readiness():
+    """Show concise PIT/time blockers without starting discovery."""
+    from qfactor.agent.experiments import discovery_contract_readiness
+
+    print(discovery_contract_readiness())
 
 
 @app.command("db-init")

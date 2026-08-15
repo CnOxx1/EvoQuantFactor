@@ -98,6 +98,9 @@ eval:
     sealed_end: ""
   n_quantiles: 5
   cost_bps: 10
+  # Diagnostic stress table only. The production cost gate remains bound to
+  # cost_bps above; adding scenarios must not weaken or replace that contract.
+  cost_scenarios_bps: [5, 10, 20]
   min_obs_per_day: 30
   recent_days: 120
   oos_folds: 4

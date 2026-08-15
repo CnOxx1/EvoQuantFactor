@@ -295,3 +295,24 @@ def cost_layered(
     out["cost_drag"] = cost
     out["cost_horizon"] = h
     return out
+
+
+def cost_scenario_table(
+    layered: dict[str, Any],
+    daily_turnover: float,
+    cost_bps_values: list[float],
+    horizon: int = 1,
+) -> list[dict[str, float]]:
+    """Return diagnostic cost stress results without changing the gate scenario."""
+    scenarios: list[dict[str, float]] = []
+    for cost_bps in sorted({float(x) for x in cost_bps_values}):
+        result = cost_layered(layered, daily_turnover, cost_bps, horizon=horizon)
+        scenarios.append(
+            {
+                "cost_bps": cost_bps,
+                "long_short_daily": float(result["long_short_daily"]),
+                "cost_drag": float(result["cost_drag"]),
+                "long_short_cost_adj": float(result["long_short_cost_adj"]),
+            }
+        )
+    return scenarios
