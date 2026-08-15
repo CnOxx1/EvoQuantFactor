@@ -1,15 +1,19 @@
 # 因子生产逻辑与服务器启动顺序
 
-工厂**不会**在 `loop` / `supervisor` 里自动下载行情。必须先同步数据、再检查合同、最后才开挖。缺哪一层证据，就停在哪一层，不会为了出因子而降门槛。
+`loop` 默认仍不下载行情。生产前的获取、保持和检查由 `DataPrepareService`（`qfactor prepare-data` / `produce` / supervisor）负责：对照配置窗口检查覆盖，缺了再 `sync`，再跑三层合同。窗口没覆盖或 research 没过，就不能开挖。缺哪一层证据，就停在哪一层，不会为了出因子而降门槛。
 
 ## 1. 总流程
 
 ```mermaid
 flowchart TD
     A[服务器 git pull main] --> B[配置 .env 中的 OPENAI_API_KEY]
-    B --> C["qfactor sync-data<br/>拉 BaoStock 行情写入 parquet + SQLite"]
-    C --> D[生成新 data_version.json]
-    D --> E["qfactor data-contract-readiness"]
+    B --> C["qfactor prepare-data / supervisor 启动"]
+    C --> C1{目标窗口已覆盖?}
+    C1 -->|否| C2[PIT sync, 失败才 snapshot 回拉]
+    C1 -->|是| C3[跳过下载, 只检查]
+    C2 --> D[生成或复用 data_version.json]
+    C3 --> D
+    D --> E[三层合同]
     E --> F{research 合同}
     F -->|bars 缺失| C
     F -->|discovery 分区未配| G[停止: discovery_partitions_unconfigured]
@@ -34,7 +38,7 @@ flowchart TD
 
 ## 2. 数据同步在做什么
 
-`qfactor sync-data` 是单独命令，supervisor 不会替你执行。
+`qfactor sync-data` 仍是底层拉数命令。`prepare-data` 在窗口已覆盖时不会重下；supervisor 只在启动或覆盖不完整时调用它。PIT 宇宙会先试；只有配置允许时才用 snapshot 做研究回拉，且不会把 snapshot 标成 PIT。
 
 ```mermaid
 flowchart TD
@@ -59,7 +63,7 @@ flowchart TD
 
 ## 3. 合同检查：什么叫完整
 
-`qfactor data-contract-readiness` 一次返回三层。`loop` 在调用 LLM 之前会再跑 `require_discovery_contract`；晋升 candidate 前会再跑 `require_candidate_contract`。
+`qfactor data-contract-readiness` 一次返回三层。`prepare-data` 会先看目标窗口覆盖，再复用这三层。`loop --prepare-data` / `produce` / supervisor 在调用 LLM 之前还要 `mining_allowed`。`loop` 本身仍会再跑 `require_discovery_contract`；晋升 candidate 前会再跑 `require_candidate_contract`。
 
 ```mermaid
 flowchart LR
@@ -117,15 +121,18 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A["run-forever / run-once"] --> B[读 data_version]
+    A["run-forever / run-once"] --> P[prepare: 检查覆盖, 缺了再拉]
+    P --> B[读 data_version]
     B --> C[research 合同]
     B --> D[candidate 合同]
+    P -->|mining_allowed=false| E0[research_discovery = blocked]
     C -->|未过| E[research_discovery = blocked]
     C -->|通过且本周期该开挖| F[FactorLoop 1 round / batch 2]
     C -->|通过但未到 cadence| G[research_discovery = skipped]
     D -->|未过| H[recheck_screened = blocked]
     D -->|通过| I[refresh_candidates / promote_screened]
     F --> J[export-trading-releases]
+    E0 --> J
     E --> J
     G --> J
     H --> J
@@ -139,21 +146,19 @@ flowchart TD
 
 ## 6. 服务器上必须按这个顺序
 
-工厂启动**不会**先帮你拉 2020–2026。仓库里现成的是 2024–2026 快照行情；如果直接 `loop` / `supervisor`，research 合同在当前 `20240102–20251231` 窗口上会通过，于是会立刻用旧的两年数据开挖。
-
-要先拿长历史，再检查，再生产：
+直接 `loop`（不加 `--prepare-data`）仍可能用仓库里的 2024–2026 切片开挖，因为当前 discovery 窗口就在这段数据里。`prepare-data` / `produce` / 默认 supervisor 会先对照 `data_prepare.start`（默认 `20200101`）检查覆盖，不够就拉，不够且拉失败就挡住 mining。
 
 ```bash
 git fetch origin main && git checkout main && git pull origin main
 
-# 1. 拉数：写入数据库。没有覆盖 2020 的 PIT 时必须加 --allow-snapshot-universe
-.venv/bin/qfactor sync-data --start 20200101 --end 20260815 --source baostock --allow-snapshot-universe
+# 1. 检查覆盖；缺 2020 前缀时先试 PIT，失败再用 snapshot 回拉研究行情
+.venv/bin/qfactor prepare-data
 
-# 2. 看三层合同。research 应为 passed；candidate / release 在快照数据上应为 blocked
+# 2. 也可以单独看三层合同。research 应为 passed；candidate / release 在快照数据上应为 blocked
 .venv/bin/qfactor data-contract-readiness
 
-# 3. 只有 research.state=passed 才开挖。这里仍然只会产 screened
-.venv/bin/qfactor loop --rounds 5 --batch-size 8 --gate research --clean-experiment
+# 3. 只有 mining_allowed 才开挖。这里仍然只会产 screened
+.venv/bin/qfactor produce --rounds 5 --batch-size 8 --gate research
 # 或
 .venv/bin/python -m qfactor.agent.supervisor run-forever --start-cycle 12
 ```

@@ -92,36 +92,41 @@ USABLE = `candidate` + `approved`。
 
 ## 生产流程
 
-工厂**不会**在挖矿命令里自动下载行情。服务器上必须先 `sync-data`，再 `data-contract-readiness`，research 合同通过后才允许 `loop` / supervisor 调用 LLM。
+挖矿前必须先经过数据准备：检查目标窗口覆盖、缺了再拉、再跑三层合同。`loop` 默认仍不下载；`prepare-data` / `produce` / supervisor 会走这个门。窗口没覆盖或 research 合同没过，就不能调用 LLM。
 
 ```mermaid
 flowchart TD
-    A[服务器 pull main] --> B[sync-data 拉行情入库]
-    B --> C[data-contract-readiness]
-    C --> D{research: 有行情且 discovery 窗口在数据范围内?}
-    D -->|否| E[停止 discovery]
-    D -->|是| F[干净实验生成 DSL]
-    F --> G[research 闸]
-    G -->|过| H[screened]
-    G -->|不过| I[reject]
-    H --> J{candidate: PIT + 供应商市值 + selection?}
-    J -->|否| K[保持 screened]
-    J -->|是| L[production 闸]
-    L -->|过| M[candidate]
-    M --> N[freeze / sealed OOS / tradability]
-    N --> O{release 执行数据齐全?}
-    O -->|否| P[不能交易]
-    O -->|是| Q[active release]
+    A[服务器 pull main] --> B[prepare-data 检查覆盖]
+    B --> C{2020 起到今天的行情够不够?}
+    C -->|不够| D[先试 PIT sync, 失败才 snapshot 回拉]
+    C -->|已覆盖| E[跳过下载]
+    D --> F[data-contract-readiness]
+    E --> F
+    F --> G{research: 有行情且 discovery 窗口在数据范围内?}
+    G -->|否| H[停止 discovery]
+    G -->|是| I[干净实验生成 DSL]
+    I --> J[research 闸]
+    J -->|过| K[screened]
+    J -->|不过| L[reject]
+    K --> M{candidate: PIT + 供应商市值 + selection?}
+    M -->|否| N[保持 screened]
+    M -->|是| O[production 闸]
+    O -->|过| P[candidate]
+    P --> Q[freeze / sealed OOS / tradability]
+    Q --> R{release 执行数据齐全?}
+    R -->|否| S[不能交易]
+    R -->|是| T[active release]
 ```
 
 当前快照数据只能走到 `screened`。`candidate` 和 `active release` 继续为 0，直到 PIT 证据补齐。
 
-仓库里现成的是 2024–2026 切片。如果服务器上**不先 sync** 就直接 `loop`，系统会用这两年数据开挖，而不会自动去拉 2020。要长历史必须先执行：
+仓库里现成的是 2024–2026 切片。直接 `loop` 仍会用这两年数据开挖。要先拿长历史再挖：
 
 ```bash
-qfactor sync-data --start 20200101 --end 20260815 --source baostock --allow-snapshot-universe
-qfactor data-contract-readiness
-qfactor loop --rounds 5 --batch-size 8 --gate research --clean-experiment
+qfactor prepare-data
+qfactor produce --rounds 5 --batch-size 8 --gate research
+# 或
+qfactor loop --prepare-data --rounds 5 --batch-size 8 --gate research --clean-experiment
 ```
 
 ---
@@ -178,6 +183,9 @@ qfactor sync-data --start 20200101 --end 20260815 --source baostock
 # 没有覆盖 2020 的 PIT 时：只拉研究行情，宇宙仍标 snapshot
 qfactor sync-data --start 20200101 --end 20260815 --source baostock --allow-snapshot-universe
 qfactor data-contract-readiness
+
+# 推荐：检查覆盖 → 缺了再拉 → 再看合同。窗口不够或 research 未过则退出码 2
+qfactor prepare-data
 ```
 
 已有 2024–2026 切片不会被当成 2020 年起的完整覆盖；缺前缀的代码会重新下载。新数据版本写入后，才能把 discovery 扩到 `20200102–20251231`。2026 行情可以入库，但不进入 discovery。
@@ -235,8 +243,9 @@ LangGraph：`decide → generate → review_validate → persist`。循环只产
 默认 `experiment.clean_discovery_default: true`。干净实验忽略旧 checkpoint、lesson、额外模板和 legacy snapshot 父本，只使用固定 DSL seed 以及本次 experiment 新产生的 screened。
 
 ```bash
-python -m qfactor.cli loop --rounds 5 --batch-size 8 --llm-ratio 0.45 --gate research
-python -m qfactor.cli loop --rounds 5 --batch-size 8 --gate research --clean-experiment
+python -m qfactor.cli prepare-data
+python -m qfactor.cli produce --rounds 5 --batch-size 8 --gate research
+python -m qfactor.cli loop --prepare-data --rounds 5 --batch-size 8 --gate research --clean-experiment
 python -m qfactor.agent.supervisor run-forever --start-cycle 12
 ```
 
@@ -267,11 +276,12 @@ python -m qfactor.agent.supervisor run-forever --start-cycle 12
 
 | 命令 | 作用 |
 |---|---|
+| `prepare-data` / `produce` | 挖矿前检查覆盖、缺了再拉、过 research 合同才开挖 |
 | `sync-data` / `sync-universe` / `data-status` / `data-contract-readiness` | 行情、成分、分层合同 |
 | `fetch-archive-universe` / `ingest-archive` / `validate-archive` | 官方/供应商归档 |
 | `install-seeds` | 写入种子因子 |
 | `list-factors` / `eval-factor` / `library-cohorts` | 单因子与队列 |
-| `mine` / `loop` | 挖矿（需 API key；`--clean-experiment` 隔离 legacy） |
+| `mine` / `loop` | 挖矿（需 API key；`--prepare-data` 先过数据门；`--clean-experiment` 隔离 legacy） |
 | `library-archive` / `library-demote-corr` / `library-cap-usable` | 归档、高相关降权、每机制 1 条 candidate |
 | `library-reeval-screened` | screened 上生产闸（仍受 candidate 合同约束） |
 | `library-refresh-production` | 重打 candidate |

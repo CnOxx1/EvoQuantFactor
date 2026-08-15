@@ -49,6 +49,18 @@ production:
     cheap_ic_min: 0.008         # skip full gate when |train IC| below this
     parent_top_screened: 12     # screened parent budget, split across unblocked mechanisms
 
+# Fetch / keep / check bars before any mining. Supervisor and `produce` call
+# this first. PIT is tried first; snapshot is a research-only fallback.
+data_prepare:
+  start: "20200101"
+  end: ""                    # empty = today in project timezone
+  source: baostock
+  allow_snapshot_universe: true
+  refresh_if_incomplete: true
+  require_research_contract: true
+  require_window_coverage: true
+  min_covering_names: 50     # names that already span start–end
+
 # Every discovery run receives an append-only experiment manifest and complete
 # trial ledger. Search outputs remain research-only until separately frozen,
 # sealed, tradability-tested, and released.
