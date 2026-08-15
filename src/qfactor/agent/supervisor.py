@@ -163,7 +163,12 @@ class FactoryRuntime:
         except Exception as exc:
             result["actions"]["refresh_candidates"] = {"state": "error", "error": str(exc)}
             result["errors"].append({"stage": "refresh_candidates", "error": str(exc)})
-        if cycle % self.screened_every == 0:
+        if contract["state"] != "passed":
+            result["actions"]["recheck_screened"] = {
+                "state": "blocked",
+                "reason": contract.get("reason"),
+            }
+        elif cycle % self.screened_every == 0:
             try:
                 result["actions"]["recheck_screened"] = self.ops.promote_screened()
             except Exception as exc:
