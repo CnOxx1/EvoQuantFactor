@@ -41,6 +41,8 @@ class EvalService:
         self._ctx: FactorContext | None = None
         self._peer_cache: dict[str, pd.DataFrame] = {}
         self._industry_map: pd.Series | pd.DataFrame | None = None
+        self.clean_experiment = False
+        self.peer_experiment_id: str | None = None
 
     def trade_lag(self) -> int:
         ev = self.cfg.eval.get("eval", {})
@@ -125,11 +127,23 @@ class EvalService:
         lag = self.trade_lag()
         statuses = statuses or KEEP_STATUSES
         others: dict[str, pd.DataFrame] = {}
+        clean_names: set[str] | None = None
+        if self.clean_experiment:
+            clean_names = set()
+            for row in self.registry.existing_summaries():
+                params = row.get("params") if isinstance(row.get("params"), dict) else {}
+                if row.get("source") == "seed" or (
+                    self.peer_experiment_id
+                    and str(params.get("experiment_id") or "") == self.peer_experiment_id
+                ):
+                    clean_names.add(str(row.get("name") or ""))
         for item in self.registry.list_factors():
             fname = item["name"]
             if fname == name or fname in exclude_names:
                 continue
             if item.get("status") not in statuses:
+                continue
+            if clean_names is not None and fname not in clean_names:
                 continue
             key = f"{fname}:h{hold}" if hold > 1 else fname
             if key not in self._peer_cache:

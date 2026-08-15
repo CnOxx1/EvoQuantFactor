@@ -1,6 +1,9 @@
 from types import SimpleNamespace
 
+import pandas as pd
+
 from qfactor.agent.graph import _eligible_research_library, _node_persist
+from qfactor.eval.service import EvalService
 from qfactor.factor.cohort import classify_research_cohort
 
 
@@ -76,3 +79,40 @@ def test_clean_experiment_does_not_write_shared_checkpoint():
     )
     assert saved == []
     assert out["round_stats"]["catalog_expand"]["reason"] == "clean_experiment"
+
+
+def test_clean_evaluation_excludes_legacy_correlation_peers():
+    panel = pd.DataFrame({"a": [1.0, 2.0]}, index=["20240102", "20240103"])
+
+    class _Registry:
+        def existing_summaries(self):
+            return [
+                {"name": "legacy", "source": "compose", "params": {}},
+                {
+                    "name": "current",
+                    "source": "llm",
+                    "params": {"experiment_id": "exp_current"},
+                },
+            ]
+
+        def list_factors(self):
+            return [
+                {"name": "legacy", "status": "screened"},
+                {"name": "current", "status": "screened"},
+            ]
+
+        def load_factor(self, name):
+            return SimpleNamespace(compute=lambda _ctx: panel)
+
+    svc = object.__new__(EvalService)
+    svc.registry = _Registry()
+    svc.clean_experiment = True
+    svc.peer_experiment_id = "exp_current"
+    svc._peer_cache = {}
+    svc.trade_lag = lambda: 1
+    svc._context = lambda: None
+    svc._prepare_eval_panel = lambda raw: (raw, [])
+
+    peers = svc._peer_panels("new_factor", set(), statuses=("screened",))
+
+    assert set(peers) == {"current"}

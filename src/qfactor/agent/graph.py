@@ -737,6 +737,8 @@ def run_production_graph(
         },
         date_partitions=date_partitions,
     )
+    ctx.eval.clean_experiment = bool(clean_experiment)
+    ctx.eval.peer_experiment_id = str(manifest["experiment_id"])
 
     # Resume continues from checkpoint iteration; `rounds` = additional rounds.
     start_done = int(cp.get("iteration") or 0) if resume else 0
