@@ -24,8 +24,19 @@ def sync_data(
     end: str = typer.Option(..., help="YYYYMMDD"),
     source: str = typer.Option("auto", help="tushare|baostock|akshare|auto (bars only; PIT evidence is separate)"),
     max_names: Optional[int] = typer.Option(None, help="limit names for smoke test"),
+    allow_snapshot_universe: bool = typer.Option(
+        False,
+        "--allow-snapshot-universe",
+        help="Download research bars for the latest CSI100 names when PIT history does not cover the window start",
+    ),
 ):
-    meta = DataService().sync(start, end, source=source, max_names=max_names)  # type: ignore[arg-type]
+    meta = DataService().sync(
+        start,
+        end,
+        source=source,
+        max_names=max_names,
+        allow_snapshot_universe=allow_snapshot_universe,
+    )  # type: ignore[arg-type]
     print(meta)
 
 

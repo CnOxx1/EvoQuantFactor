@@ -115,6 +115,22 @@ def test_discovery_readiness_returns_structured_blockers(monkeypatch):
     ]
 
 
+def test_discovery_window_must_sit_inside_synced_data(monkeypatch):
+    import qfactor.agent.experiments as experiments
+
+    monkeypatch.setattr(experiments, "DataService", _DataService)
+    cfg = _Cfg(
+        {"start": "20240101", "end": "20260630"},
+        {
+            "discovery_start": "20200102",
+            "discovery_end": "20251231",
+        },
+    )
+    out = discovery_contract_readiness(cfg)
+    assert out["state"] == "blocked"
+    assert "discovery_window_before_data" in out["issues"]
+
+
 def test_research_does_not_require_execution_or_risk_data(monkeypatch):
     import qfactor.agent.experiments as experiments
 

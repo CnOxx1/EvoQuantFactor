@@ -89,6 +89,17 @@ qfactor sync-data --start 20150101 --end YYYYMMDD --source baostock
 qfactor data-contract-readiness
 ```
 
+若官方调样归档还不能覆盖窗口起点，研究层可以显式回拉最新成分的长历史行情，
+但不能把快照成分升级成 PIT：
+
+```bash
+qfactor sync-data --start 20200101 --end YYYYMMDD --source baostock --allow-snapshot-universe
+```
+
+已有 2024–2026 切片不会被当成 2020 年起的完整覆盖；缺前缀的代码会重新下载。
+新数据版本写入后，才能把 discovery 分区扩到 `20200102–20251231`。2026 行情入库，
+但不进入 discovery。
+
 BaoStock 适配器保留逐日 `isST` 与 `tradestatus`；这些属于公开来源证据，但不会
 把估算流通市值升级为 candidate 可用的供应商市值。
 

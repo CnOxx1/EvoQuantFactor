@@ -114,6 +114,21 @@ def test_resolve_pit_without_history_raises():
         )
 
 
+def test_force_mode_snapshot_ignores_pit_policy():
+    latest = _hist(("20260812", "TODAY.SH"))
+    members, meta = resolve_universe(
+        start="20200102",
+        end="20260814",
+        history=None,
+        latest_snapshot=latest,
+        cfg=get_project_config(),
+        force_mode="snapshot",
+    )
+    assert meta["universe_mode"] == "snapshot"
+    assert set(members["ts_code"]) == {"TODAY.SH"}
+    assert set(members["trade_date"]) == {"20200102"}
+
+
 def test_snapshot_mode_is_opt_in():
     latest = _hist(("20260812", "TODAY.SH"))
     cfg = get_project_config()

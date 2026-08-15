@@ -219,6 +219,15 @@ def discovery_contract_readiness(
         issues.append("research_bars_missing")
     if research_data.get("require_discovery_partition", True) and partitions["state"] != "configured":
         issues.append("discovery_partitions_unconfigured")
+    data_start = str(meta.get("start") or "")
+    data_end = str(meta.get("end") or "")
+    windows = partitions.get("windows") or {}
+    discovery_start = str(windows.get("discovery_start") or "")
+    discovery_end = str(windows.get("discovery_end") or "")
+    if discovery_start and data_start and discovery_start < data_start:
+        issues.append("discovery_window_before_data")
+    if discovery_end and data_end and discovery_end > data_end:
+        issues.append("discovery_window_after_data")
     return {
         "contract": "research_data_v1",
         "state": "passed" if not issues else "blocked",

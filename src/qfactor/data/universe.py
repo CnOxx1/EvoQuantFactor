@@ -187,6 +187,7 @@ def resolve_universe(
     latest_snapshot: pd.DataFrame | None = None,
     cfg: ProjectConfig | None = None,
     provider: str | None = None,
+    force_mode: str | None = None,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     """
     pit: all reconstitutions in [start-lookback, end].
@@ -194,7 +195,8 @@ def resolve_universe(
     snapshot: latest official file (lookahead; opt-in only).
     """
     policy = universe_policy(cfg)
-    mode = policy["mode"]
+    requested = str(force_mode or policy["mode"]).strip().lower()
+    mode = requested if requested in {"pit", "freeze_start", "snapshot"} else policy["mode"]
     lookback = int(policy["lookback_days"])
     start = str(start)[:8]
     end = str(end)[:8]
