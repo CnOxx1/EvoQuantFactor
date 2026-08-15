@@ -5,6 +5,7 @@ from pathlib import Path
 import pandas as pd
 
 from qfactor.data.base import DataAdapter
+from qfactor.data.vendor_normalize import normalize_panel
 
 
 class ArchiveAdapter(DataAdapter):
@@ -39,8 +40,10 @@ class ArchiveAdapter(DataAdapter):
         if path is None or not path.exists():
             return pd.DataFrame()
         if path.suffix.lower() in {".parquet", ".pq"}:
-            return pd.read_parquet(path)
-        return pd.read_csv(path)
+            raw = pd.read_parquet(path)
+        else:
+            raw = pd.read_csv(path)
+        return normalize_panel(raw)
 
     @staticmethod
     def _date(value: pd.Series) -> pd.Series:

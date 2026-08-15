@@ -10,6 +10,7 @@ import pandas as pd
 
 from qfactor.data.akshare_adapter import AkshareAdapter
 from qfactor.data.archive_adapter import ArchiveAdapter
+from qfactor.data.archive_ingest import resolve_evidence_provider
 from qfactor.data.baostock_adapter import BaostockAdapter, bs_session
 from qfactor.data.base import DataAdapter
 from qfactor.data.csindex import fetch_csindex_members
@@ -228,14 +229,9 @@ class DataService:
 
     def _provider_adapter(self, role: str) -> DataAdapter | None:
         """Resolve a separately configured evidence provider without silent fallbacks."""
-        providers = self.cfg.data_sources.get("providers") or {}
-        source = str(providers.get(role, "auto")).strip().lower()
-        if source in {"", "none", "disabled"}:
+        source = resolve_evidence_provider(role, self.cfg)
+        if source is None:
             return None
-        if source == "auto":
-            if not get_settings().tushare_token:
-                return None
-            source = "tushare"
         try:
             return build_adapter(source, self.cfg)
         except Exception as e:

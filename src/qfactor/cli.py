@@ -22,7 +22,7 @@ app = typer.Typer(help="qfactor: CSI100 price-volume factor library + LLM mining
 def sync_data(
     start: str = typer.Option(..., help="YYYYMMDD"),
     end: str = typer.Option(..., help="YYYYMMDD"),
-    source: str = typer.Option("auto", help="tushare|baostock|akshare|auto"),
+    source: str = typer.Option("auto", help="tushare|baostock|akshare|auto (bars only; PIT evidence is separate)"),
     max_names: Optional[int] = typer.Option(None, help="limit names for smoke test"),
 ):
     meta = DataService().sync(start, end, source=source, max_names=max_names)  # type: ignore[arg-type]
@@ -34,8 +34,36 @@ def sync_universe(
     start: str = typer.Option(..., help="YYYYMMDD"),
     end: str = typer.Option(..., help="YYYYMMDD"),
 ):
-    """Refresh point-in-time CSI100 members. Requires TUSHARE_TOKEN. Does not re-download bars."""
+    """Refresh PIT CSI100 members from archive parquet or Tushare. Does not re-download bars."""
     print(DataService().sync_universe(start, end))
+
+
+@app.command("ingest-archive")
+def ingest_archive(
+    role: str = typer.Option(
+        ...,
+        help="universe|daily_basic|security_status|corporate_actions|risk_exposures|industry",
+    ),
+    source: str = typer.Option(..., help="vendor csv/xls/xlsx/parquet extract"),
+    dest: Optional[str] = typer.Option(None, help="override output parquet path"),
+):
+    """Normalize a Wind/Choice/RQData/CSIndex extract onto the production archive contract."""
+    from pathlib import Path
+
+    from qfactor.data.archive_ingest import ingest_archive_role
+
+    print(ingest_archive_role(role, Path(source), dest=Path(dest) if dest else None))
+
+
+@app.command("validate-archive")
+def validate_archive(strict: bool = typer.Option(False, help="fail when any role file is missing")):
+    """Check registered archive parquet files against the PIT column contract."""
+    from qfactor.data.archive_ingest import validate_registered_archives
+
+    report = validate_registered_archives(strict=strict)
+    print(report)
+    if not report["ok"]:
+        raise typer.Exit(code=1)
 
 
 @app.command("install-seeds")

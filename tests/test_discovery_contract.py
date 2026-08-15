@@ -57,3 +57,27 @@ def test_discovery_requires_pit_vendor_cap_and_frozen_windows(monkeypatch):
     cfg._meta["universe_mode"] = "snapshot"
     with pytest.raises(RuntimeError, match="universe_not_pit"):
         require_discovery_contract(cfg)
+
+
+def test_discovery_accepts_archive_vendor_cap_without_tushare(monkeypatch):
+    import qfactor.agent.experiments as experiments
+
+    monkeypatch.setattr(experiments, "DataService", _DataService)
+    cfg = _Cfg(
+        {
+            "start": "20190101",
+            "end": "20251231",
+            "universe_mode": "pit",
+            "circ_mv_source": "archive_daily_basic",
+            "daily_basic_coverage": 0.9,
+            "security_status_coverage": 0.99,
+            "limit_price_coverage": 0.99,
+            "adv_20d_coverage": 0.96,
+            "corporate_action_coverage": 0.99,
+            "industry_pit_coverage": 0.96,
+            "risk_exposures_coverage": 0.96,
+        },
+        _partitions(),
+    )
+    out = require_discovery_contract(cfg)
+    assert out["state"] == "configured"
