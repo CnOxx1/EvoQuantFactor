@@ -60,3 +60,29 @@
 4. [RQData/RQAlpha 扩展 API 文档](https://rqalpha.readthedocs.io/zh-cn/latest/api/extend_api.html)：明确列出 `limit_up`、`limit_down`、停牌、ST、流通股本、行业、拆分等接口，并说明 RQDatac 需申请 license。
 5. [RiceQuant 数据查询接口](https://www.ricequant.com/doc/rqalpha-plus/api/data-api)：说明其中国市场合约和历史行情数据范围。
 6. [JoinQuant JQData 文档](https://www.joinquant.com/help/api/doc?name=JQDatadoc&id=9958)：`get_index_stocks(index_symbol, date=None)` 的官方接口入口；本次云电脑出口返回地区访问限制页面。
+
+## 公开 PIT 重建线索：官方调样附件
+
+2025-05-30 的证券时报报道嵌入了中证指数有限公司公告截图，显示“关于沪深300、中证500、中证1000、中证A500等指数定期调整结果的公告”，并明确提示相关指数的“部分指数样本调整名单”见附件；报道正文确认中证A100在 2025-06-16 生效的定期调整中更换 5 只样本。页面正文没有可直接抽取的附件超链接，需从页面内嵌图片/原始公告继续定位附件。该线索可用于获取正式调入/调出名单，再从版本化快照反向重建 PIT 宇宙；在未取得所有变更期的完整名单之前，不能将重建结果标记为完整 PIT。
+
+来源： [证券时报，2025-05-30](https://stcn.com/article/detail/1852878.html)。
+
+## 中证指数官网技术核查
+
+中证指数官网前端脚本公开显示指数详情页面具备“相关资料”“样本调整名单”“指数快照”等功能文案；官网当前成分 XLS 仍可直接下载。前端是单页应用，直接页面渲染在云端浏览器为空，需继续从前端 API 路由或公告附件定位对应期次的正式名单。旧 AKShare `index_stock_hist` 依赖的金融界页面 `stock.jrj.com.cn/share,sh000903.shtml` 当前返回 404，不能作为数据源。
+
+来源： [中证指数官网](https://www.csindex.com.cn/)；[AKShare 变更记录](https://akshare.akfamily.xyz/changelog.html)（`index_stock_hist` 已移除）；[金融界旧端点](https://stock.jrj.com.cn/share,sh000903.shtml)（本次探测返回 404）。
+
+## 已验证的中证指数官方 API
+
+通过官网单页应用静态资源反查，已验证下列公开端点：
+
+- `GET https://www.csindex.com.cn/csindex-home/indexInfo/index-basic-info/000903` 返回中证A100（代码 `000903`）的正式基本资料，包含指数全称、发布日期、基日和半年调样频率。
+- `POST https://www.csindex.com.cn/csindex-home/indexInfo/index-sample-information` 是官网样本表接口；在未知完整请求字段时返回空分页结构，尚未获得历史样本。不能据此将当前成分误标为 PIT。
+- 官网前端公开存在 `indexInfo/index-details-data`、`exportExcel/index-sample-information-excel/`、`announcement/selectNoticeRe` 以及资料下载相关路由，表明正式资料与样本下载功能在官网中存在，正在进一步定位参数与附件 ID。
+
+官网中证A100详情页：<https://www.csindex.com.cn/#/indices/family/detail?indexCode=000903>。
+
+## 官网数据服务范围核验
+
+中证指数官网的“证券所属指数检索”页面用于按证券代码查询其当前所属指数及“上月末数据”的权重；页面没有历史日期选择器。因此该公开服务不能替代逐日 PIT 成分历史。中证A100详情页的 `indexInfo/index-nicons` 接口当前返回 `拟生效文件=null` 与 `拟生效历史文件=null`，说明在本次抓取时官网未对该指数公开可下载的历史拟生效样本文件。
