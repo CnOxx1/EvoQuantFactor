@@ -63,6 +63,8 @@ class FactoryRuntime:
         self.screened_every = max(1, int(screened_every))
         production = (self.cfg.project.get("production") or {}).get("llm") or {}
         self.llm_ratio = float(production.get("llm_ratio", 0.0) if llm_ratio is None else llm_ratio)
+        experiment = self.cfg.project.get("experiment") or {}
+        self.clean_experiment = bool(experiment.get("clean_discovery_default", True))
         self.registry = FactorRegistry(self.cfg)
         self.ops = LibraryOps(self.cfg)
         self.release = ReleaseService(self.cfg)
@@ -157,6 +159,7 @@ class FactoryRuntime:
                     gate_name="research",
                     llm_ratio=self.llm_ratio,
                     llm_review_ratio=0.0,
+                    clean_experiment=self.clean_experiment,
                 )
             except Exception as exc:
                 result["actions"]["research_discovery"] = {"state": "error", "error": str(exc)}
@@ -222,6 +225,9 @@ class FactoryRuntime:
         return result
 
     def run_forever(self, *, start_cycle: int = 1) -> int:
+        # An explicit new launch supersedes a stop marker left by an earlier
+        # worker. The running loop still observes any STOP created afterwards.
+        self.stop_path.unlink(missing_ok=True)
         cycle = max(1, int(start_cycle))
         while not self.stop_path.exists():
             try:

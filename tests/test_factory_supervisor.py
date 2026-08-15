@@ -93,3 +93,24 @@ def test_runtime_does_not_recheck_screened_when_contract_is_blocked(tmp_path: Pa
         "state": "blocked",
         "reason": "universe_not_pit",
     }
+
+
+def test_explicit_run_forever_clears_stale_stop_marker(tmp_path: Path):
+    runtime = object.__new__(FactoryRuntime)
+    runtime.runtime_dir = tmp_path
+    runtime.status_path = tmp_path / "status.json"
+    runtime.events_path = tmp_path / "events.jsonl"
+    runtime.stop_path = tmp_path / "STOP"
+    runtime.stop_path.write_text("stale\n", encoding="utf-8")
+    runtime.interval_seconds = 60
+    calls = []
+
+    def _cycle(cycle):
+        calls.append(cycle)
+        runtime.stop_path.write_text("new stop\n", encoding="utf-8")
+        return {"cycle": cycle}
+
+    runtime.run_cycle = _cycle
+    assert runtime.run_forever(start_cycle=12) == 0
+    assert calls == [12]
+    assert "stopped" in runtime.status_path.read_text(encoding="utf-8")
