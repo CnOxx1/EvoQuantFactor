@@ -1,0 +1,80 @@
+{% extends "base.html" %}
+{% block title %}EvoQuantFactor 运行监控{% endblock %}
+{% block content %}
+<div class="card">
+  <h1>因子工厂运行监控</h1>
+  <p class="sub">此页面每 60 秒自动刷新，只展示云电脑上受监督运行器的审计状态；不提供数据同步、因子发现或库存操作入口。</p>
+  {% if read_only %}
+    <p class="err"><b>公开只读模式：</b>所有写操作与任务触发接口均已禁用。研究库存不等于交易因子。</p>
+  {% endif %}
+</div>
+
+<div class="grid">
+  <div class="metric"><span>运行周期</span><b>{{ monitor.get('cycle', '—') }}</b></div>
+  <div class="metric"><span>运行状态</span><b class="{{ 'ok' if monitor.get('state') == 'ok' else 'err' }}">{{ monitor.get('state', 'unknown') }}</b></div>
+  <div class="metric"><span>数据版本</span><b>{{ monitor.get('data_version', '—') }}</b></div>
+  <div class="metric"><span>最近完成</span><b>{{ monitor.get('finished_at', monitor.get('updated_at', '—')) }}</b></div>
+</div>
+
+<div class="card">
+  <h1>合同边界</h1>
+  {% set production = monitor.get('data_contract', {}) %}
+  {% set research = monitor.get('research_contract', {}) %}
+  <table>
+    <thead><tr><th>合同</th><th>状态</th><th>含义</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>生产数据合同</td>
+        <td><span class="pill {{ 'ok' if production.get('state') == 'passed' else 'err' }}">{{ production.get('state', 'unknown') }}</span></td>
+        <td>{% if production.get('state') == 'passed' %}允许进入严格生产复评。{% else %}生产晋升、密封验收与交易 release 保持阻断。{% endif %}</td>
+      </tr>
+      <tr>
+        <td>研究数据合同</td>
+        <td><span class="pill {{ 'ok' if research.get('state') == 'passed' else 'err' }}">{{ research.get('state', 'unknown') }}</span></td>
+        <td>模式：{{ research.get('mode', '—') }}。{% if research.get('mode') == 'observational' %}仅生成 screened 研究库存。{% endif %}</td>
+      </tr>
+    </tbody>
+  </table>
+  {% if production.get('reason') %}<p class="err"><b>生产阻断原因：</b>{{ production.get('reason') }}</p>{% endif %}
+  {% if research.get('partitions', {}).get('contract_kind') %}
+  <p><b>研究标记：</b>{{ research.get('partitions', {}).get('contract_kind') }}；生产资格：{{ research.get('partitions', {}).get('production_eligible') }}</p>
+  {% endif %}
+</div>
+
+<div class="card">
+  <h1>因子生命周期与交易边界</h1>
+  <div class="grid">
+    <div class="metric"><span>全部因子</span><b>{{ counts.get('total', 0) }}</b></div>
+    <div class="metric"><span>Screened 研究因子</span><b>{{ counts.get('screened', 0) }}</b></div>
+    <div class="metric"><span>Candidate</span><b>{{ counts.get('candidate', 0) }}</b></div>
+    <div class="metric"><span>Active release</span><b>{{ counts.get('active_release', 0) }}</b></div>
+  </div>
+  <p class="sub">只有完成完整 PIT 数据合同、冻结定义、密封样本外验收、可交易性验证并形成 active release 的因子，才能进入后续多因子交易模块。</p>
+</div>
+
+<div class="card">
+  <h1>最近周期动作</h1>
+  <table>
+    <thead><tr><th>动作</th><th>状态</th><th>说明</th></tr></thead>
+    <tbody>
+      {% for name, action in actions.items() %}
+      <tr>
+        <td>{{ name }}</td>
+        <td><span class="pill">{{ action.get('state', 'completed') if action is mapping else 'completed' }}</span></td>
+        <td>
+          {% if action is mapping %}
+            {{ action.get('reason', action.get('error', '—')) }}
+            {% if action.get('n_active') is not none %} active={{ action.get('n_active') }}{% endif %}
+            {% if action.get('n_eligible') is not none %} eligible={{ action.get('n_eligible') }}{% endif %}
+          {% else %}—{% endif %}
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="3">尚无运行周期记录。</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<script>setTimeout(() => window.location.reload(), 60000);</script>
+{% endblock %}

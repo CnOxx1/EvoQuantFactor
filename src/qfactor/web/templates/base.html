@@ -98,8 +98,11 @@
   <header>
     <div class="brand">qfactor</div>
     <nav>
+      <a href="/ui/monitor" class="{% if request.url.path.startswith('/ui/monitor') %}active{% endif %}">工厂监控</a>
+      {% if not read_only %}
       <a href="/ui/sync" class="{% if request.url.path.startswith('/ui/sync') %}active{% endif %}">同步状态</a>
       <a href="/ui/loop" class="{% if request.url.path.startswith('/ui/loop') %}active{% endif %}">Loop 进度</a>
+      {% endif %}
       <a href="/ui/factors" class="{% if request.url.path.startswith('/ui/factors') %}active{% endif %}">因子列表</a>
     </nav>
   </header>

@@ -43,3 +43,18 @@ def test_cli_direct_status_promotion_is_disabled():
         assert "disabled" in str(exc)
     else:
         raise AssertionError("direct status promotion must be disabled")
+
+
+def test_public_read_only_mode_exposes_monitor_and_blocks_mutations(monkeypatch):
+    from qfactor.api.app import create_app
+
+    monkeypatch.setenv("QFACTOR_READ_ONLY_WEB", "1")
+    client = TestClient(create_app())
+
+    home = client.get("/", follow_redirects=False)
+    assert home.status_code in {302, 307}
+    assert home.headers["location"] == "/ui/monitor"
+    assert client.get("/api/factory/status").status_code == 200
+    assert client.post("/api/library/archive").status_code == 403
+    assert client.post("/api/library/demote-corr").status_code == 403
+    assert client.post("/api/agent/loop", json={"rounds": 1, "batch_size": 1}).status_code == 403

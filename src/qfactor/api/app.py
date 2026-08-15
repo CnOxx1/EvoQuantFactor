@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import json
+import os
+from pathlib import Path
 from typing import Any, Literal
 
 from fastapi import BackgroundTasks, FastAPI, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
@@ -21,11 +23,47 @@ def _templates() -> Jinja2Templates:
     return Jinja2Templates(directory=str(root))
 
 
+def _public_read_only_mode() -> bool:
+    """Whether the externally exposed dashboard must deny all mutations."""
+    return os.getenv("QFACTOR_READ_ONLY_WEB", "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _load_factory_monitor_status(cfg: Any) -> dict[str, Any]:
+    """Read the atomic supervisor heartbeat without starting or controlling work."""
+    status_path = Path(cfg.path("runs")) / "factory_monitor" / "status.json"
+    if not status_path.exists():
+        return {"state": "not_started", "status_path": str(status_path)}
+    try:
+        payload = json.loads(status_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return {"state": "unreadable", "error": str(exc)}
+    return payload if isinstance(payload, dict) else {"state": "invalid_status"}
+
+
 def create_app() -> FastAPI:
     app = FastAPI(title="qfactor", version="0.1.1")
     cfg = get_project_config()
     templates = _templates()
     jobs: dict[str, Any] = {"sync": None, "loop": None}
+    read_only = _public_read_only_mode()
+
+    def _require_mutation_allowed() -> None:
+        if read_only:
+            raise HTTPException(
+                403,
+                "公开监控站点为只读模式；数据同步、因子发现和库存操作仅可在云电脑本机执行。",
+            )
+
+    @app.middleware("http")
+    async def enforce_public_read_only(request: Request, call_next: Any):
+        if read_only and request.method not in {"GET", "HEAD", "OPTIONS"}:
+            return JSONResponse(
+                status_code=403,
+                content={
+                    "detail": "公开监控站点为只读模式；所有写请求均已禁用。",
+                },
+            )
+        return await call_next(request)
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -33,7 +71,23 @@ def create_app() -> FastAPI:
 
     @app.get("/", response_class=HTMLResponse)
     def home(request: Request):
-        return RedirectResponse("/ui/sync")
+        return RedirectResponse("/ui/monitor" if read_only else "/ui/sync")
+
+    @app.get("/ui/monitor", response_class=HTMLResponse)
+    def ui_monitor(request: Request):
+        monitor = _load_factory_monitor_status(cfg)
+        counts = monitor.get("counts_after") or monitor.get("counts_before") or {}
+        actions = monitor.get("actions") if isinstance(monitor.get("actions"), dict) else {}
+        return templates.TemplateResponse(
+            "monitor.html",
+            {
+                "request": request,
+                "monitor": monitor,
+                "counts": counts,
+                "actions": actions,
+                "read_only": read_only,
+            },
+        )
 
     @app.get("/ui/sync", response_class=HTMLResponse)
     def ui_sync(request: Request):
@@ -56,6 +110,7 @@ def create_app() -> FastAPI:
         source: str = Form("baostock"),
         max_names: str = Form(""),
     ):
+        _require_mutation_allowed()
         mn = int(max_names) if max_names.strip().isdigit() else None
         jobs["sync"] = {"state": "running", "start": start, "end": end, "source": source}
 
@@ -93,6 +148,7 @@ def create_app() -> FastAPI:
         gate: str = Form("research"),
         llm_ratio: float = Form(0.45),
     ):
+        _require_mutation_allowed()
         if gate != "research":
             raise HTTPException(
                 400,
@@ -163,7 +219,12 @@ def create_app() -> FastAPI:
         from qfactor.db.models import db_path
         from qfactor.db.repo import Database
 
-        return {"path": str(db_path(cfg)), **Database().status()}
+        status = Database().status()
+        return status if read_only else {"path": str(db_path(cfg)), **status}
+
+    @app.get("/api/factory/status")
+    def api_factory_status() -> dict[str, Any]:
+        return _load_factory_monitor_status(cfg)
 
     @app.get("/api/factors")
     def api_factors(status: str = "") -> list[dict[str, Any]]:
@@ -199,6 +260,7 @@ def create_app() -> FastAPI:
 
     @app.post("/api/data/sync")
     def api_sync(body: SyncBody) -> dict[str, Any]:
+        _require_mutation_allowed()
         return DataService(cfg).sync(
             body.start, body.end, source=body.source, max_names=body.max_names
         )
@@ -214,6 +276,7 @@ def create_app() -> FastAPI:
 
     @app.post("/api/agent/loop")
     def api_loop(body: LoopBody) -> dict[str, Any]:
+        _require_mutation_allowed()
         try:
             return FactorLoop(cfg).run(
                 rounds=body.rounds,
@@ -229,10 +292,12 @@ def create_app() -> FastAPI:
 
     @app.post("/api/library/archive")
     def api_archive() -> dict[str, Any]:
+        _require_mutation_allowed()
         return LibraryOps(cfg).archive_stale()
 
     @app.post("/api/library/demote-corr")
     def api_demote_corr() -> dict[str, Any]:
+        _require_mutation_allowed()
         return LibraryOps(cfg).demote_high_corr()
 
     return app
