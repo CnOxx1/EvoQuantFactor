@@ -64,7 +64,6 @@ def test_enrich_derived_evidence_stamps_snapshot_and_fills_adv(tmp_path):
 
     svc = object.__new__(DataService)
     svc.cfg = SimpleNamespace(path=lambda key: processed if key == "data_processed" else tmp_path)
-    svc.bars_path = bars_path
     svc.load_bars = lambda: pd.read_parquet(bars_path)
 
     out = svc.enrich_derived_evidence()
@@ -103,7 +102,6 @@ def test_enrich_derived_evidence_does_not_upgrade_existing_pit_meta(tmp_path):
 
     svc = object.__new__(DataService)
     svc.cfg = SimpleNamespace(path=lambda key: processed if key == "data_processed" else tmp_path)
-    svc.bars_path = bars_path
     svc.load_bars = lambda: pd.read_parquet(bars_path)
 
     out = svc.enrich_derived_evidence()

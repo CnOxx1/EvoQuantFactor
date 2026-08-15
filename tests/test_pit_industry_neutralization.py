@@ -69,14 +69,20 @@ def test_prepare_eval_panel_skips_static_industry_and_estimated_size():
 
 
 def test_prepare_eval_panel_uses_vendor_circ_mv_and_pit_industry():
-    dates, codes, raw = _raw_panel()
+    dates = pd.Index(["20240102", "20240103"])
+    codes = pd.Index(["A", "B", "C", "D", "E"])
+    raw = pd.DataFrame(
+        [[1.0, 3.0, 10.0, 14.0, 18.0], [2.0, 4.0, 12.0, 16.0, 20.0]],
+        index=dates,
+        columns=codes,
+    )
     groups = pd.DataFrame(
-        [["bank", "bank", "tech", "tech"], ["bank", "bank", "tech", "tech"]],
+        [["bank", "bank", "tech", "tech", "tech"], ["bank", "bank", "tech", "tech", "tech"]],
         index=dates,
         columns=codes,
     )
     circ = pd.DataFrame(
-        [[100.0, 200.0, 300.0, 400.0], [110.0, 210.0, 310.0, 410.0]],
+        [[100.0, 200.0, 300.0, 400.0, 800.0], [110.0, 210.0, 310.0, 410.0, 810.0]],
         index=dates,
         columns=codes,
     )
@@ -97,7 +103,7 @@ def test_prepare_eval_panel_uses_vendor_circ_mv_and_pit_industry():
     prepared, used = service._prepare_eval_panel(raw)
 
     assert used == ["industry", "circ_mv"]
-    assert prepared.notna().all().all()
+    assert bool(prepared.notna().all().all())
 
 
 def test_vendor_circ_mv_ok_requires_daily_basic_source():
