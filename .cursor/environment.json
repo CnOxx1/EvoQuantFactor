@@ -6,6 +6,11 @@
       "name": "qfactor web",
       "command": ".venv/bin/qfactor serve --host 127.0.0.1 --port 8000",
       "description": "FastAPI + Web UI for qfactor at http://127.0.0.1:8000/ui/{sync,loop,factors}"
+    },
+    {
+      "name": "qfactor clean factory",
+      "command": ".venv/bin/python -m qfactor.agent.supervisor run-forever --start-cycle 12",
+      "description": "Clean research factory: immediate discovery, then hourly; candidate/release remain fail-closed"
     }
   ],
   "ports": [

@@ -99,11 +99,12 @@ eval:
   forward_horizon: 5
   trade_lag: 1          # override project.defaults.trade_lag if set
   train_end: "20251231" # legacy research boundary; sealed acceptance uses partitions below
-  # Leave all fields blank until PIT long history has passed the data contract.
-  # Once filled, the three windows are immutable for an experiment/release.
+  # Bootstrap research window: current snapshot data may create screened
+  # hypotheses only. 2026 remains untouched by discovery. Candidate and sealed
+  # stay disabled until long PIT history creates a new data version.
   partitions:
-    discovery_start: ""
-    discovery_end: ""
+    discovery_start: "20240102"
+    discovery_end: "20251231"
     selection_start: ""
     selection_end: ""
     sealed_start: ""

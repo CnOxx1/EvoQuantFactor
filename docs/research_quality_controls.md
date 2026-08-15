@@ -47,3 +47,8 @@ qfactor loop --clean-experiment --no-resume
 干净实验忽略旧 checkpoint、lesson、额外模板和 legacy 因子，只使用固定 DSL seed
 以及本次 experiment 新产生的 screened。生成的因子写入 experiment/cohort 来源，
 后续多重检验可按数据版本、discovery 窗口和机制累计。
+
+当前仓库默认启用 bootstrap discovery `20240102–20251231`，并在 Cloud Agent
+启动时运行 clean factory。该窗口只能生产 `screened`；snapshot universe 与
+estimated `circ_mv` 仍使 candidate 保持为零。2026 数据不被 discovery 读取。
+补齐长 PIT 历史后必须创建新 data version 和新分区，不能把 bootstrap 报告升级。

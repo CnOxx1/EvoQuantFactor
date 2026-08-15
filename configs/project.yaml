@@ -55,6 +55,8 @@ production:
 experiment:
   max_trials: 800
   require_manifest: true
+  clean_discovery_default: true
+  bootstrap_research_only: true
   sealed_oos_state: unconfigured
   release_requires_tradability: true
   release_requires_sealed_oos: true
