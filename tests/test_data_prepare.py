@@ -46,6 +46,7 @@ class _FakeData:
         self.calendar_path = Path(calendar_path) if calendar_path else Path("/tmp/missing-cal")
         self.pit_error = PIT_ERROR
         self.fail_even_snapshot = False
+        self.enrich_calls = 0
 
     def status(self):
         return {
@@ -86,6 +87,10 @@ class _FakeData:
             "circ_mv_source": "estimated",
         }
         return dict(self.meta)
+
+    def enrich_derived_evidence(self):
+        self.enrich_calls += 1
+        return {"enriched": False, "adv_20d_coverage": 0.0}
 
 
 def _panel(start: str, end: str, code: str = "AAA.SH") -> pd.DataFrame:
@@ -149,10 +154,12 @@ def test_skip_sync_when_window_already_covered(monkeypatch):
     data = _FakeData(bars=_panel("20200102", "20260814"))
     result = DataPrepareService(_Cfg(), data).ensure_research_ready()
     assert data.sync_calls == []
+    assert data.enrich_calls == 1
     assert result.skipped_sync is True
     assert result.synced is False
     assert result.reason == "window_covered"
     assert result.mining_allowed is True
+    assert result.enriched["enriched"] is False
 
 
 def test_inspect_only_does_not_download(monkeypatch):

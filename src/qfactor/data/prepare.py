@@ -103,6 +103,7 @@ class DataPrepareResult:
     used_snapshot_universe: bool = False
     allow_snapshot_universe: bool = False
     sync_error: str | None = None
+    enriched: dict[str, Any] = field(default_factory=dict)
 
     def as_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -210,6 +211,16 @@ class DataPrepareService:
             except Exception as exc:
                 sync_error = str(exc)
                 reason = "sync_failed"
+        enriched: dict[str, Any] = {}
+        if coverage.get("has_bars"):
+            enrich_fn = getattr(self.data, "enrich_derived_evidence", None)
+            if callable(enrich_fn):
+                try:
+                    enriched = dict(enrich_fn() or {})
+                    if enriched.get("enriched"):
+                        coverage = self.inspect(settings["start"], settings["end"])
+                except Exception as exc:
+                    enriched = {"enriched": False, "reason": str(exc)}
         contracts = _factor_contracts(self.cfg)
         research = contracts.get("research") or {}
         candidate = contracts.get("candidate") or {}
@@ -253,6 +264,7 @@ class DataPrepareService:
             used_snapshot_universe=used_snapshot,
             allow_snapshot_universe=bool(settings["allow_snapshot_universe"]),
             sync_error=sync_error,
+            enriched=enriched,
         )
 
     def _coverage_bounds(self, start: str, end: str) -> tuple[str, str, str]:

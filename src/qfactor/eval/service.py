@@ -57,33 +57,33 @@ class EvalService:
 
     def _industry_groups(self) -> pd.Series | pd.DataFrame:
         if self._industry_map is None:
-            # The daily bar panel carries archive-backed PIT industry when present.
-            # Only use the legacy static map when no daily classification exists.
+            # Only date-keyed PIT industry may neutralize. A static industry map
+            # is today's classification and would inject lookahead into residual IC.
             try:
-                panel = self._context().panel("industry")
+                panel = self._context().panel("industry_pit")
                 if isinstance(panel, pd.DataFrame) and not panel.empty and panel.notna().any().any():
                     self._industry_map = panel.where(panel.notna())
                     return self._industry_map
             except Exception:
                 pass
-            try:
-                df = self.data.load_industry()
-            except Exception:
-                df = pd.DataFrame()
-            if df is None or df.empty or "ts_code" not in df.columns:
-                self._industry_map = pd.Series(dtype=object)
-            else:
-                col = "industry" if "industry" in df.columns else df.columns[-1]
-                self._industry_map = (
-                    df.dropna(subset=["ts_code"])
-                    .drop_duplicates("ts_code")
-                    .set_index("ts_code")[col]
-                    .astype(str)
-                )
+            self._industry_map = pd.Series(dtype=object)
         return self._industry_map
 
+    def _vendor_circ_mv_ok(self) -> bool:
+        ev = self.cfg.eval.get("eval", {}) or {}
+        if not bool(ev.get("neutralize_require_vendor_circ_mv", True)):
+            return True
+        try:
+            meta = (self.data.status() or {}).get("meta") or {}
+        except Exception:
+            meta = {}
+        src = str(meta.get("circ_mv_source") or "").strip().lower()
+        if not src and "circ_mv estimated" in " ".join(str(x) for x in (meta.get("limitations") or [])).lower():
+            src = "estimated"
+        return src.endswith("_daily_basic") and src != "estimated"
+
     def _prepare_eval_panel(self, factor_panel: pd.DataFrame) -> tuple[pd.DataFrame, list[str]]:
-        """Strip industry/size exposure then re-zscore so IC is closer to residual alpha."""
+        """Strip industry/size exposure only when the evidence is candidate-grade."""
         ev = self.cfg.eval.get("eval", {}) or {}
         used: list[str] = []
         panel = factor_panel
@@ -100,7 +100,7 @@ class EvalService:
             if has_industry_groups:
                 panel = neutralize_groups(panel, groups)
                 used.append("industry")
-        if bool(ev.get("neutralize_size", True)):
+        if bool(ev.get("neutralize_size", True)) and self._vendor_circ_mv_ok():
             try:
                 mv = self._context().panel("circ_mv")
                 if float(mv.notna().mean().mean()) >= 0.3:
