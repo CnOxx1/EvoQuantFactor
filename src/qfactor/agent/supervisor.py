@@ -5,7 +5,9 @@ from __future__ import annotations
 The worker deliberately treats discovery, production re-evaluation, sealed
 acceptance, and trading release as separate lifecycle gates. A failed data
 contract is an auditable idle state, never a reason to relax criteria or create
-synthetic production factors.
+synthetic production factors. Research mining is gated by DataPrepareService:
+inspect the configured bar window, sync only if incomplete, then require the
+research contract. Candidate / release evidence stays fail-closed.
 """
 
 import argparse
@@ -23,6 +25,7 @@ from qfactor.agent.experiments import (
 )
 from qfactor.agent.loop import FactorLoop
 from qfactor.data.dataset import DataService
+from qfactor.data.prepare import DataPrepareResult, DataPrepareService
 from qfactor.db.repo import Database
 from qfactor.factor.ops import LibraryOps
 from qfactor.factor.registry import FactorRegistry
@@ -56,6 +59,7 @@ class FactoryRuntime:
         screened_every: int = 72,
         llm_ratio: float | None = None,
         runtime_dir: Path | None = None,
+        prepare_data: bool = True,
     ):
         self.cfg = cfg or get_project_config()
         self.interval_seconds = max(60, int(interval_seconds))
@@ -69,6 +73,9 @@ class FactoryRuntime:
         self.ops = LibraryOps(self.cfg)
         self.release = ReleaseService(self.cfg)
         self.data = DataService(self.cfg)
+        self.prepare: DataPrepareService | None = (
+            DataPrepareService(self.cfg, data=self.data) if prepare_data else None
+        )
         self.runtime_dir = runtime_dir or self.cfg.path("runs") / "factory_monitor"
         self.status_path = self.runtime_dir / "status.json"
         self.events_path = self.runtime_dir / "events.jsonl"
@@ -130,7 +137,18 @@ class FactoryRuntime:
             "reason": ", ".join(readiness.get("issues") or []),
         }
 
-    def run_cycle(self, cycle: int) -> dict[str, Any]:
+    def _refresh_prepare(self, last: DataPrepareResult | None) -> DataPrepareResult | None:
+        prepare = getattr(self, "prepare", None)
+        if prepare is None:
+            return last
+        covered = bool(last and (last.coverage or {}).get("window_covered"))
+        return prepare.ensure_research_ready(sync=False if covered else None)
+
+    def run_cycle(
+        self,
+        cycle: int,
+        data_prepare: dict[str, Any] | None = None,
+    ) -> dict[str, Any]:
         """Run exactly one auditable lifecycle pass; exceptions are captured."""
         started = utc_now()
         data_status = self.data.status()
@@ -143,16 +161,23 @@ class FactoryRuntime:
             "data_version": data_status.get("data_version"),
             "data_contract": contract,
             "candidate_contract": candidate_contract,
+            "data_prepare": data_prepare,
             "counts_before": self.lifecycle_counts(),
             "actions": {},
             "errors": [],
             "warnings": [],
         }
 
-        # Discovery may execute only after the research data contract passes
-        # (bars + discovery window inside the synced range). It does not download
-        # data and does not wait for PIT/candidate evidence. It remains research-only.
-        if contract["state"] == "passed" and cycle % self.discovery_every == 0:
+        # Discovery runs only after data-prepare says the target window is
+        # covered and the research contract passes. Prepare may download missing
+        # bars on the first cycle; later cycles inspect only while coverage holds.
+        # Candidate / PIT evidence is still not required for research mining.
+        prepare_ok = data_prepare is None or bool(data_prepare.get("mining_allowed", True))
+        if (
+            prepare_ok
+            and contract["state"] == "passed"
+            and cycle % self.discovery_every == 0
+        ):
             try:
                 result["actions"]["research_discovery"] = FactorLoop(self.cfg).run(
                     rounds=1,
@@ -165,6 +190,11 @@ class FactoryRuntime:
             except Exception as exc:
                 result["actions"]["research_discovery"] = {"state": "error", "error": str(exc)}
                 result["errors"].append({"stage": "research_discovery", "error": str(exc)})
+        elif not prepare_ok:
+            result["actions"]["research_discovery"] = {
+                "state": "blocked",
+                "reason": data_prepare.get("block_reason") or data_prepare.get("reason"),
+            }
         else:
             result["actions"]["research_discovery"] = {
                 "state": "skipped" if contract["state"] == "passed" else "blocked",
@@ -230,9 +260,22 @@ class FactoryRuntime:
         # worker. The running loop still observes any STOP created afterwards.
         self.stop_path.unlink(missing_ok=True)
         cycle = max(1, int(start_cycle))
+        last_prepare: DataPrepareResult | None = None
+        if getattr(self, "prepare", None) is not None:
+            print("[factory] preparing research data before the first cycle", flush=True)
+            last_prepare = self.prepare.ensure_research_ready()
+            print(
+                f"[factory] prepare mining_allowed={last_prepare.mining_allowed} "
+                f"reason={last_prepare.reason} block={last_prepare.block_reason}",
+                flush=True,
+            )
         while not self.stop_path.exists():
             try:
-                self.run_cycle(cycle)
+                last_prepare = self._refresh_prepare(last_prepare)
+                if last_prepare is None:
+                    self.run_cycle(cycle)
+                else:
+                    self.run_cycle(cycle, data_prepare=last_prepare.as_dict())
             except Exception as exc:  # last-resort worker protection for supervisor restart
                 failure = {
                     "schema_version": STATUS_VERSION,
@@ -265,12 +308,14 @@ def main() -> int:
     sub = parser.add_subparsers(dest="command", required=True)
     run_once = sub.add_parser("run-once")
     run_once.add_argument("--cycle", type=int, default=1)
+    run_once.add_argument("--no-prepare-data", action="store_true")
     run_forever = sub.add_parser("run-forever")
     run_forever.add_argument("--interval-seconds", type=int, default=300)
     run_forever.add_argument("--discovery-every", type=int, default=12)
     run_forever.add_argument("--screened-every", type=int, default=72)
     run_forever.add_argument("--llm-ratio", type=float, default=None)
     run_forever.add_argument("--start-cycle", type=int, default=1)
+    run_forever.add_argument("--no-prepare-data", action="store_true")
     sub.add_parser("status")
     sub.add_parser("stop")
     args = parser.parse_args()
@@ -279,9 +324,20 @@ def main() -> int:
         discovery_every=getattr(args, "discovery_every", 12),
         screened_every=getattr(args, "screened_every", 72),
         llm_ratio=getattr(args, "llm_ratio", None),
+        prepare_data=not getattr(args, "no_prepare_data", False),
     )
     if args.command == "run-once":
-        print(json.dumps(runtime.run_cycle(args.cycle), ensure_ascii=False, indent=2, default=str))
+        payload = None
+        if runtime.prepare is not None:
+            payload = runtime.prepare.ensure_research_ready().as_dict()
+        print(
+            json.dumps(
+                runtime.run_cycle(args.cycle, data_prepare=payload),
+                ensure_ascii=False,
+                indent=2,
+                default=str,
+            )
+        )
         return 0
     if args.command == "run-forever":
         return runtime.run_forever(start_cycle=args.start_cycle)

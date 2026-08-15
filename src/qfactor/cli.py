@@ -7,6 +7,7 @@ from rich import print
 
 from qfactor.agent.loop import FactorLoop, FactorMiningAgent
 from qfactor.data.dataset import DataService
+from qfactor.data.prepare import DataPrepareService
 from qfactor.eval.service import EvalService
 from qfactor.factor.acceptance import AcceptanceService
 from qfactor.factor.ops import LibraryOps
@@ -38,6 +39,31 @@ def sync_data(
         allow_snapshot_universe=allow_snapshot_universe,
     )  # type: ignore[arg-type]
     print(meta)
+
+
+@app.command("prepare-data")
+def prepare_data(
+    start: Optional[str] = typer.Option(None, help="YYYYMMDD; default from data_prepare.start"),
+    end: Optional[str] = typer.Option(None, help="YYYYMMDD; empty config means today"),
+    source: Optional[str] = typer.Option(None, help="tushare|baostock|akshare|auto"),
+    sync: bool = typer.Option(True, help="download when the target window is incomplete"),
+    allow_snapshot_universe: Optional[bool] = typer.Option(
+        None,
+        "--allow-snapshot-universe/--no-allow-snapshot-universe",
+        help="research-only snapshot fallback after PIT fails; default from config",
+    ),
+):
+    """Inspect bar coverage, sync if incomplete, then check layered contracts."""
+    result = DataPrepareService().ensure_research_ready(
+        start=start,
+        end=end,
+        source=source,
+        sync=sync,
+        allow_snapshot_universe=allow_snapshot_universe,
+    )
+    print(result.as_dict())
+    if not result.mining_allowed:
+        raise typer.Exit(code=2)
 
 
 @app.command("sync-universe")
@@ -184,6 +210,35 @@ def mine(
     )
 
 
+def _gate_prepare_then_loop(
+    *,
+    prepare: bool,
+    rounds: int,
+    batch_size: int,
+    theme: Optional[str],
+    gate: str,
+    resume: bool,
+    clean_experiment: bool,
+    llm_ratio: float,
+    llm_review_ratio: float,
+) -> dict:
+    if prepare:
+        ready = DataPrepareService().ensure_research_ready()
+        print({"data_prepare": ready.as_dict()})
+        if not ready.mining_allowed:
+            raise typer.Exit(code=2)
+    return FactorLoop().run(
+        rounds=rounds,
+        batch_size=batch_size,
+        theme=theme,
+        gate_name=gate,
+        resume=resume,
+        llm_ratio=llm_ratio,
+        llm_review_ratio=llm_review_ratio,
+        clean_experiment=clean_experiment,
+    )
+
+
 @app.command("loop")
 def loop(
     rounds: int = typer.Option(5, help="loop rounds"),
@@ -199,17 +254,68 @@ def loop(
     ),
     llm_ratio: float = typer.Option(0.45, help="share of candidates from LLM"),
     llm_review_ratio: float = typer.Option(0.0, help="share of candidates LLM-reviewed (advisory)"),
+    prepare_data: bool = typer.Option(
+        False,
+        "--prepare-data",
+        help="inspect/sync/check the research window before calling the LLM",
+    ),
 ):
     """Generate -> review -> validate. Requires OPENAI_API_KEY."""
-    result = FactorLoop().run(
+    result = _gate_prepare_then_loop(
+        prepare=prepare_data,
         rounds=rounds,
         batch_size=batch_size,
         theme=theme,
-        gate_name=gate,
+        gate=gate,
         resume=resume,
+        clean_experiment=clean_experiment,
         llm_ratio=llm_ratio,
         llm_review_ratio=llm_review_ratio,
+    )
+    print(
+        {
+            "produced": result.get("produced"),
+            "saved_total": result.get("saved_total"),
+            "production_promo": result.get("production_promo"),
+            "status": result.get("status"),
+            "mechanism_hits": result.get("mechanism_hits"),
+            "checkpoint": result.get("checkpoint"),
+            "run_dir": result.get("run_dir"),
+            "mode": result.get("mode"),
+            "orchestrator": result.get("orchestrator"),
+            "llm_ratio": result.get("llm_ratio"),
+            "clean_experiment": result.get("clean_experiment"),
+        }
+    )
+
+
+@app.command("produce")
+def produce(
+    rounds: int = typer.Option(5, help="loop rounds"),
+    batch_size: int = typer.Option(8, help="candidates per round"),
+    theme: Optional[str] = typer.Option(None, help="optional mechanism theme"),
+    gate: str = typer.Option(
+        "research", help="must remain research; production is handled by library operations"
+    ),
+    resume: bool = typer.Option(True, help="resume checkpoint"),
+    clean_experiment: bool = typer.Option(
+        True,
+        help="ignore legacy parents/checkpoints/extra templates; use fixed seeds only",
+    ),
+    llm_ratio: float = typer.Option(0.45, help="share of candidates from LLM"),
+    llm_review_ratio: float = typer.Option(0.0, help="share of candidates LLM-reviewed (advisory)"),
+):
+    """Prepare research data, then mine. Stops if the target window or research contract fails."""
+    result = _gate_prepare_then_loop(
+        prepare=True,
+        rounds=rounds,
+        batch_size=batch_size,
+        theme=theme,
+        gate=gate,
+        resume=resume,
         clean_experiment=clean_experiment,
+        llm_ratio=llm_ratio,
+        llm_review_ratio=llm_review_ratio,
     )
     print(
         {
