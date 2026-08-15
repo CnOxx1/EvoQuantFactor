@@ -1,8 +1,14 @@
 # qfactor
 
-中证100（中证A100 / `000903.SH`）日频量价因子工厂。用 DSL 表达式生成因子，经研究闸 / 生产闸两级评估入库；LLM 只负责提案，过闸由解析器与数值闸门决定。
+中证100（中证A100 / `000903.SH`）日频量价因子工厂。用 DSL 表达式生成因子，经研究闸 / 生产闸评估入库；LLM 只负责提案，过闸由解析器与数值闸门决定。
 
-目标不是堆 `screened`，而是产出**非振幅族**的 `candidate`。`candidate` 只表示过了本机 production 闸，**不是**已验收的实盘因子。
+目标是维护**高质量价量因子库**，供后续多因子模块使用。
+
+- `screened`：研究假说，可以当干净实验的父本，不能当生产库存。
+- `candidate`：统计上可靠的生产因子。需要 PIT 成分、供应商流通市值、PIT 行业、selection 分区和选择偏差审计。
+- `active release`：可交易发布。还要密封 OOS、订单级可交易性和完整执行/风险数据。
+
+`candidate` 不是实盘许可。快照宇宙或估算市值上过研究闸，也不能升级成 candidate。
 
 | 项 | 值 |
 |---|---|
@@ -21,17 +27,16 @@ configs/                 项目、数据源、评估闸
 src/qfactor/
   cli.py                 Typer CLI
   settings.py            配置加载
-  agent/                 挖矿循环：LangGraph + 生成器 + LLM
-  data/                  同步、成分、Baostock / Tushare
+  agent/                 挖矿循环、实验账本、工厂 supervisor
+  data/                  同步、成分、BaoStock / Tushare / archive
   dsl/                   表达式解析与求值
   eval/                  IC / OOS / 分层 / 相关 / 闸门
-  factor/                因子注册、变换、库运营
+  factor/                因子注册、队列、库运营、release
   db/                    SQLite 双写
   api/                   FastAPI + Web UI
 skills/mechanisms.yaml   八个机制族与提示骨架
 factor_lib/factors/      每个因子一个目录（spec.yaml + factor.py + reports/）
 tests/                   pytest
-runs/_hour_mine.py       按墙钟预算连续挖矿
 data/                    parquet / SQLite
 ```
 
@@ -41,13 +46,12 @@ data/                    parquet / SQLite
 python -m venv .venv
 # Windows: .venv\Scripts\activate
 pip install -e ".[dev]"
-copy .env.example .env   # 填 TUSHARE_TOKEN、OPENAI_API_KEY
+copy .env.example .env   # 填 OPENAI_API_KEY；PIT 成分另需 TUSHARE_TOKEN 或 archive
 ```
 
-密钥只放在本地 `.env`，**不要提交**。挖矿需要 `OPENAI_API_KEY`；点时成分需要 `TUSHARE_TOKEN`。
+密钥只放在本地 `.env`，**不要提交**。挖矿需要 `OPENAI_API_KEY`。点时成分需要 `TUSHARE_TOKEN`，或经审计的 archive 文件。
 
 ```bash
-# 全程建议
 set PYTHONPATH=src
 python -m qfactor.cli --help
 ```
@@ -60,14 +64,16 @@ python -m qfactor.cli --help
 draft ──research闸──► screened ──production闸──► candidate ──人工──► approved
                 │                         │
                 └──────── reject ─────────┘
+approved ──freeze──► sealed OOS ──tradability──► active release
 ```
 
 | 状态 | 含义 | 用途 |
 |---|---|---|
 | `draft` | 刚生成或未过研究闸 | 不进 KEEP |
-| `screened` | 过研究闸（训练窗宽松） | 研究堆；**禁止当生产库存** |
-| `candidate` | 过生产闸（holdout + 残差 + 成本等） | 可用库存 USABLE |
+| `screened` | 过研究闸 | 研究堆；干净实验父本；**禁止当生产库存** |
+| `candidate` | 过生产闸，且满足 candidate 数据合同 | 多因子研究输入（`tradable=false`） |
 | `approved` | 人工确认后的 candidate | 当前库为 0 |
+| `active release` | 密封 OOS + 可交易性 + 执行合同 | 唯一可供交易模块读取的输出 |
 | `reject` / `deprecated` | 失败或下架 | 高相关 reject 不进父本 |
 
 KEEP = `screened` + `candidate` + `approved`。  
@@ -76,9 +82,30 @@ USABLE = `candidate` + `approved`。
 
 每个因子目录：
 
-- `spec.yaml`：名称、状态、DSL `expression`、机制、假设
+- `spec.yaml`：名称、状态、DSL `expression`、机制、假设、experiment / cohort
 - `factor.py`：由表达式编译出的计算代码
 - `reports/`：历次评估 JSON；`latest.json` 为最近一次
+
+---
+
+## 分层数据合同
+
+研究、candidate、交易 release 用不同证据，缺哪一层就停在哪一层，不降门槛。
+
+| 层 | 最低要求 | 通过后可以做什么 |
+|---|---|---|
+| research | 日行情 + 已配置 discovery 分区 | 生成 / 评估 `screened` |
+| candidate | PIT 成分、供应商 `circ_mv`、PIT 行业、selection 分区、选择偏差审计、独立观测 ≥ 60、至少 3 年同号 | 导出给非交易多因子模块 |
+| release | ST / 停牌 / 涨跌停 / ADV / 公司行动 / 风险暴露覆盖达标，且密封 OOS + 可交易性通过 | `export-trading-releases` |
+
+```bash
+qfactor data-contract-readiness
+qfactor library-cohorts
+qfactor library-export-candidates
+qfactor export-trading-releases
+```
+
+当前仓库默认是**快照成分 + 估算流通市值**。这只够 research。`candidate = 0` 和 `n_active = 0` 是预期的 fail-closed 结果。
 
 ---
 
@@ -88,38 +115,52 @@ USABLE = `candidate` + `approved`。
 
 | 用途 | 来源 | 说明 |
 |---|---|---|
-| 成分 / 权重 | Tushare `index_weight` / `index_member` | `universe_policy.mode: pit` 时必须有 `TUSHARE_TOKEN` |
-| 行情 / 换手 / 行业 | Baostock | 日 K、换手、`query_stock_industry` |
-| 流通市值 | `amount / turnover` 估算 | 仅诊断与市值中性；**不是** Tushare `circ_mv` |
-| 最新成分 xls | 中证官网 | 仅 `mode: snapshot` |
+| 点时成分 | Tushare 或 archive `csi100_members.parquet` | `universe_policy.mode: pit`；缺历史调样不能假装 PIT |
+| 研究行情 | BaoStock | 日 K、换手、`isST` / `tradestatus`、静态行业 |
+| 流通市值 | 供应商 `daily_basic` | 估算 `amount/turnover` 只用于研究，不能当 candidate |
+| 执行 / 风险 | archive | ST、涨跌停、ADV、公司行动、PIT 行业、风险暴露 |
+| 最新成分 xls | 中证官网 | 仅 snapshot / 研究回拉名单 |
 
-`mode: pit` 且没有 token 时，同步会失败，而不会把最新名单盖满历史。没有 Tushare 就不要声称点时样本。磁盘上若仍是 snapshot 成分，评估数字不能当 PIT 结论。
+`mode: pit` 且没有 token、也没有覆盖窗口起点的 archive 时，同步会失败，而不会把今日名单盖满历史。磁盘上若仍是 snapshot，评估数字不能当 PIT 结论。
+
+研究层可以把行情拉到 2020–2026，但必须显式声明这是快照回拉：
 
 ```bash
 python -m qfactor.cli db-init
-python -m qfactor.cli db-import
 python -m qfactor.cli db-status
 
-python -m qfactor.cli sync-data --start 20240101 --end 20260630 --source baostock
-python -m qfactor.cli sync-universe --start 20240101 --end 20260630
-python -m qfactor.cli data-status
+# 官方调样（缺半年工作簿会停止回溯，不会跨年拼接）
+qfactor fetch-archive-universe
+qfactor validate-archive
+
+# 有 PIT archive 时
+qfactor sync-universe --start 20200101 --end 20260815
+qfactor sync-data --start 20200101 --end 20260815 --source baostock
+
+# 没有覆盖 2020 的 PIT 时：只拉研究行情，宇宙仍标 snapshot
+qfactor sync-data --start 20200101 --end 20260815 --source baostock --allow-snapshot-universe
+qfactor data-contract-readiness
 ```
 
-表：行情 `daily_bars`、成分 `universe_members`、行业 `industry_map`、因子 `factors` / `factor_reports`、任务 `jobs`、checkpoint `loop_checkpoints`。
+已有 2024–2026 切片不会被当成 2020 年起的完整覆盖；缺前缀的代码会重新下载。新数据版本写入后，才能把 discovery 扩到 `20200102–20251231`。2026 行情可以入库，但不进入 discovery。
+
+表：行情 `daily_bars`、成分 `universe_members`、行业 `industry_map`、因子 `factors` / `factor_reports`、任务 `jobs`、checkpoint `loop_checkpoints`、实验账本。
 
 ---
 
 ## 评估闸
 
-配置：`configs/eval_thresholds.yaml`。研究窗 `train_end: 20251231`；生产闸在此日期之后打分。交易滞后 1 日、前瞻 5 日、分层 5 档、成本 10bp、行业 + 市值中性。
+配置：`configs/eval_thresholds.yaml`。交易滞后 1 日、前瞻 5 日、分层 5 档、成本 10bp。研究默认 discovery 窗口 `20240102–20251231`；生产闸还要求 selection 分区，密封验收只读 sealed 分区。
 
-**不要放松 production 闸。** 不要加大 `llm_ratio` / `llm_batch_size`，不要把冷启动阈值开到 KEEP≈96。
+**不要放松 production / release 闸。** 不要加大 `llm_ratio` / `llm_batch_size`，不要把冷启动阈值开到 KEEP 接近全库。
 
 ### research（挖矿 → screened）
 
 - `|Rank IC| ≥ 0.01`，覆盖 ≥ 0.60，相关 ≤ 0.85
+- 年化 ICIR ≥ 1.0；两年同号即可
 - 要求 OOS，但门槛弱（OOS IC 均值 ≥ 0）
-- 不强制成本后多空为正、不强制残差 IC、不强制年份同号
+- 不强制成本后多空为正、不强制残差 IC
+- 快照宇宙可以过这一层
 
 ### production（screened → candidate）
 
@@ -128,21 +169,16 @@ python -m qfactor.cli data-status
 - 残差 IC：`min_resid_ic_mean: 0.01`，残差 NW ICIR ≥ 0.07
 - 分层单调 ≥ 0.75；成本后多空为正
 - `freeze_sign`：训练窗与 holdout 同号，且 holdout IC ≥ `min_oos_ic_mean`
-- 年份同号；近期 IC 为正；日换手 ≤ 1.20
+- **至少 3 年同号**；近期 IC 为正；日换手 ≤ 1.20
+- PIT 宇宙、供应商 `circ_mv`、PIT 行业、selection 分区、选择偏差审计
 
-### 多因子上游质量合同
+### release（candidate → active）
 
-后续非交易多因子研究**不能直接读取** `screened` 或全部 `candidate`。它只能读取
-`library-export-candidates`（或兼容命令 `library-export-multifactor`）生成的
-`tradable=false` 库存；该库存只保留满足以下条件的条目：
+- 证券状态 / 涨跌停覆盖 ≥ 98%
+- ADV 20 日 / 公司行动 / PIT 行业 / 风险暴露达到合同阈值
+- 定义已冻结，密封 OOS 通过，订单账本可交易性通过
 
-- 当前状态为 `candidate` 或 `approved`，且最近一次报告是通过的 production 闸；
-- 报告的数据版本等于当前数据版本；
-- 宇宙为 PIT，中性化使用供应商 `daily_basic` 流通市值，且供应商覆盖率 ≥ 80%；
-- 5 日持有期下独立观测数 ≥ 60；
-- 导出同时保留 holdout IC、NW ICIR、残差 IC、最低 OOS 折、成本后多空、换手和库相关等质量元数据，供多因子层做二次择优与组合约束。
-
-若当前是快照宇宙、估算市值或样本不足，导出结果为零是**预期的保护行为**，不是应通过放宽阈值解决的问题。
+后续非交易多因子研究只能读取 `library-export-candidates`，且 `tradable=false`。交易模块只能读取 `export-trading-releases` 的 `active` release。
 
 ```bash
 python -m qfactor.cli eval-factor NAME --gate research
@@ -156,15 +192,15 @@ python -m qfactor.cli library-export-candidates
 
 ## 挖矿循环
 
-LangGraph：`decide → generate → review_validate → persist`。循环只产 `screened`，**不会**在图结束时自动 `promote_screened`。晋升用 `library-reeval-screened` / `library-promote`。LLM 卡片只含训练窗 `train_ic`，不含 holdout。LLM 无离线回退。
+LangGraph：`decide → generate → review_validate → persist`。循环只产 `screened`，**不会**在图结束时自动晋升 candidate。晋升用 `library-reeval-screened` / `library-promote`，并且仍受 candidate 合同约束。
+
+默认 `experiment.clean_discovery_default: true`。干净实验忽略旧 checkpoint、lesson、额外模板和 legacy snapshot 父本，只使用固定 DSL seed 以及本次 experiment 新产生的 screened。
 
 ```bash
 python -m qfactor.cli loop --rounds 5 --batch-size 8 --llm-ratio 0.45 --gate research
-python runs/_hour_mine.py              # 默认 3600 秒
-python runs/_hour_mine.py 1800 half_hour
+python -m qfactor.cli loop --rounds 5 --batch-size 8 --gate research --clean-experiment
+python -m qfactor.agent.supervisor run-forever --start-cycle 12
 ```
-
-`_hour_mine.py` 用 `graph_rounds_for_budget` 把剩余时间打包进一次 invoke（最多 10 回合），让字段/窗口 prior 缓存跨回合存活。
 
 ### 生成槽位（`llm_slot_plan`）
 
@@ -174,22 +210,14 @@ python runs/_hour_mine.py 1800 half_hour
 |---|---|
 | LLM fresh | 3（假设 → 编译，禁止已有 catalog 骨架） |
 | AST 交叉 | ≥ 3 |
-| LLM mutate | 1（父本排除振幅） |
+| LLM mutate | 1 |
 | compose | 剩余 |
 
-失败**不会**回退成 compose 灌振幅近亲。主题硬排除已有 `candidate` 的机制族。因子名用落地 `mechanism`，不用当轮 theme。
+失败**不会**回退成 compose 灌近亲。因子名用落地 `mechanism`，不用当轮 theme。
 
 ### 机制封锁与父本
 
-已有 USABLE 的机制（振幅 / 流动性 / 隔夜等）不再当主题，交叉/mutate 父本也跳过这些机制。表达式含封锁字段（`amplitude` / `high` / `low` / `overnight` / `turnover_rate` 等）的 screened 不进交叉池。
-
-热库交叉父本不再取「全局 IC 最高的 12 条 screened」（会被振幅占满），而是：USABLE + **每个未封锁机制**若干 screened（预算 `parent_top_screened` 均分）。
-
-热库 `field_window_prior` 用残差 / holdout 加权，封锁族字段不进 prior；每 20 轮刷新。decide 用 `keep_mechanism_coverage`，不用全库 `mechanism_hits`。
-
-### 目录扩容
-
-每 20 轮 LLM 最多合并 10 条新骨架到 `runs/extra_templates.yaml`（该文件 gitignore）。`catalog_expand_unused_lt: 0` 表示不等目录耗尽也扩。
+已有 USABLE 的机制不再当主题。干净实验里，legacy snapshot 因子不能当父本。热库交叉父本按未封锁机制均分 `parent_top_screened`，避免单一机制占满。
 
 ### 机制族
 
@@ -201,15 +229,18 @@ python runs/_hour_mine.py 1800 half_hour
 
 | 命令 | 作用 |
 |---|---|
-| `sync-data` / `sync-universe` / `data-status` | 行情与成分 |
+| `sync-data` / `sync-universe` / `data-status` / `data-contract-readiness` | 行情、成分、分层合同 |
+| `fetch-archive-universe` / `ingest-archive` / `validate-archive` | 官方/供应商归档 |
 | `install-seeds` | 写入种子因子 |
-| `list-factors` / `eval-factor` / `promote` | 单因子 |
-| `mine` / `loop` | 挖矿（需 API key） |
+| `list-factors` / `eval-factor` / `library-cohorts` | 单因子与队列 |
+| `mine` / `loop` | 挖矿（需 API key；`--clean-experiment` 隔离 legacy） |
 | `library-archive` / `library-demote-corr` / `library-cap-usable` | 归档、高相关降权、每机制 1 条 candidate |
-| `library-reeval-screened` | screened 上生产闸 |
+| `library-reeval-screened` | screened 上生产闸（仍受 candidate 合同约束） |
 | `library-refresh-production` | 重打 candidate |
-| `library-promote` / `library-demote` | 升降级 |
-| `library-export-multifactor` | 导出严格、数据版本固定的多因子策略输入库存 |
+| `library-promote` / `library-demote` / `library-reconcile` | 升降级与一致性检查 |
+| `library-export-candidates` | 导出 `tradable=false` 的统计候选 |
+| `freeze-factor` / `sealed-accept` / `simulate-tradability` / `publish-release` | 验收与发布 |
+| `export-trading-releases` | 导出 `active` release |
 | `db-init` / `db-import` / `db-status` | SQLite |
 | `serve` | Web UI `http://127.0.0.1:8000/ui/{sync,loop,factors}` |
 | `show-config` | 打印根路径与宇宙 |
@@ -222,28 +253,27 @@ python runs/_hour_mine.py 1800 half_hour
 
 - `universe_policy.mode`: `pit`（默认）\| `freeze_start` \| `snapshot`
 - `defaults.trade_lag: 1`，`adj_type: qfq`
+- `experiment.clean_discovery_default: true`，`bootstrap_research_only: true`
 - `production.llm.llm_ratio: 0.45`，`llm_batch_size: 4`，`llm_review_ratio: 0`（LLM 不否决）
 - `llm_decide_theme: false`（本地轮转主题，省一次 LLM）
 - `diversity.max_per_skeleton: 2`，`max_corr_ban: 0.90`
 - `cold_start.min_parents: 8`，`prior_update_every: 20`，`cheap_ic_min: 0.008`
 
-`configs/data_sources.yaml`：指数代码 `000903`；成分优先 Tushare。
+`configs/data_sources.yaml`：指数代码 `000903`；`providers.*.auto` 在无 Tushare token 且 archive 文件存在时解析为 `archive`。
+
+`configs/eval_thresholds.yaml`：研究 discovery 默认 `20240102–20251231`；selection / sealed 未配置。生产要求 3 年稳定。
 
 ---
 
-## 当前库（2026-08-14）
+## 当前库
 
-约 **3** 条 `candidate`（振幅 / 流动性 / 隔夜各 1），无 `approved`。同机制上限 1。PIT + `daily_basic` 重评后数字才会改口径。
+截至合并到 `main` 的研究状态：
 
-| 名称 | 机制 | 表达式 |
-|---|---|---|
-| `amplitude_c10_163144_8115` | amplitude | `div(std(high,10),std(low,10))` |
-| `overnight_c40_164135_4925` | overnight | `div(std(overnight,40),std(amplitude,40))` |
-| `liquidity_c60_143458_3465` | liquidity | `div(abs(ret_1d),ma(turnover_rate,60))` |
+- `candidate` / `approved` / `active release` 均为 **0**
+- 已有 `screened` 研究库存；旧快照因子标为 `legacy_snapshot_research`，不能当干净实验父本
+- 干净实验可以继续生产 `screened`；在 PIT、供应商市值和 selection 分区补齐之前，不会出现 candidate
 
-已降为 screened：`amplitude_c40_171144_1084`、`amplitude_c10_105336_3673`、`momentum_llm_143848_8537`。
-
-有 candidate 的族会被主题封锁，后续搜索应偏向 reversal / momentum / volatility / volume_price / shadow。
+这是合同保护，不是应通过放宽阈值解决的问题。补齐长 PIT 历史后必须创建**新 data version 和新分区**，不能把旧 bootstrap 报告升级。
 
 ---
 
@@ -253,38 +283,26 @@ python runs/_hour_mine.py 1800 half_hour
 python -m pytest tests -q
 ```
 
-覆盖 DSL、闸门、宇宙、生成槽位、交叉父本、目录扩容、冷启动、多样性。不要为了过测试而放宽 production 阈值。
+覆盖 DSL、闸门、宇宙、归档、分层合同、干净实验、实验账本、生成槽位和多样性。不要为了过测试而放宽 production / release 阈值。
 
 ---
 
 ## 已知限制
 
-1. **PIT**：没有 Tushare 成分与 `circ_mv` 时，不能把当前 IC 说成点时中证100结果。
-2. **candidate ≠ 实盘**：未做多重检验收缩、容量、冲击；holdout 仍可能被多轮搜索看见。
-3. **振幅占优**：高 IC screened 曾占满交叉父本；现已按未封锁机制均分，但振幅/流动性/隔夜字段仍禁止进入新交叉子代。
+1. **PIT**：没有覆盖窗口起点的历史调样和供应商 `circ_mv` 时，不能把当前 IC 说成点时中证100结果。
+2. **candidate ≠ 实盘**：还要密封 OOS、可交易性和执行合同，才能成为 `active release`。
+3. **快照回拉 2020–2026**：只能补研究年份，不能把今日成分的历史当成 PIT。
 4. **LLM 只提案**：不提高 `llm_ratio`、不加新 Agent、不用 LLM 否决过闸。
-5. **运行产物**：`runs/loop_*`、`*_mine.log`、SQLite `-wal/-shm`、`.env` 不入库。密钥用 `.env.example` 复制。
+5. **运行产物**：`runs/loop_*`、SQLite `-wal/-shm`、`.env` 不入库。密钥用 `.env.example` 复制。
 
-更细的问题清单见 `项目缺点.md`（部分条目已落地，部分仍是研究债）。
-
+更细的数据合同见 `docs/production_data_contract.md`，研究质量控制见 `docs/research_quality_controls.md`。
 
 ---
 
-## 生产级数据、实验与 release 合同
-
-生产因子工厂采用**数据能力合同**，而不是绑定某一个供应商。`configs/data_sources.yaml` 分别配置 `providers.universe` 与 `providers.daily_basic`：当 Tushare 不可用时，可以使用经审计的 `archive` 文件（例如官方历史调样文件与授权日频市值导出）。无论来源为何，production 必须同时验证 PIT 成分、允许的 `circ_mv_source`、日频市值覆盖率和版本化原始数据路径；快照或估算市值只能用于研究诊断。
-
-LLM discovery 现在在调用模型前验证 PIT 数据和冻结的 `eval.partitions.discovery_*` 窗口。未通过时循环会拒绝启动，而不是在快照数据上继续累积 `screened`。完成 PIT 长历史后，应依次冻结 discovery、selection、sealed OOS 三段互不重叠的日期区间。`sealed-accept` 只在定义冻结后执行显式区间评估，并把完整 experiment trial 数写入 Bonferroni 家族错误率审计。
+## 生产级实验与 release
 
 ```bash
-# 使用经审核的 archive 数据提供方前，配置 data_sources.yaml 中的 paths/providers。
-qfactor sync-universe --start 20190101 --end 20260630
-qfactor sync-data --start 20190101 --end 20260630 --source baostock
-
-# 行情、discovery 日期分区和 LLM key 通过后允许 research discovery；
-# PIT/selection 合同仍决定 screened 能否成为 candidate。
-qfactor loop --rounds 5 --batch-size 8 --gate research
-# 新数据版本的干净实验：隔离 legacy snapshot 父本、旧 checkpoint 和额外模板
+# 行情、discovery 分区和 LLM key 通过后允许 research discovery
 qfactor loop --rounds 5 --batch-size 8 --gate research --clean-experiment
 qfactor freeze-factor NAME
 qfactor sealed-accept NAME --start YYYYMMDD --end YYYYMMDD
@@ -293,6 +311,6 @@ qfactor publish-release NAME
 qfactor export-trading-releases
 ```
 
-`simulate-tradability` 使用非重叠账本：T 日信号、T+1 开盘执行、固定持有期、开盘涨跌停/停牌掩码、成本和 ADV 参与率。若缺少点时 ST、完整涨跌停或容量输入，它会写出 `tradability_blocked`，而不是产生通过标签。非交易多因子研究可读取 `library-export-candidates`；真实交易模块仍只能读取 `export-trading-releases` 生成的 `active` release。
+`simulate-tradability` 使用非重叠账本：T 日信号、T+1 开盘执行、固定持有期、开盘涨跌停/停牌掩码、成本和 ADV 参与率。若缺少点时 ST、完整涨跌停或容量输入，它会写出 `tradability_blocked`，而不是产生通过标签。
 
-> 当 `n_active = 0` 时，正确的动作是补齐 PIT 数据、密封样本与订单级约束，而不是放宽门槛或增加 LLM 搜索量。
+> 当 `candidate = 0` 或 `n_active = 0` 时，正确的动作是补齐 PIT / 密封样本 / 订单级约束，而不是放宽门槛或增加 LLM 搜索量。
