@@ -183,7 +183,17 @@ flowchart TD
     M --> Q[candidate / release 只报告, 不解锁挖掘]
 ```
 
-直接 `loop`（不加 `--prepare-data`）仍可能用仓库里的两年切片开挖，因为当前 discovery 窗口就在 `20240102–20251231`。要先拿长历史：
+直接 `loop`（不加 `--prepare-data`）仍可能用仓库里的两年切片开挖，因为当前 discovery 窗口就在 `20240102–20251231`。服务器上一键启动：
+
+```bash
+scripts/start_factory.sh              # pull main → prepare-data → 后台 supervisor
+scripts/start_factory.sh produce      # 一次干净 produce
+scripts/start_factory.sh prepare      # 只检查/补数据
+scripts/start_factory.sh status
+scripts/start_factory.sh stop
+```
+
+窗口不够时脚本会停住，不会开挖。也可以手工：
 
 ```bash
 qfactor prepare-data
@@ -358,6 +368,8 @@ LangGraph：`decide → generate → review_validate → persist`。循环只产
 默认 `experiment.clean_discovery_default: true`。干净实验忽略旧 checkpoint、lesson、额外模板和 legacy snapshot 父本，只使用固定 DSL seed 以及本次 experiment 新产生的 screened。
 
 ```bash
+scripts/start_factory.sh
+scripts/start_factory.sh produce
 python -m qfactor.cli prepare-data
 python -m qfactor.cli produce --rounds 5 --batch-size 8 --gate research
 python -m qfactor.cli loop --prepare-data --rounds 5 --batch-size 8 --gate research --clean-experiment
@@ -391,6 +403,7 @@ python -m qfactor.agent.supervisor run-forever --start-cycle 12
 
 | 命令 | 作用 |
 |---|---|
+| `scripts/start_factory.sh` | 服务器启动：pull → prepare-data → factory / produce |
 | `prepare-data` / `produce` | 挖矿前检查覆盖、缺了再拉、过 research 合同才开挖 |
 | `sync-data` / `sync-universe` / `data-status` / `data-contract-readiness` | 行情、成分、分层合同 |
 | `fetch-archive-universe` / `ingest-archive` / `validate-archive` | 官方/供应商归档 |

@@ -149,15 +149,15 @@ flowchart TD
 直接 `loop`（不加 `--prepare-data`）仍可能用仓库里的 2024–2026 切片开挖，因为当前 discovery 窗口就在这段数据里。`prepare-data` / `produce` / 默认 supervisor 会先对照 `data_prepare.start`（默认 `20200101`）检查覆盖，不够就拉，不够且拉失败就挡住 mining。
 
 ```bash
+# 推荐：一条命令按顺序 pull → prepare-data → 启动工厂
+scripts/start_factory.sh
+scripts/start_factory.sh status
+scripts/start_factory.sh stop
+
+# 等价手工步骤
 git fetch origin main && git checkout main && git pull origin main
-
-# 1. 检查覆盖；缺 2020 前缀时先试 PIT，失败再用 snapshot 回拉研究行情
 .venv/bin/qfactor prepare-data
-
-# 2. 也可以单独看三层合同。research 应为 passed；candidate / release 在快照数据上应为 blocked
 .venv/bin/qfactor data-contract-readiness
-
-# 3. 只有 mining_allowed 才开挖。这里仍然只会产 screened
 .venv/bin/qfactor produce --rounds 5 --batch-size 8 --gate research
 # 或
 .venv/bin/python -m qfactor.agent.supervisor run-forever --start-cycle 12
