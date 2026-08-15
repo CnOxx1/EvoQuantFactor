@@ -275,6 +275,8 @@ qfactor export-trading-releases
 
 当前仓库默认是**快照成分 + 估算流通市值**。这只够 research。`candidate = 0` 和 `n_active = 0` 是预期的 fail-closed 结果。
 
+优化顺序是：先停止假残差 IC，再补 PIT / 供应商文件，最后才扩 discovery 窗口。不要放宽闸门，也不要先改分区再拉数。细节见 `docs/factor_production_flow.md` 第 7 节。
+
 ---
 
 ## 数据
@@ -468,8 +470,9 @@ python -m pytest tests -q
 1. **PIT**：没有覆盖窗口起点的历史调样和供应商 `circ_mv` 时，不能把当前 IC 说成点时中证100结果。
 2. **candidate ≠ 实盘**：还要密封 OOS、可交易性和执行合同，才能成为 `active release`。
 3. **快照回拉 2020–2026**：只能补研究年份，不能把今日成分的历史当成 PIT。
-4. **LLM 只提案**：不提高 `llm_ratio`、不加新 Agent、不用 LLM 否决过闸。
-5. **运行产物**：`runs/loop_*`、SQLite `-wal/-shm`、`.env` 不入库。密钥用 `.env.example` 复制。
+4. **残差 IC**：静态行业和估算市值不能做中性化。缺 `industry_pit` 或供应商 `daily_basic` 时，评估应报告原始 IC，而不是假 residual。
+5. **LLM 只提案**：不提高 `llm_ratio`、不加新 Agent、不用 LLM 否决过闸。
+6. **运行产物**：`runs/loop_*`、SQLite `-wal/-shm`、`.env` 不入库。密钥用 `.env.example` 复制。
 
 更细的数据合同见 `docs/production_data_contract.md`，研究质量控制见 `docs/research_quality_controls.md`，生产流程图见 `docs/factor_production_flow.md`。
 

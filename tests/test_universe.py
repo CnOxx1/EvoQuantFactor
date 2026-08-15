@@ -174,3 +174,22 @@ def test_overlay_daily_basic_prefers_vendor_circ_mv():
     assert abs(float(out.loc[1, "circ_mv"]) - 1.0) < 1e-12
     assert info["circ_mv_source"] == "tushare_daily_basic"
     assert info["daily_basic_coverage"] == 0.5
+
+
+def test_overlay_empty_basic_still_fills_derived_adv():
+    from qfactor.data.dataset import overlay_daily_basic
+
+    dates = [f"202401{i:02d}" for i in range(1, 22)]
+    panel = pd.DataFrame(
+        {
+            "trade_date": dates,
+            "ts_code": ["AAA.SH"] * 21,
+            "amount": [10.0] * 21,
+            "circ_mv": [1.0] * 21,
+        }
+    )
+    out, info = overlay_daily_basic(panel, pd.DataFrame())
+    assert info["circ_mv_source"] == "estimated"
+    assert info["daily_basic_coverage"] == 0.0
+    assert int(out["adv_20d"].notna().sum()) == 2
+    assert abs(float(out.loc[19, "adv_20d"]) - 10.0) < 1e-12

@@ -13,7 +13,8 @@ flowchart TD
     C1 -->|是| C3[跳过下载, 只检查]
     C2 --> D[生成或复用 data_version.json]
     C3 --> D
-    D --> E[三层合同]
+    D --> D1[派生 ADV + 给旧 meta 盖戳]
+    D1 --> E[三层合同]
     E --> F{research 合同}
     F -->|bars 缺失| C
     F -->|discovery 分区未配| G[停止: discovery_partitions_unconfigured]
@@ -166,3 +167,54 @@ git fetch origin main && git checkout main && git pull origin main
 长历史进库并生成**新** `data_version` 之后，才能把 `eval.partitions.discovery_start` 改成 `20200102`。如果先改分区再拉数，`discovery_window_before_data` 会挡住 LLM，这是正确的。
 
 2026 行情可以留在库里，但不要写进 discovery。candidate 在 PIT 成分、供应商市值和 selection 分区补齐之前必须保持为 0。
+
+## 7. 三层优化：先诚实，再补证据，最后扩窗口
+
+不要放宽闸门，也不要再开一轮只为了“多挖 screened”的 LLM。优化按这三层走，不能跳层。
+
+### 第一层：代码诚实（本仓库即可）
+
+`prepare-data` 在已有行情上会调用 `enrich_derived_evidence`：用已完成成交额填派生 `adv_20d`，并给旧 `data_version.json` 盖上 `universe_mode` / `circ_mv_source`。这**不会**把 snapshot 升成 PIT，也**不会**把估算市值升成供应商市值。
+
+评估中性化只在 candidate 级证据上做：
+
+- 行业残差只用日期对齐的 `industry_pit`。今日静态行业图会把当前分类灌进历史，造成前视。
+- 市值残差只在 `circ_mv_source` 以 `_daily_basic` 结尾时做。`amount/turnover` 估算市值上的 residual IC 不是生产声明。
+- `eval.neutralize_require_vendor_circ_mv` 默认 `true`。
+
+这一层只停止假残差。`candidate` 仍为 0。
+
+### 第二层：供应商 / archive 证据（在你的服务器上）
+
+把覆盖窗口起点的文件放进 `data/raw/providers/`，或配置 `TUSHARE_TOKEN`：
+
+| 文件 | 用途 |
+|---|---|
+| `csi100_members.parquet` | 点时中证100调样 |
+| `daily_basic.parquet` | 供应商流通市值 |
+| `industry_history.parquet` | 点时行业 |
+| `security_status.parquet` | ST / 停牌 / 涨跌停 |
+| `corporate_actions.parquet` | 公司行动 |
+
+不要把中证官网最新快照和历史 xls 在缺口大于 240 个交易日时拼接成假 PIT。官方 archive 目前只有最新快照时，重建必须停，而不是用今日名单盖满 2020。
+
+拉数命令仍是：
+
+```bash
+git fetch origin main && git checkout main && git pull origin main
+scripts/start_factory.sh
+# 或
+.venv/bin/qfactor prepare-data
+```
+
+不要在没有 token / archive 的环境里再开一小时 BaoStock 下载指望它变成 candidate。
+
+### 第三层：新 data_version 之后再扩 discovery
+
+只有第二层写出**新** `data_version`，并且 `universe_mode=pit`、`circ_mv_source` 为供应商 `*_daily_basic` 之后，才改：
+
+- `eval.partitions.discovery_start` → `20200102`（不要写进 2026）
+- 配置并冻结 `selection_start` / `selection_end`
+- 对已有 screened 做 `library-reeval-screened`，让真正过生产闸的因子进入 candidate
+
+旧 bootstrap 报告不能升级。新宇宙和新市值来源必须重算。

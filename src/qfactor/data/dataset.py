@@ -19,6 +19,21 @@ from qfactor.data.tushare_adapter import TushareAdapter, adapter_kwargs_from_con
 from qfactor.settings import ProjectConfig, get_project_config, get_settings
 
 
+def fill_derived_adv(panel: pd.DataFrame) -> pd.DataFrame:
+    """Fill ADV from completed notional. This is derived evidence, not a vendor file."""
+    out = panel.copy()
+    if "adv_20d" not in out.columns:
+        out["adv_20d"] = np.nan
+    if "amount" not in out.columns:
+        return out
+    out["adv_20d"] = out["adv_20d"].fillna(
+        out.sort_values(["ts_code", "trade_date"])
+        .groupby("ts_code")["amount"]
+        .transform(lambda s: s.where(s > 0).rolling(20, min_periods=20).mean())
+    )
+    return out
+
+
 def overlay_daily_basic(
     panel: pd.DataFrame, basic: pd.DataFrame, provider: str = "tushare"
 ) -> tuple[pd.DataFrame, dict]:
@@ -33,6 +48,7 @@ def overlay_daily_basic(
         "daily_basic_coverage": 0.0,
     }
     if basic is None or basic.empty:
+        out = fill_derived_adv(out)
         return out, info
     use = basic.copy()
     use["trade_date"] = use["trade_date"].astype(str).str.replace("-", "", regex=False).str[:8]
@@ -68,14 +84,7 @@ def overlay_daily_basic(
         vendor_col = f"{col}_ts"
         if vendor_col in out.columns:
             out[col] = out[vendor_col].fillna(out[col])
-    # A transparently derived 20-day ADV is valid capacity input only where there
-    # are 20 prior positive notional observations; missing values remain unknown.
-    if "amount" in out.columns:
-        out["adv_20d"] = out["adv_20d"].fillna(
-            out.sort_values(["ts_code", "trade_date"])
-            .groupby("ts_code")["amount"]
-            .transform(lambda s: s.where(s > 0).rolling(20, min_periods=20).mean())
-        )
+    out = fill_derived_adv(out)
     out = out.drop(
         columns=["circ_mv_ts", "turnover_rate_ts", "free_float_shares_ts", "adv_20d_ts"],
         errors="ignore",
@@ -798,6 +807,56 @@ class DataService:
         dates = sorted(bars["trade_date"].astype(str).unique())
         codes = sorted(bars["ts_code"].astype(str).unique())
         return build_universe_mask(dates, codes, members)
+
+    def enrich_derived_evidence(self) -> dict:
+        """Fill derived ADV and stamp honest provenance. Never upgrades snapshot to PIT."""
+        meta_path = self.cfg.path("data_processed") / "data_version.json"
+        meta: dict = {}
+        if meta_path.exists():
+            try:
+                meta = json.loads(meta_path.read_text(encoding="utf-8"))
+            except Exception:
+                meta = {}
+        changed = False
+        bars_changed = False
+        try:
+            bars = self.load_bars()
+        except Exception as exc:
+            return {"enriched": False, "reason": str(exc)}
+        before = float(bars["adv_20d"].notna().mean()) if "adv_20d" in bars.columns else 0.0
+        filled = fill_derived_adv(bars)
+        after = float(filled["adv_20d"].notna().mean()) if "adv_20d" in filled.columns else 0.0
+        if after > before + 1e-12:
+            self.bars_path.parent.mkdir(parents=True, exist_ok=True)
+            filled.to_parquet(self.bars_path, index=False)
+            bars_changed = True
+            changed = True
+        if not meta.get("universe_mode"):
+            blob = " ".join(str(x) for x in (meta.get("limitations") or [])).lower()
+            if "snapshot" in blob:
+                meta["universe_mode"] = "snapshot"
+                changed = True
+        if not meta.get("circ_mv_source"):
+            blob = " ".join(str(x) for x in (meta.get("limitations") or [])).lower()
+            if "circ_mv estimated" in blob:
+                meta["circ_mv_source"] = "estimated"
+                changed = True
+        meta["adv_20d_coverage"] = after
+        meta["adv_20d_source"] = "rolling_completed_amount" if after > 0 else None
+        from qfactor.data.evidence import evidence_quality
+
+        meta["evidence_quality"] = evidence_quality(meta)
+        if changed or bars_changed:
+            meta["enriched_at"] = datetime.now(timezone.utc).isoformat()
+            meta_path.parent.mkdir(parents=True, exist_ok=True)
+            meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
+        return {
+            "enriched": changed or bars_changed,
+            "adv_20d_coverage": after,
+            "universe_mode": meta.get("universe_mode"),
+            "circ_mv_source": meta.get("circ_mv_source"),
+            "bars_rewritten": bars_changed,
+        }
 
     def data_version(self) -> str | None:
         try:
