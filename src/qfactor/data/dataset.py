@@ -611,6 +611,9 @@ class DataService:
                 umeta, circ_mv_source=str(basic_info.get("circ_mv_source") or "")
             ),
         }
+        from qfactor.data.evidence import evidence_quality
+
+        meta["evidence_quality"] = evidence_quality(meta)
         meta_path = self.cfg.path("data_processed") / "data_version.json"
         meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
         qdir = self.cfg.root / "data" / "quality_reports"

@@ -284,6 +284,8 @@ qfactor sync-data --start 20190101 --end 20260630 --source baostock
 # 行情、discovery 日期分区和 LLM key 通过后允许 research discovery；
 # PIT/selection 合同仍决定 screened 能否成为 candidate。
 qfactor loop --rounds 5 --batch-size 8 --gate research
+# 新数据版本的干净实验：隔离 legacy snapshot 父本、旧 checkpoint 和额外模板
+qfactor loop --rounds 5 --batch-size 8 --gate research --clean-experiment
 qfactor freeze-factor NAME
 qfactor sealed-accept NAME --start YYYYMMDD --end YYYYMMDD
 qfactor simulate-tradability NAME

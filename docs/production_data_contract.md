@@ -74,11 +74,23 @@
 | 涨跌停价覆盖 | `>= 98%` | 订单账本与 release 阻断 |
 | ADV 20 日覆盖 | `>= 95%` | 容量合同失败 |
 | 公司行动记录覆盖 | `>= 98%` | 复权审计合同失败 |
-| PIT 行业与风险暴露 | 各 `>= 95%` | 生产门、LLM discovery 与 release 阻断 |
+| PIT 行业与风险暴露 | 各 `>= 95%` | 行业阻断 candidate；风险暴露阻断 release |
 
 ## 4. 导入与验收顺序
 
 中证官方最新成分和调样附件可用 `qfactor fetch-archive-universe` 下载；缺失的半年定期调样工作簿会停止回溯，不会把旧调入调出接到后来的快照上。Wind / Choice / RQData 导出以及补齐的中证历史文件用 `qfactor ingest-archive --role <role> --source <file>` 归一到合同列（`trade_date` + `ts_code`），再用 `qfactor validate-archive --strict` 检查六类文件是否齐全。入库命令不从行情推断 ST、停牌、涨跌停、行业或流通市值。随后执行 `qfactor sync-data`（行情源可以是 BaoStock / AkShare；PIT 证据走 archive），检查生成的 `data/processed/data_version.json` 与 `data/quality_reports/`。覆盖率、来源和限制会写入不可变数据版本元数据。无 Tushare token 时，`providers.*.auto` 会在对应归档文件存在时解析为 `archive`。
+
+免费研究行情可由 BaoStock 拉长，但必须先准备并审计历史成分并集，避免只对今天的
+100只成分回填历史造成幸存者偏差：
+
+```bash
+qfactor sync-universe --start 20150101 --end YYYYMMDD
+qfactor sync-data --start 20150101 --end YYYYMMDD --source baostock
+qfactor data-contract-readiness
+```
+
+BaoStock 适配器保留逐日 `isST` 与 `tradestatus`；这些属于公开来源证据，但不会
+把估算流通市值升级为 candidate 可用的供应商市值。
 
 接着运行研究发现或评估流程。LLM 调用前只验证行情与 discovery 分区；
 screened→candidate 验证 PIT 成分、供应商流通市值、PIT 行业和 selection 分区；

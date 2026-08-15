@@ -8,6 +8,7 @@ from typing import Any
 from uuid import uuid4
 
 from qfactor.data.dataset import DataService
+from qfactor.data.evidence import evidence_quality
 from qfactor.db.repo import Database
 from qfactor.eval.partitions import EvaluationPartitions
 from qfactor.settings import ProjectConfig, get_project_config
@@ -325,7 +326,12 @@ def factor_contract_readiness(
     cfg: ProjectConfig | None = None,
 ) -> dict[str, Any]:
     """Summarize all three independent readiness layers."""
+    cfg = cfg or get_project_config()
+    status = DataService(cfg).status()
+    meta = status.get("meta") or {}
     return {
+        "data_version": status.get("data_version"),
+        "evidence_quality": meta.get("evidence_quality") or evidence_quality(meta),
         "research": discovery_contract_readiness(cfg),
         "candidate": candidate_contract_readiness(cfg),
         "release": release_contract_readiness(cfg),

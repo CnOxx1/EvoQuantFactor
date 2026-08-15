@@ -34,3 +34,16 @@ qfactor data-contract-readiness
 行情和 discovery 分区；candidate 要求 PIT/中性化/selection；release 要求完整
 执行与风险证据。任一层只阻断自己的下一次状态转换。数据补齐流程见
 `docs/production_data_contract.md`。
+
+## 干净实验与旧库隔离
+
+历史 snapshot/estimated-size 报告会动态归类为
+`legacy_snapshot_research`，保留审计但不再作为父本。启动新的研究周期时使用：
+
+```bash
+qfactor loop --clean-experiment --no-resume
+```
+
+干净实验忽略旧 checkpoint、lesson、额外模板和 legacy 因子，只使用固定 DSL seed
+以及本次 experiment 新产生的 screened。生成的因子写入 experiment/cohort 来源，
+后续多重检验可按数据版本、discovery 窗口和机制累计。

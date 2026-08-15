@@ -182,6 +182,10 @@ def loop(
         "research", help="must remain research; production is handled by library operations"
     ),
     resume: bool = typer.Option(True, help="resume checkpoint"),
+    clean_experiment: bool = typer.Option(
+        False,
+        help="ignore legacy parents/checkpoints/extra templates; use fixed seeds only",
+    ),
     llm_ratio: float = typer.Option(0.45, help="share of candidates from LLM"),
     llm_review_ratio: float = typer.Option(0.0, help="share of candidates LLM-reviewed (advisory)"),
 ):
@@ -194,6 +198,7 @@ def loop(
         resume=resume,
         llm_ratio=llm_ratio,
         llm_review_ratio=llm_review_ratio,
+        clean_experiment=clean_experiment,
     )
     print(
         {
@@ -207,6 +212,7 @@ def loop(
             "mode": result.get("mode"),
             "orchestrator": result.get("orchestrator"),
             "llm_ratio": result.get("llm_ratio"),
+            "clean_experiment": result.get("clean_experiment"),
         }
     )
 
@@ -341,6 +347,22 @@ def library_reconcile():
     from qfactor.factor.reconcile import reconcile_library_state
 
     print(reconcile_library_state())
+
+
+@app.command("library-cohorts")
+def library_cohorts():
+    """Summarize dynamic legacy/clean parent eligibility without rewriting factors."""
+    from collections import Counter
+
+    rows = FactorRegistry().existing_summaries()
+    print(
+        {
+            "total": len(rows),
+            "cohorts": dict(Counter(str(row.get("cohort")) for row in rows)),
+            "parent_eligible": sum(bool(row.get("parent_eligible")) for row in rows),
+            "candidate_eligible": sum(bool(row.get("candidate_eligible")) for row in rows),
+        }
+    )
 
 
 @app.command("data-status")
