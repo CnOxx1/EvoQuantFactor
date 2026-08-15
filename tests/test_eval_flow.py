@@ -247,3 +247,20 @@ def test_monotonic_score_is_spearman():
     assert _spearman_mono([0.05, 0.04, 0.03, 0.02, 0.01]) < 0
     noisy = _spearman_mono([0.01, 0.03, 0.02, 0.04, 0.05])
     assert 0.75 < noisy < 1.0
+
+
+def test_neutralize_static_group_matrix_matches_series():
+    from qfactor.factor.transforms import neutralize_groups
+
+    panel = pd.DataFrame(
+        [[1.0, 3.0, 10.0, 14.0], [2.0, 6.0, 7.0, 11.0]],
+        index=["d1", "d2"],
+        columns=["a", "b", "c", "d"],
+    )
+    static = pd.Series({"a": "g1", "b": "g1", "c": "g2", "d": "g2"})
+    matrix = pd.DataFrame([static, static], index=panel.index)
+
+    expected = neutralize_groups(panel, static)
+    actual = neutralize_groups(panel, matrix)
+
+    assert actual.equals(expected)

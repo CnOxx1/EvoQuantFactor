@@ -39,6 +39,17 @@ def neutralize_groups(panel: pd.DataFrame, groups: pd.Series | pd.DataFrame) -> 
     """
     if isinstance(groups, pd.DataFrame):
         g = groups.reindex(index=panel.index, columns=panel.columns)
+        # Public research archives may repeat a current industry snapshot over
+        # every date. That is semantically identical to a Series grouping, but
+        # the generic PIT path below would otherwise execute hundreds of pandas
+        # Arrow-backed row assignments for every candidate and every peer.
+        # Retain the date-by-date algorithm whenever any security's label moves.
+        filled = g.ffill().bfill()
+        if not filled.empty:
+            static_groups = filled.iloc[0]
+            unchanged = (g.isna() | g.eq(static_groups, axis="columns")).to_numpy(dtype=bool).all()
+            if unchanged:
+                return neutralize_groups(panel, static_groups)
         out = panel.copy()
         for date in out.index:
             row_groups = g.loc[date]
