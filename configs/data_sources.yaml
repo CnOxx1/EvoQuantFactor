@@ -2,11 +2,12 @@ primary: tushare
 fallback: baostock
 
 # PIT universe and vendor daily-basic evidence are independently selectable.
-# "auto" uses Tushare only when a token is configured; otherwise no silent
-# snapshot/estimated fallback is permitted for production.
+# "auto" uses Tushare when a token is configured; otherwise it uses archive
+# files when they exist. Missing files stay unresolved — no snapshot/estimated
+# fallback is permitted for production. RQData is archive-export only for now.
 providers:
-  universe: auto          # tushare | archive | future: rqdata
-  daily_basic: auto       # tushare | archive | future: rqdata
+  universe: auto          # tushare | archive | auto | future: rqdata
+  daily_basic: auto       # tushare | archive | auto | future: rqdata
   security_status: archive  # PIT ST/停牌/涨跌停；无文件时 coverage=0，release 阻断
   corporate_actions: archive # PIT 复权/除权除息/代码事件；无文件时 coverage=0
   risk_exposures: archive  # 点时风险暴露，供后续多因子组合约束使用

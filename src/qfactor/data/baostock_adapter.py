@@ -81,7 +81,10 @@ class BaostockAdapter(DataAdapter):
         return df
 
     def fetch_daily_bars(self, ts_code: str, start: str, end: str) -> pd.DataFrame:
-        fields = "date,code,open,high,low,close,preclose,volume,amount,turn,peTTM,pbMRQ"
+        fields = (
+            "date,code,open,high,low,close,preclose,volume,amount,turn,"
+            "tradestatus,isST,peTTM,pbMRQ"
+        )
         bs = self._api()
         rs = bs.query_history_k_data_plus(
             _to_bs_code(ts_code),
@@ -107,6 +110,8 @@ class BaostockAdapter(DataAdapter):
                     "vol",
                     "amount",
                     "turnover_rate",
+                    "is_suspended",
+                    "is_st",
                     "circ_mv",
                     "pe_ttm",
                     "pb",
@@ -129,6 +134,8 @@ class BaostockAdapter(DataAdapter):
                 "vol": pd.to_numeric(df["volume"], errors="coerce") / 100.0,
                 "amount": amount / 1000.0,
                 "turnover_rate": turn,
+                "is_suspended": df["tradestatus"].map({"0": True, "1": False}),
+                "is_st": df["isST"].map({"1": True, "0": False}),
                 "circ_mv": circ_mv,
                 "pe_ttm": pd.to_numeric(df["peTTM"], errors="coerce"),
                 "pb": pd.to_numeric(df["pbMRQ"], errors="coerce"),

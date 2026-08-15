@@ -10,6 +10,7 @@ import pandas as pd
 
 from qfactor.data.akshare_adapter import AkshareAdapter
 from qfactor.data.archive_adapter import ArchiveAdapter
+from qfactor.data.archive_ingest import resolve_evidence_provider
 from qfactor.data.baostock_adapter import BaostockAdapter, bs_session
 from qfactor.data.base import DataAdapter
 from qfactor.data.csindex import fetch_csindex_members
@@ -134,7 +135,7 @@ def overlay_execution_evidence(
     for col in ("is_st", "is_suspended"):
         if col in out.columns:
             out[col] = out[col].map(
-                {True: True, False: False, 1: True, 0: False, "1": True, "0": False,
+                {True: True, False: False, "1": True, "0": False,
                  "true": True, "false": False, "True": True, "False": False}
             ).astype("boolean")
     info = {
@@ -179,6 +180,59 @@ def _universe_limitations(
     if circ not in out:
         out.append(circ)
     return out
+
+
+def codes_covering_window(
+    panel: pd.DataFrame | None,
+    start: str,
+    end: str,
+) -> set[str]:
+    """Return names whose stored bars already span the requested open window.
+
+    A name that only has a later slice (for example 2024–2026) must be fetched
+    again when the caller asks for 2020–2026. Presence in the panel is not enough.
+    """
+    if panel is None or panel.empty or "ts_code" not in panel.columns or "trade_date" not in panel.columns:
+        return set()
+    use = panel[["ts_code", "trade_date"]].copy()
+    use["ts_code"] = use["ts_code"].astype(str)
+    use["trade_date"] = use["trade_date"].astype(str).str.replace("-", "", regex=False).str[:8]
+    grouped = use.groupby("ts_code")["trade_date"]
+    mins = grouped.min()
+    maxs = grouped.max()
+    ok = (mins <= str(start)[:8]) & (maxs >= str(end)[:8])
+    return set(ok.index[ok])
+
+
+def extra_research_codes(cfg: ProjectConfig | None = None) -> list[str]:
+    """Former/current CSI100 names from official reconstitution event files."""
+    cfg = cfg or get_project_config()
+    path = cfg.root / "data" / "raw" / "providers" / "csi100_reconstitution_events.parquet"
+    if not path.exists():
+        return []
+    try:
+        events = pd.read_parquet(path)
+    except Exception:
+        return []
+    codes: set[str] = set()
+    for col in ("added", "removed"):
+        if col not in events.columns:
+            continue
+        for cell in events[col]:
+            if cell is None or (isinstance(cell, float) and pd.isna(cell)):
+                continue
+            if isinstance(cell, str):
+                raw = [cell]
+            else:
+                try:
+                    raw = list(cell)
+                except TypeError:
+                    raw = [cell]
+            for item in raw:
+                code = str(item).strip()
+                if code and code not in {"nan", "None", "<NA>"}:
+                    codes.add(code)
+    return sorted(codes)
 
 
 def build_adapter(
@@ -228,14 +282,9 @@ class DataService:
 
     def _provider_adapter(self, role: str) -> DataAdapter | None:
         """Resolve a separately configured evidence provider without silent fallbacks."""
-        providers = self.cfg.data_sources.get("providers") or {}
-        source = str(providers.get(role, "auto")).strip().lower()
-        if source in {"", "none", "disabled"}:
+        source = resolve_evidence_provider(role, self.cfg)
+        if source is None:
             return None
-        if source == "auto":
-            if not get_settings().tushare_token:
-                return None
-            source = "tushare"
         try:
             return build_adapter(source, self.cfg)
         except Exception as e:
@@ -259,15 +308,29 @@ class DataService:
             print(f"[sync] CSIndex latest failed: {e}", flush=True)
             return pd.DataFrame(columns=["trade_date", "ts_code", "weight"])
 
-    def resolve_and_persist_universe(self, start: str, end: str) -> tuple[pd.DataFrame, dict]:
+    def resolve_and_persist_universe(
+        self,
+        start: str,
+        end: str,
+        *,
+        allow_snapshot_universe: bool = False,
+    ) -> tuple[pd.DataFrame, dict]:
         from qfactor.data.universe import resolve_universe, universe_policy
 
         policy = universe_policy(self.cfg)
         history = None
         latest = None
         provider_name: str | None = None
-        if policy["mode"] == "snapshot":
+        force_mode = "snapshot" if allow_snapshot_universe else None
+        if policy["mode"] == "snapshot" or allow_snapshot_universe:
             latest = self._latest_csindex()
+            if latest.empty and self.universe_path.exists():
+                try:
+                    latest = pd.read_parquet(self.universe_path)
+                except Exception:
+                    latest = pd.DataFrame()
+            if allow_snapshot_universe:
+                provider_name = "csindex_latest"
         else:
             history, provider_name = self._load_universe_history(start, end)
         members, umeta = resolve_universe(
@@ -277,6 +340,7 @@ class DataService:
             latest_snapshot=latest,
             cfg=self.cfg,
             provider=provider_name,
+            force_mode=force_mode,
         )
         self.universe_path.parent.mkdir(parents=True, exist_ok=True)
         members.to_parquet(self.universe_path, index=False)
@@ -358,13 +422,26 @@ class DataService:
         end: str,
         source: Literal["tushare", "akshare", "baostock", "auto"] = "auto",
         max_names: int | None = None,
+        allow_snapshot_universe: bool = False,
     ) -> dict:
         adapter = self._adapter(source)
         if adapter.name == "baostock":
             with bs_session() as bs:
                 adapter.bind_session(bs)  # type: ignore[attr-defined]
-                return self._sync_with_adapter(adapter, start, end, max_names=max_names)
-        return self._sync_with_adapter(adapter, start, end, max_names=max_names)
+                return self._sync_with_adapter(
+                    adapter,
+                    start,
+                    end,
+                    max_names=max_names,
+                    allow_snapshot_universe=allow_snapshot_universe,
+                )
+        return self._sync_with_adapter(
+            adapter,
+            start,
+            end,
+            max_names=max_names,
+            allow_snapshot_universe=allow_snapshot_universe,
+        )
 
     def _fetch_trade_calendar(
         self, adapter: DataAdapter, start: str, end: str
@@ -383,6 +460,7 @@ class DataService:
         start: str,
         end: str,
         max_names: int | None,
+        allow_snapshot_universe: bool = False,
     ) -> dict:
         calendar, calendar_source = self._fetch_trade_calendar(adapter, start, end)
         self.calendar_path.parent.mkdir(parents=True, exist_ok=True)
@@ -393,10 +471,15 @@ class DataService:
         if not open_dates:
             raise RuntimeError("No open trade dates in range")
 
-        members, umeta = self.resolve_and_persist_universe(start, end)
+        members, umeta = self.resolve_and_persist_universe(
+            start, end, allow_snapshot_universe=allow_snapshot_universe
+        )
         member_meta_info = umeta
 
-        codes = sorted(members["ts_code"].dropna().astype(str).unique().tolist())
+        codes = sorted(
+            set(members["ts_code"].dropna().astype(str).unique().tolist())
+            | set(extra_research_codes(self.cfg))
+        )
         if max_names is not None:
             codes = codes[:max_names]
 
@@ -410,13 +493,16 @@ class DataService:
                     & prev["trade_date"].astype(str).between(str(start), str(end))
                 ]
                 if not prev.empty:
-                    existing_panel = prev
-                    have = set(prev["ts_code"].astype(str).unique())
+                    covering = codes_covering_window(prev, open_dates[0], open_dates[-1])
+                    if covering:
+                        existing_panel = prev[prev["ts_code"].astype(str).isin(covering)]
+                        have = covering
             except Exception as e:
                 print(f"[sync] reuse existing bars failed: {e}", flush=True)
         need = [c for c in codes if c not in have]
         print(
-            f"[sync] union={len(codes)} reuse={len(have)} fetch={len(need)}",
+            f"[sync] union={len(codes)} reuse={len(have)} fetch={len(need)} "
+            f"window={open_dates[0]}-{open_dates[-1]}",
             flush=True,
         )
 
@@ -494,11 +580,19 @@ class DataService:
                 corporate_actions = actions_provider.fetch_corporate_actions(start, end)
             except Exception as e:
                 print(f"[sync] corporate-actions provider failed: {e}", flush=True)
+        embedded_status_provider = None
+        if status_provider is None and {"is_st", "is_suspended"}.issubset(panel.columns):
+            if panel[["is_st", "is_suspended"]].notna().any().any():
+                embedded_status_provider = f"{adapter.name}_daily_bars"
         panel, execution_info = overlay_execution_evidence(
             panel,
             security_status,
             corporate_actions,
-            status_provider=status_provider.name if status_provider is not None else None,
+            status_provider=(
+                status_provider.name
+                if status_provider is not None
+                else embedded_status_provider
+            ),
             actions_provider=actions_provider.name if actions_provider is not None else None,
         )
 
@@ -607,6 +701,9 @@ class DataService:
                 umeta, circ_mv_source=str(basic_info.get("circ_mv_source") or "")
             ),
         }
+        from qfactor.data.evidence import evidence_quality
+
+        meta["evidence_quality"] = evidence_quality(meta)
         meta_path = self.cfg.path("data_processed") / "data_version.json"
         meta_path.write_text(json.dumps(meta, ensure_ascii=False, indent=2), encoding="utf-8")
         qdir = self.cfg.root / "data" / "quality_reports"

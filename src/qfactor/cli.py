@@ -22,10 +22,21 @@ app = typer.Typer(help="qfactor: CSI100 price-volume factor library + LLM mining
 def sync_data(
     start: str = typer.Option(..., help="YYYYMMDD"),
     end: str = typer.Option(..., help="YYYYMMDD"),
-    source: str = typer.Option("auto", help="tushare|baostock|akshare|auto"),
+    source: str = typer.Option("auto", help="tushare|baostock|akshare|auto (bars only; PIT evidence is separate)"),
     max_names: Optional[int] = typer.Option(None, help="limit names for smoke test"),
+    allow_snapshot_universe: bool = typer.Option(
+        False,
+        "--allow-snapshot-universe",
+        help="Download research bars for the latest CSI100 names when PIT history does not cover the window start",
+    ),
 ):
-    meta = DataService().sync(start, end, source=source, max_names=max_names)  # type: ignore[arg-type]
+    meta = DataService().sync(
+        start,
+        end,
+        source=source,
+        max_names=max_names,
+        allow_snapshot_universe=allow_snapshot_universe,
+    )  # type: ignore[arg-type]
     print(meta)
 
 
@@ -34,8 +45,44 @@ def sync_universe(
     start: str = typer.Option(..., help="YYYYMMDD"),
     end: str = typer.Option(..., help="YYYYMMDD"),
 ):
-    """Refresh point-in-time CSI100 members. Requires TUSHARE_TOKEN. Does not re-download bars."""
+    """Refresh PIT CSI100 members from archive parquet or Tushare. Does not re-download bars."""
     print(DataService().sync_universe(start, end))
+
+
+@app.command("ingest-archive")
+def ingest_archive(
+    role: str = typer.Option(
+        ...,
+        help="universe|daily_basic|security_status|corporate_actions|risk_exposures|industry",
+    ),
+    source: str = typer.Option(..., help="vendor csv/xls/xlsx/parquet extract"),
+    dest: Optional[str] = typer.Option(None, help="override output parquet path"),
+):
+    """Normalize a Wind/Choice/RQData/CSIndex extract onto the production archive contract."""
+    from pathlib import Path
+
+    from qfactor.data.archive_ingest import ingest_archive_role
+
+    print(ingest_archive_role(role, Path(source), dest=Path(dest) if dest else None))
+
+
+@app.command("fetch-archive-universe")
+def fetch_archive_universe():
+    """Download official CSIndex CSI100 files and write a gap-safe universe archive."""
+    from qfactor.data.csindex_history import fetch_official_history
+
+    print(fetch_official_history())
+
+
+@app.command("validate-archive")
+def validate_archive(strict: bool = typer.Option(False, help="fail when any role file is missing")):
+    """Check registered archive parquet files against the PIT column contract."""
+    from qfactor.data.archive_ingest import validate_registered_archives
+
+    report = validate_registered_archives(strict=strict)
+    print(report)
+    if not report["ok"]:
+        raise typer.Exit(code=1)
 
 
 @app.command("install-seeds")
@@ -146,6 +193,10 @@ def loop(
         "research", help="must remain research; production is handled by library operations"
     ),
     resume: bool = typer.Option(True, help="resume checkpoint"),
+    clean_experiment: bool = typer.Option(
+        False,
+        help="ignore legacy parents/checkpoints/extra templates; use fixed seeds only",
+    ),
     llm_ratio: float = typer.Option(0.45, help="share of candidates from LLM"),
     llm_review_ratio: float = typer.Option(0.0, help="share of candidates LLM-reviewed (advisory)"),
 ):
@@ -158,6 +209,7 @@ def loop(
         resume=resume,
         llm_ratio=llm_ratio,
         llm_review_ratio=llm_review_ratio,
+        clean_experiment=clean_experiment,
     )
     print(
         {
@@ -171,6 +223,7 @@ def loop(
             "mode": result.get("mode"),
             "orchestrator": result.get("orchestrator"),
             "llm_ratio": result.get("llm_ratio"),
+            "clean_experiment": result.get("clean_experiment"),
         }
     )
 
@@ -241,7 +294,7 @@ def export_trading_releases(
 def library_export_multifactor(
     output: Optional[str] = typer.Option(None, help="output JSON path; defaults to factor_lib"),
 ):
-    """Export only data-version-pinned, production-passing strategy inputs."""
+    """Export statistical candidates for non-trading multi-factor research."""
     inventory = LibraryOps().export_multifactor_inventory(output=output)
     print(
         {
@@ -251,6 +304,14 @@ def library_export_multifactor(
             "n_excluded": inventory["n_excluded"],
         }
     )
+
+
+@app.command("library-export-candidates")
+def library_export_candidates(
+    output: Optional[str] = typer.Option(None, help="output JSON path; defaults to factor_lib"),
+):
+    """Alias for the explicit non-tradable candidate inventory."""
+    library_export_multifactor(output=output)
 
 
 @app.command("library-reeval-screened")
@@ -291,9 +352,41 @@ def library_demote(name: str, to: str = typer.Option("deprecated"), reason: str 
     print(LibraryOps().demote(name, to=to, reason=reason))  # type: ignore[arg-type]
 
 
+@app.command("library-reconcile")
+def library_reconcile():
+    """Report catalog/spec/report/SQLite drift; never repairs automatically."""
+    from qfactor.factor.reconcile import reconcile_library_state
+
+    print(reconcile_library_state())
+
+
+@app.command("library-cohorts")
+def library_cohorts():
+    """Summarize dynamic legacy/clean parent eligibility without rewriting factors."""
+    from collections import Counter
+
+    rows = FactorRegistry().existing_summaries()
+    print(
+        {
+            "total": len(rows),
+            "cohorts": dict(Counter(str(row.get("cohort")) for row in rows)),
+            "parent_eligible": sum(bool(row.get("parent_eligible")) for row in rows),
+            "candidate_eligible": sum(bool(row.get("candidate_eligible")) for row in rows),
+        }
+    )
+
+
 @app.command("data-status")
 def data_status():
     print(DataService().status())
+
+
+@app.command("data-contract-readiness")
+def data_contract_readiness():
+    """Show separate research, candidate, and active-release blockers."""
+    from qfactor.agent.experiments import factor_contract_readiness
+
+    print(factor_contract_readiness())
 
 
 @app.command("db-init")

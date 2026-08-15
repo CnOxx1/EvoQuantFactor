@@ -646,6 +646,31 @@ class CandidateGenerator:
         )["mechanisms"]
         self.llm_cfg = _production_llm_cfg(self.cfg)
 
+    @staticmethod
+    def diversity_index(existing: list[dict[str, Any]]) -> dict[str, Any]:
+        """Build bans only from the explicitly eligible research cohort."""
+        hashes: set[str] = set()
+        expressions: list[str] = []
+        skeletons: list[str] = []
+        for item in existing:
+            expr = str(item.get("expression") or "")
+            if not expr:
+                continue
+            try:
+                fp = expression_fingerprint(expr)
+            except Exception:
+                continue
+            hashes.add(fp["expr_hash"])
+            expressions.append(fp["canonical"])
+            if str(item.get("status") or "") in USABLE_STATUSES:
+                skeletons.append(fp["skeleton"])
+        return {
+            "expr_hashes": sorted(hashes),
+            "expressions": expressions,
+            "skeletons": skeletons,
+            "banned_skeletons": [],
+        }
+
     def _pick_mechanism(self, theme: str | None, coverage: dict[str, int]) -> dict[str, Any]:
         pool = getattr(self, "_eligible_mechs", None) or self.mechanisms
         if theme:
@@ -1806,6 +1831,7 @@ class CandidateGenerator:
         extra_banned_skeletons: list[str] | None = None,
         extra_banned_hashes: list[str] | None = None,
         round_idx: int = 0,
+        clean_experiment: bool = False,
     ) -> list[dict[str, Any]]:
         self.llm.require_enabled()
         existing = list(existing or [])
@@ -1820,7 +1846,15 @@ class CandidateGenerator:
         lessons = list(lessons or [])
         out: list[dict[str, Any]] = []
 
-        index = library_diversity_index(self.cfg)
+        rebuild_compose_catalog(
+            self.cfg,
+            extra=[] if clean_experiment else None,
+        )
+        index = (
+            self.diversity_index(existing)
+            if clean_experiment
+            else library_diversity_index(self.cfg)
+        )
         cs_cfg = cold_start_cfg(self.cfg)
         cold = is_cold_start(existing, self.cfg)
         self._curriculum = bool(cs_cfg["curriculum"] and cold)
@@ -1846,11 +1880,16 @@ class CandidateGenerator:
             every=int(cs_cfg["prior_update_every"]),
         )
         bans = merge_bans(index, extra_banned_hashes, extra_banned_skeletons)
-        bans["skeletons"] = active_skeleton_bans(
-            self.cfg,
-            extra=list(extra_banned_skeletons or []),
-            cold_start=bool(cs_cfg["disable_fsa"] and cold),
-        )
+        if clean_experiment:
+            bans["skeletons"] = set(index.get("banned_skeletons") or []) | set(
+                extra_banned_skeletons or []
+            )
+        else:
+            bans["skeletons"] = active_skeleton_bans(
+                self.cfg,
+                extra=list(extra_banned_skeletons or []),
+                cold_start=bool(cs_cfg["disable_fsa"] and cold),
+            )
 
         unused_compose = self._unused_compose_count(bans)
         ratio = self.llm_cfg["llm_ratio"] if llm_ratio is None else float(llm_ratio)

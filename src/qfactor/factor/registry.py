@@ -169,6 +169,8 @@ class FactorRegistry:
             pass
 
     def existing_summaries(self) -> list[dict[str, Any]]:
+        from qfactor.factor.cohort import classify_research_cohort
+
         rows: list[dict[str, Any]] = []
         for f in self.list_factors():
             row: dict[str, Any] = {
@@ -186,6 +188,7 @@ class FactorRegistry:
                 row["params"] = spec.params
             except Exception:
                 pass
+            row.update(classify_research_cohort(row))
             rows.append(row)
         return rows
 

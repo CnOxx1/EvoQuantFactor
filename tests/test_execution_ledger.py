@@ -1,5 +1,6 @@
 import pandas as pd
 
+from qfactor.eval.oos import cost_scenario_table
 from qfactor.eval.trading import simulate_non_overlapping_long_short
 
 
@@ -53,3 +54,15 @@ def test_execution_ledger_discloses_missing_st_mask():
     )
     assert "missing_point_in_time_st_mask" in out["limitations"]
     assert "missing_adv_capacity_input" in out["limitations"]
+
+
+def test_cost_scenarios_are_diagnostic_and_monotonic():
+    rows = cost_scenario_table(
+        {"long_short": 0.05},
+        daily_turnover=0.5,
+        cost_bps_values=[20, 5, 10],
+        horizon=5,
+    )
+    assert [row["cost_bps"] for row in rows] == [5.0, 10.0, 20.0]
+    assert rows[0]["long_short_cost_adj"] > rows[-1]["long_short_cost_adj"]
+    assert rows[1]["long_short_cost_adj"] == 0.0095

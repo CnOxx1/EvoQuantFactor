@@ -6,7 +6,7 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Any, Literal
 
-from qfactor.db.repo import Database
+from qfactor.agent.experiments import require_candidate_contract
 from qfactor.eval.service import EvalService
 from qfactor.factor.registry import FactorRegistry
 from qfactor.settings import ProjectConfig, get_project_config
@@ -28,6 +28,23 @@ def screened_promotion_key(summary: dict[str, Any] | None) -> tuple[float, float
     return (train, resid, oos)
 
 
+def screened_library_key(
+    summary: dict[str, Any] | None,
+) -> tuple[float, float, float, float]:
+    """Rank research inventory by robust evidence, not overlapping annualized ICIR.
+
+    Screened factors are retained as reusable price-volume research parents.  A
+    high annualized ICIR from a short, overlapping series must not outrank a
+    factor with stronger train, residual, and worst-fold evidence.
+    """
+    s = summary if isinstance(summary, dict) else {}
+    train = abs(float(s.get("train_rank_ic_mean") or 0))
+    resid = abs(float(s.get("resid_ic_mean") or 0))
+    oos_floor = float(s.get("oos_min_fold_ic") or s.get("oos_ic_mean") or 0)
+    coverage = float(s.get("coverage") or 0)
+    return (train, resid, oos_floor, coverage)
+
+
 class LibraryOps:
     """Factor library operating rules: archive / promote / demote / corr demote."""
 
@@ -35,6 +52,12 @@ class LibraryOps:
         self.cfg = cfg or get_project_config()
         self.registry = FactorRegistry(self.cfg)
         self.ops_cfg = (self.cfg.project.get("library_ops") or {})
+
+    def reconcile_state(self) -> dict[str, Any]:
+        """Read-only cross-store consistency check for supervisor heartbeats."""
+        from qfactor.factor.reconcile import reconcile_library_state
+
+        return reconcile_library_state(self.cfg, registry=self.registry)
 
     def archive_stale(
         self,
@@ -172,12 +195,31 @@ class LibraryOps:
         self, name: str, gate_name: str = "production"
     ) -> dict[str, Any]:
         """Strict production gate for promotion path."""
+        if gate_name == "production":
+            require_candidate_contract(self.cfg)
         return EvalService(self.cfg).evaluate_and_save(
             name, gate_name=gate_name, promote=True
         )
 
     def promote_screened(self, names: list[str] | None = None) -> dict[str, Any]:
-        """Re-run production gate on screened factors; passers become candidate."""
+        """Re-run production gate on screened factors when its data contract is ready.
+
+        A screen sweep is expensive and cannot honestly produce a candidate from
+        snapshot data.  Preflight before touching reports so the research library
+        remains stable until the PIT/time contract is complete.
+        """
+        try:
+            require_candidate_contract(self.cfg)
+        except Exception as exc:
+            return {
+                "state": "blocked",
+                "reason": str(exc),
+                "promoted": [],
+                "held_screened": [],
+                "errors": [],
+                "corr_demoted": [],
+                "mech_capped": [],
+            }
         if names is None:
             ranked: list[tuple[tuple[float, float, float], str]] = []
             for f in self.registry.list_factors():
@@ -202,6 +244,7 @@ class LibraryOps:
         corr = self.demote_high_corr()
         cap = self.cap_usable_per_mechanism()
         return {
+            "state": "ok",
             "promoted": promoted,
             "held_screened": held,
             "errors": errors,
@@ -250,6 +293,8 @@ class LibraryOps:
             "pruned_screened": prune.get("demoted") or [],
             "corr_demoted": corr.get("demoted") or [],
             "mech_capped": cap.get("demoted") or [],
+            "screened_promotion_state": promo.get("state", "not_requested"),
+            "screened_promotion_reason": promo.get("reason"),
             "promoted": promo.get("promoted") or [],
             "held_screened": promo.get("held_screened") or [],
             "resid_rerank": rerank,
@@ -273,7 +318,7 @@ class LibraryOps:
             ic = abs(float(summary.get("rank_ic_mean") or 0))
             return (train, resid, ic)
 
-        buckets: dict[str, list[tuple[float, str]]] = {}
+        buckets: dict[str, list[tuple[tuple[float, float, float], str]]] = {}
         for item in self.registry.list_factors():
             if item.get("status") not in {"candidate", "approved"}:
                 continue
@@ -350,7 +395,7 @@ class LibraryOps:
 
         div = (self.cfg.project.get("production") or {}).get("diversity") or {}
         max_per = int(max_per if max_per is not None else div.get("max_per_skeleton", 2))
-        buckets: dict[str, list[tuple[float, str]]] = {}
+        buckets: dict[str, list[tuple[tuple[float, float, float, float], str]]] = {}
         for item in self.registry.list_factors():
             if item.get("status") != "screened":
                 continue
@@ -363,11 +408,7 @@ class LibraryOps:
                 sk = expression_fingerprint(str(expr))["skeleton"]
             except Exception:
                 continue
-            summary = item.get("summary") or {}
-            icir = abs(float(summary.get("icir_ann") or summary.get("icir") or 0))
-            oos = float(summary.get("oos_ic_mean") or 0)
-            score = icir * max(oos, 0.0)
-            buckets.setdefault(sk, []).append((score, name))
+            buckets.setdefault(sk, []).append((screened_library_key(item.get("summary")), name))
         demoted: list[str] = []
         for _sk, rows in buckets.items():
             rows.sort(reverse=True)
@@ -396,19 +437,6 @@ class LibraryOps:
         }
         min_daily_basic = float(production.get("min_daily_basic_coverage", 0.0))
         min_independent = int(production.get("min_independent_observations", 0))
-        active_releases = {
-            str(item.get("name")): item
-            for item in Database().list_releases(state="active")
-            if item.get("data_version") == data_version
-        }
-        execution_requirements = {
-            "security_status_coverage": float(production.get("min_security_status_coverage", 1.0)),
-            "limit_price_coverage": float(production.get("min_limit_price_coverage", 1.0)),
-            "adv_20d_coverage": float(production.get("min_adv_20d_coverage", 1.0)),
-            "corporate_action_coverage": float(production.get("min_corporate_action_coverage", 1.0)),
-            "industry_pit_coverage": float(production.get("min_industry_pit_coverage", 1.0)),
-            "risk_exposures_coverage": float(production.get("min_risk_exposures_coverage", 1.0)),
-        }
         factors: list[dict[str, Any]] = []
         excluded: list[dict[str, Any]] = []
 
@@ -419,10 +447,6 @@ class LibraryOps:
             if item.get("status") not in {"candidate", "approved"}:
                 continue
             reasons: list[str] = []
-            release = active_releases.get(name)
-            if release is None:
-                excluded.append({"name": name, "reasons": ["no_current_active_release"]})
-                continue
             latest = self.registry.factor_dir(name) / "reports" / "latest.json"
             if not latest.exists():
                 excluded.append({"name": name, "reasons": ["missing_latest_report"]})
@@ -447,10 +471,14 @@ class LibraryOps:
                 reasons.append("daily_basic_coverage_below_contract")
             if int(metrics.get("n_independent") or 0) < min_independent:
                 reasons.append("insufficient_independent_observations")
-            if production.get("require_execution_data", False):
-                for metric, minimum in execution_requirements.items():
-                    if float(metrics.get(metric) or 0.0) < minimum:
-                        reasons.append(f"{metric}_below_contract")
+            if production.get("require_industry_pit", False) and float(
+                metrics.get("industry_pit_coverage") or 0.0
+            ) < float(production.get("min_industry_pit_coverage", 1.0)):
+                reasons.append("industry_pit_coverage_below_contract")
+            if production.get("require_selection_bias_audit", False) and not bool(
+                (report.get("selection_bias_audit") or {}).get("passed")
+            ):
+                reasons.append("selection_bias_audit_not_passed")
             if reasons:
                 excluded.append({"name": name, "reasons": reasons})
                 continue
@@ -469,8 +497,8 @@ class LibraryOps:
                     "mechanism": spec.mechanism or spec.category,
                     "expression": spec.expression or (spec.params or {}).get("expression"),
                     "data_version": metrics.get("data_version"),
-                    "release_id": release.get("release_id"),
-                    "release_path": str((self.cfg.path("factor_lib") / "releases" / str(release.get("release_id"))).relative_to(self.cfg.root)),
+                    "tradable": False,
+                    "usage": "research_and_portfolio_optimization_only",
                     "factor_path": factor_path,
                     "quality": {
                         key: metrics.get(key)
@@ -489,19 +517,18 @@ class LibraryOps:
                             "n_independent",
                             "signal_hold_days",
                             "trade_lag",
-                            "security_status_coverage",
-                            "limit_price_coverage",
-                            "adv_20d_coverage",
-                            "corporate_action_coverage",
                             "industry_pit_coverage",
-                            "risk_exposures_coverage",
+                            "cost_scenarios",
                         )
                     },
+                    "selection_bias_audit": report.get("selection_bias_audit"),
                 }
             )
         factors.sort(key=lambda x: (str(x["mechanism"]), str(x["name"])))
         return {
-            "contract_version": "multifactor-input-v3-active-releases-only",
+            "contract_version": "multifactor-alpha-input-v4-candidates",
+            "usage": "research_and_portfolio_optimization_only",
+            "tradable": False,
             "data_version": data_version,
             "n_eligible": len(factors),
             "n_excluded": len(excluded),

@@ -6,11 +6,19 @@ import numpy as np
 import pandas as pd
 
 from qfactor.data.dataset import DataService
-from qfactor.eval.oos import cost_layered, holdout_oos, holdout_window, walk_forward_ic
+from qfactor.db.repo import Database
+from qfactor.eval.oos import (
+    cost_layered,
+    cost_scenario_table,
+    holdout_oos,
+    holdout_window,
+    walk_forward_ic,
+)
 from qfactor.eval.corr import max_corr_with_library
 from qfactor.eval.gate import KEEP_STATUSES, USABLE_STATUSES, apply_gate, route_library_status
 from qfactor.eval.ic import rank_ic, summarize_ic, yearly_ic_sign_consistency
 from qfactor.eval.layered import layered_returns
+from qfactor.eval.multiple_testing import familywise_ic_audit
 from qfactor.eval.timing import apply_signal_hold, apply_trade_lag, drop_tail, forward_close_returns, slice_eval_index
 from qfactor.eval.turnover import approx_daily_turnover
 from qfactor.factor.base import Factor
@@ -33,6 +41,8 @@ class EvalService:
         self._ctx: FactorContext | None = None
         self._peer_cache: dict[str, pd.DataFrame] = {}
         self._industry_map: pd.Series | pd.DataFrame | None = None
+        self.clean_experiment = False
+        self.peer_experiment_id: str | None = None
 
     def trade_lag(self) -> int:
         ev = self.cfg.eval.get("eval", {})
@@ -79,7 +89,15 @@ class EvalService:
         panel = factor_panel
         if bool(ev.get("neutralize_industry", True)):
             groups = self._industry_groups()
-            if int(groups.nunique()) >= 2:
+            if isinstance(groups, pd.DataFrame):
+                # PIT classifications are date x security. Eligibility is based
+                # on the largest valid cross-section, not DataFrame.nunique(),
+                # which returns one count per security column.
+                per_date = groups.nunique(axis=1, dropna=True)
+                has_industry_groups = bool(len(per_date)) and int(per_date.max()) >= 2
+            else:
+                has_industry_groups = int(groups.nunique()) >= 2
+            if has_industry_groups:
                 panel = neutralize_groups(panel, groups)
                 used.append("industry")
         if bool(ev.get("neutralize_size", True)):
@@ -109,11 +127,23 @@ class EvalService:
         lag = self.trade_lag()
         statuses = statuses or KEEP_STATUSES
         others: dict[str, pd.DataFrame] = {}
+        clean_names: set[str] | None = None
+        if self.clean_experiment:
+            clean_names = set()
+            for row in self.registry.existing_summaries():
+                params = row.get("params") if isinstance(row.get("params"), dict) else {}
+                if row.get("source") == "seed" or (
+                    self.peer_experiment_id
+                    and str(params.get("experiment_id") or "") == self.peer_experiment_id
+                ):
+                    clean_names.add(str(row.get("name") or ""))
         for item in self.registry.list_factors():
             fname = item["name"]
             if fname == name or fname in exclude_names:
                 continue
             if item.get("status") not in statuses:
+                continue
+            if clean_names is not None and fname not in clean_names:
                 continue
             key = f"{fname}:h{hold}" if hold > 1 else fname
             if key not in self._peer_cache:
@@ -222,16 +252,29 @@ class EvalService:
             neutralized = list(neutralized) + [f"hold{hold}"]
         tradable_full = apply_trade_lag(factor_panel, lag)
         no_lookahead = lag >= 1
-        split = "sealed" if sealed else self._eval_split(gate_name)
-        train_end = str(interval_start or self._train_end())
+        partitions = ev.get("partitions") or {}
+        discovery_start = str(partitions.get("discovery_start") or "")
+        discovery_end = str(partitions.get("discovery_end") or "")
+        selection_start = str(partitions.get("selection_start") or "")
+        selection_end = str(partitions.get("selection_end") or "")
+        partitioned = bool(discovery_start and discovery_end)
+        split = "sealed" if sealed else (
+            "selection" if is_prod and selection_start and selection_end
+            else ("discovery" if partitioned else self._eval_split(gate_name))
+        )
+        train_end = str(interval_start or discovery_end or self._train_end())
         if sealed and (not interval_start or not interval_end or interval_start > interval_end):
             raise ValueError("sealed evaluation requires inclusive interval_start and interval_end")
 
         fwd_full = self._forward_returns(horizon)
         fwd_1d_full = self._forward_returns(1)
 
-        train_f = self._slice_panel(tradable_full, "train", train_end) if train_end else tradable_full
-        train_fwd = self._slice_panel(fwd_full, "train", train_end) if train_end else fwd_full
+        if partitioned:
+            train_f = self._slice_interval(tradable_full, discovery_start, discovery_end)
+            train_fwd = self._slice_interval(fwd_full, discovery_start, discovery_end)
+        else:
+            train_f = self._slice_panel(tradable_full, "train", train_end) if train_end else tradable_full
+            train_fwd = self._slice_panel(fwd_full, "train", train_end) if train_end else fwd_full
         train_trim_days = int(horizon) if train_end else 0
         if train_trim_days > 0:
             # Last H train days' H-day forward includes holdout (or post-sample) returns.
@@ -248,9 +291,29 @@ class EvalService:
         elif float(ic_train_raw.mean()) < 0:
             orient = -1
 
-        tradable = self._slice_panel(tradable_full, split) if not sealed else tradable_full
-        fwd = self._slice_panel(fwd_full, split) if not sealed else fwd_full
-        fwd_1d = self._slice_panel(fwd_1d_full, split) if not sealed else fwd_1d_full
+        eval_interval_start = None
+        eval_interval_end = None
+        if not sealed and partitioned:
+            if is_prod:
+                eval_interval_start, eval_interval_end = selection_start, selection_end
+            else:
+                eval_interval_start, eval_interval_end = discovery_start, discovery_end
+        if eval_interval_start and eval_interval_end:
+            tradable = self._slice_interval(
+                tradable_full, eval_interval_start, eval_interval_end
+            )
+            fwd = self._slice_interval(fwd_full, eval_interval_start, eval_interval_end)
+            fwd_1d = self._slice_interval(
+                fwd_1d_full, eval_interval_start, eval_interval_end
+            )
+            # Never let forward returns cross the configured interval boundary.
+            tradable = drop_tail(tradable, horizon)
+            fwd = drop_tail(fwd, horizon)
+            fwd_1d = drop_tail(fwd_1d, 1)
+        else:
+            tradable = self._slice_panel(tradable_full, split) if not sealed else tradable_full
+            fwd = self._slice_panel(fwd_full, split) if not sealed else fwd_full
+            fwd_1d = self._slice_panel(fwd_1d_full, split) if not sealed else fwd_1d_full
         if sealed:
             tradable = self._slice_interval(tradable, str(interval_start), str(interval_end))
             fwd = fwd.reindex(tradable.index)
@@ -311,7 +374,11 @@ class EvalService:
                 k: (
                     self._slice_interval(v, str(interval_start), str(interval_end))
                     if sealed
-                    else self._slice_panel(v, split, train_end)
+                    else (
+                        self._slice_interval(v, eval_interval_start, eval_interval_end)
+                        if eval_interval_start and eval_interval_end
+                        else self._slice_panel(v, split, train_end)
+                    )
                 )
                 for k, v in others_full.items()
             }
@@ -337,6 +404,17 @@ class EvalService:
         cost_layered_src = layered_h if cost_horizon > 1 else layered_1d
         layered_cost = cost_layered(
             cost_layered_src, turnover, cost_bps, horizon=cost_horizon
+        )
+        scenario_values = [
+            float(x) for x in (ev.get("cost_scenarios_bps") or [5, 10, 20])
+        ]
+        if cost_bps not in scenario_values:
+            scenario_values.append(cost_bps)
+        cost_scenarios = cost_scenario_table(
+            cost_layered_src,
+            turnover,
+            scenario_values,
+            horizon=cost_horizon,
         )
         layered_cost["horizon_layered"] = layered_h
         cost_ret = float(layered_cost.get("long_short_cost_adj", 0.0))
@@ -392,6 +470,8 @@ class EvalService:
             "years": years,
             "years_consistent": years_ok,
             "cost_adjusted_ls": cost_ret,
+            "cost_scenarios": cost_scenarios,
+            "gate_cost_bps": cost_bps,
             "oos_ic_mean": oos.get("oos_ic_mean", 0.0),
             "oos_icir": oos.get("oos_icir", 0.0),
             "oos_pos_folds": oos.get("pos_folds", 0),
@@ -419,8 +499,8 @@ class EvalService:
             "risk_exposures_coverage": self._data_contract_value("risk_exposures_coverage"),
             "eval_split": split,
             "train_end": train_end or None,
-            "interval_start": interval_start,
-            "interval_end": interval_end,
+            "interval_start": interval_start or eval_interval_start,
+            "interval_end": interval_end or eval_interval_end,
             "sealed": bool(sealed),
             "train_trim_days": train_trim_days,
             "icir_nw": ic_summary.get("icir_nw", 0.0),
@@ -500,7 +580,15 @@ class EvalService:
         horizon = hold if hold > 1 else int(ev.get("forward_horizon", 5))
         min_obs = int(ev.get("min_obs_per_day", 30))
         fwd = self._forward_returns(horizon)
-        if train_end:
+        partitions = ev.get("partitions") or {}
+        discovery_start = str(partitions.get("discovery_start") or "")
+        discovery_end = str(partitions.get("discovery_end") or "")
+        if discovery_start and discovery_end:
+            tradable = self._slice_interval(tradable, discovery_start, discovery_end)
+            fwd = self._slice_interval(fwd, discovery_start, discovery_end)
+            tradable = drop_tail(tradable, horizon)
+            fwd = drop_tail(fwd, horizon)
+        elif train_end:
             tradable = self._slice_panel(tradable, "train")
             fwd = self._slice_panel(fwd, "train")
         ic = rank_ic(tradable, fwd, min_obs=min_obs)
@@ -528,6 +616,36 @@ class EvalService:
             sealed=sealed,
         )
         report["spec"] = factor.spec.model_dump()
+        production = self.cfg.eval.get("production") or {}
+        if (
+            gate_name == "production"
+            and not sealed
+            and production.get("require_selection_bias_audit", False)
+        ):
+            ev = self.cfg.eval.get("eval") or {}
+            windows = ev.get("partitions") or {}
+            metrics = report.get("metrics") or {}
+            n_trials = Database().count_generated_trials_scope(
+                data_version=metrics.get("data_version"),
+                discovery_start=str(windows.get("discovery_start") or "") or None,
+                discovery_end=str(windows.get("discovery_end") or "") or None,
+                mechanism=str(factor.spec.mechanism or factor.spec.category or "") or None,
+            )
+            audit = familywise_ic_audit(metrics, n_trials=max(1, n_trials))
+            audit["scope"] = {
+                "data_version": metrics.get("data_version"),
+                "discovery_start": windows.get("discovery_start"),
+                "discovery_end": windows.get("discovery_end"),
+                "mechanism": factor.spec.mechanism or factor.spec.category,
+                "generated_trials": n_trials,
+            }
+            report["selection_bias_audit"] = audit
+            gate = report["gate"]
+            gate.setdefault("checks", {})["selection_bias"] = bool(audit["passed"])
+            gate["passed"] = bool(gate.get("passed") and audit["passed"])
+            gate["status"] = "candidate" if gate["passed"] else "reject"
+            report["summary"]["selection_bias_state"] = audit["state"]
+            report["summary"]["status"] = gate["status"]
         return report
 
     def evaluate_and_save(

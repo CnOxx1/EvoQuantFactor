@@ -45,8 +45,6 @@ def _bool_rate(df: pd.DataFrame, column: str) -> float:
         {
             True: True,
             False: False,
-            1: True,
-            0: False,
             "1": True,
             "0": False,
             "true": True,

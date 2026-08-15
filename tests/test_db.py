@@ -36,3 +36,46 @@ def test_db_roundtrip(tmp_path):
     st = db.status()
     assert st["n_bars"] == 1
     assert st["n_factors"] == 1
+
+
+def test_generated_trial_count_accumulates_across_experiments(tmp_path):
+    db_file = tmp_path / "trials.sqlite3"
+    url = f"sqlite:///{db_file.as_posix()}"
+    from qfactor.db import models
+
+    models.get_engine.cache_clear()
+    db = Database(url)
+    windows = {
+        "windows": {
+            "discovery_start": "20190101",
+            "discovery_end": "20221231",
+        }
+    }
+    for exp in ("exp_1", "exp_2"):
+        db.create_experiment(
+            exp,
+            {
+                "experiment_id": exp,
+                "state": "completed",
+                "data_version": "data-v1",
+                "date_partitions": windows,
+            },
+        )
+        db.save_experiment_trial(
+            exp,
+            {
+                "trial_id": f"{exp}:1",
+                "stage": "generated",
+                "outcome": "generated",
+                "mechanism": "momentum",
+            },
+        )
+    assert (
+        db.count_generated_trials_scope(
+            data_version="data-v1",
+            discovery_start="20190101",
+            discovery_end="20221231",
+            mechanism="momentum",
+        )
+        == 2
+    )

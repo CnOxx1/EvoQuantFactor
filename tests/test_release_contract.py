@@ -3,7 +3,7 @@ from pathlib import Path
 
 from qfactor.factor.base import FactorSpec
 from qfactor.factor.provenance import definition_hash
-from qfactor.factor.release import ReleaseService
+from qfactor.factor.release import ReleaseService, _execution_contract_reasons
 
 
 class _Cfg:
@@ -139,3 +139,27 @@ def test_release_requires_sealed_and_tradability_evidence(monkeypatch, tmp_path)
     assert len(db.releases) == 1
     release_dir = cfg.path("factor_lib") / "releases" / released["release_id"]
     assert (release_dir / "release_manifest.json").exists()
+
+
+def test_active_release_still_requires_execution_coverage():
+    release = {
+        "require_execution_data": True,
+        "min_security_status_coverage": 0.98,
+        "min_limit_price_coverage": 0.98,
+        "min_adv_20d_coverage": 0.95,
+        "min_corporate_action_coverage": 0.98,
+        "min_industry_pit_coverage": 0.95,
+        "min_risk_exposures_coverage": 0.95,
+    }
+    reasons = _execution_contract_reasons(
+        {
+            "security_status_coverage": 1.0,
+            "limit_price_coverage": 0.0,
+            "adv_20d_coverage": 1.0,
+            "corporate_action_coverage": 1.0,
+            "industry_pit_coverage": 1.0,
+            "risk_exposures_coverage": 1.0,
+        },
+        release,
+    )
+    assert reasons == ["limit_price_coverage_below_contract"]

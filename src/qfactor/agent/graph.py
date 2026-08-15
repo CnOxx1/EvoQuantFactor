@@ -115,6 +115,7 @@ class ProductionState(TypedDict, total=False):
     recent_themes: list[str]
     cold_start: bool
     last_catalog_expand_round: int | None
+    clean_experiment: bool
 
 
 class ProductionContext:
@@ -131,21 +132,48 @@ class ProductionContext:
         self.experiment: ExperimentLedger | None = None
 
 
+def _eligible_research_library(
+    ctx: ProductionContext, state: ProductionState
+) -> list[dict[str, Any]]:
+    rows = [
+        row
+        for row in ctx.registry.existing_summaries()
+        if row.get("parent_eligible") is not False
+    ]
+    if not state.get("clean_experiment"):
+        return rows
+    experiment_id = str(state.get("experiment_id") or "")
+    return [
+        row
+        for row in rows
+        if row.get("source") == "seed"
+        or str((row.get("params") or {}).get("experiment_id") or "") == experiment_id
+    ]
+
+
 def _node_decide(ctx: ProductionContext):
     def decide(state: ProductionState) -> dict[str, Any]:
-        existing = ctx.registry.existing_summaries()
+        existing = _eligible_research_library(ctx, state)
         coverage = keep_mechanism_coverage(existing)
         lessons = list(state.get("lessons") or [])
         recent_themes = list(state.get("recent_themes") or [])
         forced = state.get("theme")
         cold = is_cold_start(existing, ctx.cfg)
         disable_fsa = bool(cold_start_cfg(ctx.cfg)["disable_fsa"] and cold)
-        index = library_diversity_index(ctx.cfg)
-        banned_skels = sorted(
-            active_skeleton_bans(
-                ctx.cfg,
-                extra=list(state.get("high_corr_skeletons") or []),
-                cold_start=disable_fsa,
+        index = (
+            ctx.generator.diversity_index(existing)
+            if state.get("clean_experiment")
+            else library_diversity_index(ctx.cfg)
+        )
+        banned_skels = (
+            sorted(set(index.get("banned_skeletons") or []))
+            if state.get("clean_experiment")
+            else sorted(
+                active_skeleton_bans(
+                    ctx.cfg,
+                    extra=list(state.get("high_corr_skeletons") or []),
+                    cold_start=disable_fsa,
+                )
             )
         )
         banned_hashes = sorted(
@@ -176,7 +204,7 @@ def _node_decide(ctx: ProductionContext):
 
 def _node_generate(ctx: ProductionContext):
     def generate(state: ProductionState) -> dict[str, Any]:
-        existing = ctx.registry.existing_summaries()
+        existing = _eligible_research_library(ctx, state)
         coverage = keep_mechanism_coverage(existing)
         lessons = list(state.get("lessons") or [])
         ledger = getattr(ctx, "experiment", None)
@@ -200,6 +228,7 @@ def _node_generate(ctx: ProductionContext):
             extra_banned_skeletons=list(state.get("banned_skeletons") or []),
             extra_banned_hashes=list(state.get("banned_hashes") or []),
             round_idx=int(state.get("rounds_done") or 0),
+            clean_experiment=bool(state.get("clean_experiment")),
         )
         src_counts: dict[str, int] = {}
         for ordinal, c in enumerate(cands, 1):
@@ -387,6 +416,19 @@ def _node_review_validate(ctx: ProductionContext):
                 report = ctx.eval.evaluate_dsl(
                     cand["expression"], name, gate_name=gate_name
                 )
+                if ledger is not None:
+                    from qfactor.eval.multiple_testing import (
+                        research_selection_bias_preview,
+                    )
+
+                    preview = research_selection_bias_preview(
+                        report.get("metrics") or {},
+                        n_trials=ledger.trial_count,
+                    )
+                    report["research_selection_bias_preview"] = preview
+                    report.setdefault("summary", {})[
+                        "selection_bias_preview_state"
+                    ] = preview["state"]
                 status = report.get("gate", {}).get("status", "reject")
             except Exception as e:
                 report = {"error": str(e)}
@@ -421,7 +463,14 @@ def _node_review_validate(ctx: ProductionContext):
                         cand.get("source", "gen"),
                         f"experiment:{state.get('experiment_id')}",
                     ],
-                    params={"experiment_id": state.get("experiment_id")},
+                    params={
+                        "experiment_id": state.get("experiment_id"),
+                        "research_cohort": (
+                            "clean_discovery"
+                            if state.get("clean_experiment")
+                            else "current_discovery"
+                        ),
+                    },
                     hypothesis=cand.get("hypothesis", ""),
                     entry_gate=gate_name,
                     expression=cand["expression"],
@@ -520,6 +569,8 @@ def _maybe_expand_catalog(
 ) -> tuple[dict[str, Any], int | None]:
     last = state.get("last_catalog_expand_round")
     last_i = int(last) if last is not None else None
+    if state.get("clean_experiment"):
+        return {"attempted": False, "reason": "clean_experiment"}, last_i
     if round_stats.get("cold_start"):
         return {"attempted": False, "reason": "cold_start"}, last_i
     unused = round_stats.get("unused_compose")
@@ -567,7 +618,8 @@ def _node_persist(ctx: ProductionContext):
             "recent_themes": list(state.get("recent_themes") or [])[-12:],
             "last_catalog_expand_round": last_expand,
         }
-        ctx.checkpoint.save(cp)
+        if not state.get("clean_experiment"):
+            ctx.checkpoint.save(cp)
         run_dir = Path(str(state.get("run_dir") or ""))
         if run_dir:
             run_dir.mkdir(parents=True, exist_ok=True)
@@ -629,6 +681,7 @@ def run_production_graph(
     llm_ratio: float | None = None,
     llm_review_ratio: float | None = None,
     llm_spotcheck_every: int | None = None,
+    clean_experiment: bool = False,
 ) -> dict[str, Any]:
     if gate_name != "research":
         raise RuntimeError(
@@ -645,6 +698,8 @@ def run_production_graph(
     if llm_review_ratio is None:
         llm_review_ratio = float(llm_cfg["llm_review_ratio"])
 
+    if clean_experiment:
+        resume = False
     cp = ctx.checkpoint.load() if resume else {
         "iteration": 0,
         "tested_hashes": [],
@@ -662,9 +717,8 @@ def run_production_graph(
     run_id = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     run_dir = ctx.cfg.path("runs") / f"loop_{run_id}"
     run_dir.mkdir(parents=True, exist_ok=True)
-    # No model call occurs before the immutable PIT data and discovery-window
-    # contract has passed. This prevents more snapshot-data candidates from
-    # accumulating while data remediation is outstanding.
+    # No model call occurs before bars and the immutable discovery window exist.
+    # PIT/selection evidence remains a separate, binding candidate gate.
     date_partitions = require_discovery_contract(ctx.cfg)
     ctx.experiment = ExperimentLedger(ctx.cfg, run_dir=run_dir / "experiment")
     manifest = ctx.experiment.start(
@@ -679,9 +733,12 @@ def run_production_graph(
             "llm_ratio": llm_ratio,
             "llm_review_ratio": llm_review_ratio,
             "llm_config": llm_cfg,
+            "clean_experiment": bool(clean_experiment),
         },
         date_partitions=date_partitions,
     )
+    ctx.eval.clean_experiment = bool(clean_experiment)
+    ctx.eval.peer_experiment_id = str(manifest["experiment_id"])
 
     # Resume continues from checkpoint iteration; `rounds` = additional rounds.
     start_done = int(cp.get("iteration") or 0) if resume else 0
@@ -714,6 +771,7 @@ def run_production_graph(
         "round_stats": {},
         "orchestrator": "langgraph",
         "cold_start": False,
+        "clean_experiment": bool(clean_experiment),
     }
 
     graph = build_production_graph(ctx)
@@ -757,7 +815,7 @@ def run_production_graph(
         "mechanism_hits": dict(final_state.get("mechanism_hits") or {}),
         "lessons_tail": list(final_state.get("lessons") or [])[-10:],
         "banned_skeletons": list(final_state.get("banned_skeletons") or [])[:20],
-        "checkpoint": str(ctx.checkpoint.path),
+        "checkpoint": None if clean_experiment else str(ctx.checkpoint.path),
         "run_dir": str(run_dir),
         "status": (
             "candidate"
@@ -765,6 +823,7 @@ def run_production_graph(
             else ("screened" if produced else "reject")
         ),
         "factor": produced[0]["name"] if produced else None,
+        "clean_experiment": bool(clean_experiment),
     }
     experiment_summary = ctx.experiment.close(
         state="completed",

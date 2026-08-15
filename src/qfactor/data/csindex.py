@@ -104,7 +104,8 @@ def member_meta() -> dict[str, Any]:
         "provider": "csindex",
         "note": (
             "Official latest constituent/weight file only. Historical reconstitutions "
-            "come from Tushare (index_weight / index_member). snapshot mode stamps "
-            "this file at window start — that is survivorship, not point-in-time."
+            "come from a vetted archive or Tushare (index_weight / index_member). "
+            "snapshot mode stamps this file at window start — that is survivorship, "
+            "not point-in-time."
         ),
     }

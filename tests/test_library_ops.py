@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from qfactor.factor.ops import LibraryOps, screened_promotion_key
+from qfactor.factor.ops import LibraryOps, screened_library_key, screened_promotion_key
 
 
 def test_screened_promotion_key_prefers_train_resid_oos():
@@ -12,6 +12,44 @@ def test_screened_promotion_key_prefers_train_resid_oos():
         "oos_min_fold_ic": 0.02,
     }
     assert screened_promotion_key(honest) > screened_promotion_key(loud)
+
+
+def test_screened_library_key_ignores_annualized_icir_noise():
+    noisy = {
+        "icir_ann": 12.0,
+        "train_rank_ic_mean": 0.005,
+        "resid_ic_mean": 0.002,
+        "oos_min_fold_ic": 0.001,
+        "coverage": 0.99,
+    }
+    robust = {
+        "icir_ann": 1.0,
+        "train_rank_ic_mean": 0.03,
+        "resid_ic_mean": 0.02,
+        "oos_min_fold_ic": 0.015,
+        "coverage": 0.8,
+    }
+    assert screened_library_key(robust) > screened_library_key(noisy)
+
+
+def test_promote_screened_skips_when_data_contract_is_blocked(monkeypatch):
+    ops = LibraryOps()
+
+    def _blocked(_cfg):
+        raise RuntimeError("universe_not_pit")
+
+    monkeypatch.setattr("qfactor.factor.ops.require_candidate_contract", _blocked)
+    monkeypatch.setattr(
+        "qfactor.factor.ops.EvalService",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("must not evaluate")),
+    )
+
+    out = ops.promote_screened(["screened_factor"])
+
+    assert out["state"] == "blocked"
+    assert out["promoted"] == []
+    assert out["held_screened"] == []
+    assert "universe_not_pit" in out["reason"]
 
 
 def test_cap_usable_per_mechanism_keeps_one(monkeypatch):

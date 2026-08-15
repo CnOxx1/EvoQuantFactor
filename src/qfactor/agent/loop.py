@@ -70,6 +70,7 @@ class FactorLoop:
         llm_ratio: float | None = None,
         llm_review_ratio: float | None = None,
         llm_spotcheck_every: int | None = None,
+        clean_experiment: bool = False,
     ) -> dict[str, Any]:
         if gate_name != "research":
             raise RuntimeError(
@@ -86,4 +87,5 @@ class FactorLoop:
             llm_ratio=llm_ratio,
             llm_review_ratio=llm_review_ratio,
             llm_spotcheck_every=llm_spotcheck_every,
+            clean_experiment=clean_experiment,
         )

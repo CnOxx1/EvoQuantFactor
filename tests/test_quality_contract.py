@@ -38,12 +38,15 @@ def _production_metrics(**overrides):
         "industry_pit_coverage": 1.0,
         "risk_exposures_coverage": 1.0,
         "n_independent": 80,
+        "eval_split": "selection",
+        "interval_start": "20230101",
+        "interval_end": "20241231",
     }
     metrics.update(overrides)
     return metrics
 
 
-def test_live_production_contract_requires_data_quality():
+def test_candidate_contract_requires_statistical_pit_quality_not_execution():
     cfg = get_project_config()
     thresholds = dict(cfg.eval["production"])
     assert apply_gate(_production_metrics(), thresholds, mode="production")["status"] == "candidate"
@@ -69,8 +72,14 @@ def test_live_production_contract_requires_data_quality():
     no_execution = apply_gate(
         _production_metrics(security_status_coverage=0.0), thresholds, mode="production"
     )
-    assert no_execution["checks"]["security_status"] is False
-    assert no_execution["status"] == "reject"
+    assert "security_status" not in no_execution["checks"]
+    assert no_execution["status"] == "candidate"
+
+    no_pit_industry = apply_gate(
+        _production_metrics(industry_pit_coverage=0.0), thresholds, mode="production"
+    )
+    assert no_pit_industry["checks"]["industry_pit"] is False
+    assert no_pit_industry["status"] == "reject"
 
 
 def test_research_soft_pass_respects_turnover_when_enabled():
@@ -161,6 +170,7 @@ def test_multifactor_inventory_exports_only_contract_compliant_factor(tmp_path, 
     report_dir.mkdir(parents=True)
     report = {
         "gate": {"mode": "production", "passed": True},
+        "selection_bias_audit": {"passed": True, "n_trials": 100},
         "metrics": {
             "data_version": "data-v1",
             "universe_mode": "pit",
@@ -195,11 +205,11 @@ def test_multifactor_inventory_exports_only_contract_compliant_factor(tmp_path, 
     ops.cfg = cfg
     ops.registry = _FakeRegistry(tmp_path)
     monkeypatch.setattr("qfactor.factor.ops.EvalService", _FakeEvalService)
-    monkeypatch.setattr("qfactor.factor.ops.Database", _FakeDatabase)
 
     inventory = ops.multifactor_inventory()
     assert inventory["n_eligible"] == 1
     assert inventory["n_excluded"] == 0
     assert inventory["factors"][0]["name"] == "quality_factor"
     assert inventory["factors"][0]["data_version"] == "data-v1"
-    assert inventory["factors"][0]["release_id"] == "rel_quality"
+    assert inventory["factors"][0]["tradable"] is False
+    assert inventory["contract_version"] == "multifactor-alpha-input-v4-candidates"
