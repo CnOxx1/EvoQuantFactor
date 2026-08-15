@@ -324,14 +324,31 @@ class EvalService:
         peer_hold = hold if hold > 1 else 0
         others_full = {}
         corr = {"max_corr": 0.0, "max_corr_with": None, "skipped": True}
-        # A research candidate below its own minimum absolute-IC gate cannot
-        # become screened regardless of library correlation. Avoid cold-loading
-        # every peer for that guaranteed reject. Candidates that can pass still
-        # run the unchanged complete correlation check against the full library.
-        corr_floor = max(0.005, min_abs * 0.5) if is_prod else min_abs
-        if abs(float(ic_summary.get("rank_ic_mean", 0.0))) >= corr_floor:
+        # For production, always retain the full correlation path.  For the
+        # research gate, perform an exact pre-check with max_corr=0.0.  If this
+        # already rejects, a real correlation can only make the result worse, so
+        # no candidate that could be screened is skipped.  This prevents loading
+        # the entire peer library for obvious IC/OOS/turnover rejects.
+        should_load_peers = True
+        if not is_prod:
+            pre_corr_metrics = {
+                **ic_summary,
+                "coverage": coverage,
+                "daily_turnover": turnover,
+                "monotonic_score": layered_h.get("monotonic_score", 0.0),
+                "years_consistent": years_ok,
+                "no_lookahead": no_lookahead,
+                "oos_ic_mean": oos.get("oos_ic_mean", 0.0),
+                "oos_pos_folds": oos.get("pos_folds", 0),
+                "oos_min_fold_ic": oos.get("oos_min_fold_ic", oos.get("oos_ic_mean", 0.0)),
+                "max_corr": 0.0,
+            }
+            should_load_peers = apply_gate(pre_corr_metrics, thresholds, mode="research")["status"] in KEEP_STATUSES
+            if on_progress is not None and not should_load_peers:
+                on_progress({"stage": "pre_gate_reject", "reason": "cannot_screen_before_correlation"})
+        if should_load_peers:
             if on_progress is not None:
-                on_progress({"stage": "peer_correlation_start", "corr_floor": corr_floor})
+                on_progress({"stage": "peer_correlation_start"})
             others_full = self._peer_panels(
                 name,
                 exclude_names or set(),
