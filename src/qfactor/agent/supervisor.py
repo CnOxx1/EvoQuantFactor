@@ -149,8 +149,9 @@ class FactoryRuntime:
             "warnings": [],
         }
 
-        # Discovery may execute only when complete PIT/time evidence is present,
-        # and only on its configured cadence. It remains research-only.
+        # Discovery may execute only after the research data contract passes
+        # (bars + discovery window inside the synced range). It does not download
+        # data and does not wait for PIT/candidate evidence. It remains research-only.
         if contract["state"] == "passed" and cycle % self.discovery_every == 0:
             try:
                 result["actions"]["research_discovery"] = FactorLoop(self.cfg).run(

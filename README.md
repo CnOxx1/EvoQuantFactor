@@ -86,6 +86,44 @@ USABLE = `candidate` + `approved`。
 - `factor.py`：由表达式编译出的计算代码
 - `reports/`：历次评估 JSON；`latest.json` 为最近一次
 
+更细的流程图、合同挡板和服务器启动顺序见 [`docs/factor_production_flow.md`](docs/factor_production_flow.md)。
+
+---
+
+## 生产流程
+
+工厂**不会**在挖矿命令里自动下载行情。服务器上必须先 `sync-data`，再 `data-contract-readiness`，research 合同通过后才允许 `loop` / supervisor 调用 LLM。
+
+```mermaid
+flowchart TD
+    A[服务器 pull main] --> B[sync-data 拉行情入库]
+    B --> C[data-contract-readiness]
+    C --> D{research: 有行情且 discovery 窗口在数据范围内?}
+    D -->|否| E[停止 discovery]
+    D -->|是| F[干净实验生成 DSL]
+    F --> G[research 闸]
+    G -->|过| H[screened]
+    G -->|不过| I[reject]
+    H --> J{candidate: PIT + 供应商市值 + selection?}
+    J -->|否| K[保持 screened]
+    J -->|是| L[production 闸]
+    L -->|过| M[candidate]
+    M --> N[freeze / sealed OOS / tradability]
+    N --> O{release 执行数据齐全?}
+    O -->|否| P[不能交易]
+    O -->|是| Q[active release]
+```
+
+当前快照数据只能走到 `screened`。`candidate` 和 `active release` 继续为 0，直到 PIT 证据补齐。
+
+仓库里现成的是 2024–2026 切片。如果服务器上**不先 sync** 就直接 `loop`，系统会用这两年数据开挖，而不会自动去拉 2020。要长历史必须先执行：
+
+```bash
+qfactor sync-data --start 20200101 --end 20260815 --source baostock --allow-snapshot-universe
+qfactor data-contract-readiness
+qfactor loop --rounds 5 --batch-size 8 --gate research --clean-experiment
+```
+
 ---
 
 ## 分层数据合同
@@ -295,7 +333,7 @@ python -m pytest tests -q
 4. **LLM 只提案**：不提高 `llm_ratio`、不加新 Agent、不用 LLM 否决过闸。
 5. **运行产物**：`runs/loop_*`、SQLite `-wal/-shm`、`.env` 不入库。密钥用 `.env.example` 复制。
 
-更细的数据合同见 `docs/production_data_contract.md`，研究质量控制见 `docs/research_quality_controls.md`。
+更细的数据合同见 `docs/production_data_contract.md`，研究质量控制见 `docs/research_quality_controls.md`，生产流程图见 `docs/factor_production_flow.md`。
 
 ---
 
