@@ -97,7 +97,7 @@ def _ready_contracts(monkeypatch, *, research="passed"):
 
     monkeypatch.setattr(
         prepare,
-        "factor_contract_readiness",
+        "_factor_contracts",
         lambda cfg=None: {
             "data_version": "v1",
             "research": {"state": research, "issues": [] if research == "passed" else ["research_bars_missing"]},

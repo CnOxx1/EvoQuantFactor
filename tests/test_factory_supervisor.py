@@ -105,7 +105,7 @@ def test_explicit_run_forever_clears_stale_stop_marker(tmp_path: Path):
     runtime.interval_seconds = 60
     calls = []
 
-    def _cycle(cycle):
+    def _cycle(cycle, data_prepare=None):
         calls.append(cycle)
         runtime.stop_path.write_text("new stop\n", encoding="utf-8")
         return {"cycle": cycle}

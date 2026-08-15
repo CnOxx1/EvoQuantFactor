@@ -272,10 +272,10 @@ class FactoryRuntime:
         while not self.stop_path.exists():
             try:
                 last_prepare = self._refresh_prepare(last_prepare)
-                self.run_cycle(
-                    cycle,
-                    data_prepare=last_prepare.as_dict() if last_prepare else None,
-                )
+                if last_prepare is None:
+                    self.run_cycle(cycle)
+                else:
+                    self.run_cycle(cycle, data_prepare=last_prepare.as_dict())
             except Exception as exc:  # last-resort worker protection for supervisor restart
                 failure = {
                     "schema_version": STATUS_VERSION,

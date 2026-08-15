@@ -17,7 +17,6 @@ from zoneinfo import ZoneInfo
 
 import pandas as pd
 
-from qfactor.agent.experiments import factor_contract_readiness
 from qfactor.data.dataset import DataService, codes_covering_window
 from qfactor.data.universe import shift_yyyymmdd
 from qfactor.settings import ProjectConfig, get_project_config
@@ -45,6 +44,12 @@ def today_yyyymmdd(tz: str = "Asia/Shanghai") -> str:
         return datetime.now(ZoneInfo(tz)).strftime("%Y%m%d")
     except Exception:
         return datetime.now().strftime("%Y%m%d")
+
+
+def _factor_contracts(cfg: ProjectConfig | None = None) -> dict[str, Any]:
+    from qfactor.agent.experiments import factor_contract_readiness
+
+    return factor_contract_readiness(cfg)
 
 
 def is_snapshot_universe_error(exc: BaseException) -> bool:
@@ -205,7 +210,7 @@ class DataPrepareService:
             except Exception as exc:
                 sync_error = str(exc)
                 reason = "sync_failed"
-        contracts = factor_contract_readiness(self.cfg)
+        contracts = _factor_contracts(self.cfg)
         research = contracts.get("research") or {}
         candidate = contracts.get("candidate") or {}
         release = contracts.get("release") or {}
