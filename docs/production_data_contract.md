@@ -1,8 +1,10 @@
 # EvoQuantFactor 生产数据合同与归档导入清单
 
-**适用范围：** 中证 100、日频、量价因子工厂。本文定义因子发现、密封验收、可交易 release 和后续多因子模块共享的数据最低合同。它不将缺失值解释为“可交易”，也不把由行情估计得到的状态替代为供应商点时证据。
+**适用范围：** 中证 100、日频、量价因子工厂。研究发现、统计 candidate
+与可交易 release 使用分层合同：研究层只保留假说，candidate 要求 PIT 与选择
+区间统计证据，active release 再要求完整执行/风险证据。
 
-> **发布原则：** 只有在当前数据版本同时具备 PIT 成分、供应商日频流通市值、证券状态、涨跌停价、ADV、公司行动、点时行业和风险暴露，且通过密封验收及订单账本时，因子才可能成为 `active release`。否则库存和交易 release 必须为零。
+> **发布原则：** 只有在当前数据版本同时具备 PIT 成分、供应商日频流通市值、证券状态、涨跌停价、ADV、公司行动、点时行业和风险暴露，且通过密封验收及订单账本时，因子才可能成为 `active release`。缺少执行数据不阻止 research，但仍阻止交易 release。
 
 ## 1. 归档位置与提供方配置
 
@@ -78,7 +80,11 @@
 
 中证官方最新成分和调样附件可用 `qfactor fetch-archive-universe` 下载；缺失的半年定期调样工作簿会停止回溯，不会把旧调入调出接到后来的快照上。Wind / Choice / RQData 导出以及补齐的中证历史文件用 `qfactor ingest-archive --role <role> --source <file>` 归一到合同列（`trade_date` + `ts_code`），再用 `qfactor validate-archive --strict` 检查六类文件是否齐全。入库命令不从行情推断 ST、停牌、涨跌停、行业或流通市值。随后执行 `qfactor sync-data`（行情源可以是 BaoStock / AkShare；PIT 证据走 archive），检查生成的 `data/processed/data_version.json` 与 `data/quality_reports/`。覆盖率、来源和限制会写入不可变数据版本元数据。无 Tushare token 时，`providers.*.auto` 会在对应归档文件存在时解析为 `archive`。
 
-接着运行研究发现或评估流程。系统会在 LLM 调用之前验证数据与三段日期分区合同；在 production gate、密封验收和 tradability simulation 再次验证。最后仅应通过 `qfactor publish-release` 形成版本化 release，并通过 `qfactor export-trading-releases` 将当前 `active` 因子提供给交易模块。
+接着运行研究发现或评估流程。LLM 调用前只验证行情与 discovery 分区；
+screened→candidate 验证 PIT 成分、供应商流通市值、PIT 行业和 selection 分区；
+密封验收只读取 sealed 分区；tradability/release 再验证完整执行与风险合同。
+`qfactor library-export-candidates` 仅向非交易多因子研究提供 `tradable=false` 的
+统计候选；交易模块只能读取 `qfactor export-trading-releases` 的 active release。
 
 > **当前仓库状态：** 内置行情和现有快照数据未满足本合同。因此 `qfactor export-trading-releases` 与 `qfactor library-export-multifactor` 应继续输出零个可用因子。这是预期的 fail-closed 结果，不是可通过调低阈值解决的问题。
 

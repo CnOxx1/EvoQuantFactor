@@ -10,7 +10,7 @@
 
 | 阶段 | 周期内行为 | 可能状态 | 是否可被交易模块使用 |
 |---|---|---|---:|
-| Discovery | 数据与日期合同通过时，运行一轮 research-only 搜索 | `draft` / `screened` | 否 |
+| Discovery | 行情与 discovery 日期合同通过时，运行 research-only 搜索 | `draft` / `screened` | 否 |
 | Dynamic production refresh | 每周期复评 `candidate` | 保留 `candidate` 或降回 `screened` | 否 |
 | Screened recheck | 低频尝试 production gate | `screened` 或 `candidate` | 否 |
 | Freeze / sealed acceptance | 人工冻结后才可消耗密封 OOS | `sealed_oos_passed` 或失败 | 否 |
@@ -41,7 +41,9 @@ scripts/factor_factory_monitor.sh stop
 
 运行状态保存在 `runs/factory_monitor/status.json`，逐周期事件保存在 `runs/factory_monitor/events.jsonl`。`counts_before` 与 `counts_after` 至少包括 `draft`、`screened`、`candidate`、`approved`、已冻结定义、已通过密封验收、已通过可交易性和 `active_release`。
 
-当前数据若缺失 PIT 历史成分、供应商流通市值、ST/停牌/涨跌停、ADV、公司行动、点时行业、风险暴露或三段日期分区，`data_contract.state` 会是 `blocked`。在这一状态下可生产的 **active release 数量应为 0**；这是预期的 fail-closed 行为。
+状态同时展示 research、candidate 和 release 合同。缺 discovery 分区只阻断研究；
+缺 PIT 成分、供应商市值或 PIT 行业阻断 candidate；缺 ST/停牌/涨跌停、ADV、
+公司行动或风险暴露阻断 active release。任一缺口都不会通过放宽门槛自动重试。
 
 ## 4. 长期主机部署建议
 

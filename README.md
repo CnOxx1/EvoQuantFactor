@@ -132,8 +132,9 @@ python -m qfactor.cli data-status
 
 ### 多因子上游质量合同
 
-后续多因子策略**不能直接读取** `screened` 或全部 `candidate`。它只能读取
-`library-export-multifactor` 生成的库存；该库存只保留满足以下条件的条目：
+后续非交易多因子研究**不能直接读取** `screened` 或全部 `candidate`。它只能读取
+`library-export-candidates`（或兼容命令 `library-export-multifactor`）生成的
+`tradable=false` 库存；该库存只保留满足以下条件的条目：
 
 - 当前状态为 `candidate` 或 `approved`，且最近一次报告是通过的 production 闸；
 - 报告的数据版本等于当前数据版本；
@@ -148,7 +149,7 @@ python -m qfactor.cli eval-factor NAME --gate research
 python -m qfactor.cli library-reeval-screened
 python -m qfactor.cli library-refresh-production
 python -m qfactor.cli library-promote NAME --gate production
-python -m qfactor.cli library-export-multifactor
+python -m qfactor.cli library-export-candidates
 ```
 
 ---
@@ -280,7 +281,8 @@ LLM discovery 现在在调用模型前验证 PIT 数据和冻结的 `eval.partit
 qfactor sync-universe --start 20190101 --end 20260630
 qfactor sync-data --start 20190101 --end 20260630 --source baostock
 
-# 数据合同、日期分区和 LLM key 均通过后才允许 discovery。
+# 行情、discovery 日期分区和 LLM key 通过后允许 research discovery；
+# PIT/selection 合同仍决定 screened 能否成为 candidate。
 qfactor loop --rounds 5 --batch-size 8 --gate research
 qfactor freeze-factor NAME
 qfactor sealed-accept NAME --start YYYYMMDD --end YYYYMMDD
@@ -289,6 +291,6 @@ qfactor publish-release NAME
 qfactor export-trading-releases
 ```
 
-`simulate-tradability` 使用非重叠账本：T 日信号、T+1 开盘执行、固定持有期、开盘涨跌停/停牌掩码、成本和 ADV 参与率。若缺少点时 ST、完整涨跌停或容量输入，它会写出 `tradability_blocked`，而不是产生通过标签。下游多因子模块只能读取 `export-trading-releases` 生成的 `active` release；`candidate`、`approved` 和 legacy multifactor inventory 都不是交易模块的最终输入。
+`simulate-tradability` 使用非重叠账本：T 日信号、T+1 开盘执行、固定持有期、开盘涨跌停/停牌掩码、成本和 ADV 参与率。若缺少点时 ST、完整涨跌停或容量输入，它会写出 `tradability_blocked`，而不是产生通过标签。非交易多因子研究可读取 `library-export-candidates`；真实交易模块仍只能读取 `export-trading-releases` 生成的 `active` release。
 
 > 当 `n_active = 0` 时，正确的动作是补齐 PIT 数据、密封样本与订单级约束，而不是放宽门槛或增加 LLM 搜索量。

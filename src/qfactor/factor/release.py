@@ -21,9 +21,14 @@ def _utc_now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _execution_contract_reasons(meta: dict[str, Any], production: dict[str, Any]) -> list[str]:
+def _release_contract(cfg: ProjectConfig) -> dict[str, Any]:
+    """Prefer the release layer; retain legacy production config compatibility."""
+    return cfg.eval.get("release") or cfg.eval.get("production") or {}
+
+
+def _execution_contract_reasons(meta: dict[str, Any], release: dict[str, Any]) -> list[str]:
     """Return fail-closed data-contract violations for a tradable release."""
-    if not production.get("require_execution_data", False):
+    if not release.get("require_execution_data", False):
         return []
     requirements = {
         "security_status_coverage": "min_security_status_coverage",
@@ -36,7 +41,7 @@ def _execution_contract_reasons(meta: dict[str, Any], production: dict[str, Any]
     reasons: list[str] = []
     for metric, threshold in requirements.items():
         value = float(meta.get(metric, 0.0) or 0.0)
-        minimum = float(production.get(threshold, 1.0))
+        minimum = float(release.get(threshold, 1.0))
         if value < minimum:
             reasons.append(f"{metric}_below_contract")
     return reasons
@@ -58,6 +63,7 @@ class TradabilityService:
         data = DataService(self.cfg).status()
         meta = data.get("meta") or {}
         production = self.cfg.eval.get("production") or {}
+        release = _release_contract(self.cfg)
         reasons: list[str] = []
         universe = str((meta.get("members_provider") or {}).get("provider") or "").lower()
         circ_mv = str((meta.get("quality") or {}).get("circ_mv_source") or meta.get("circ_mv_source") or "").lower()
@@ -67,7 +73,7 @@ class TradabilityService:
         allowed = {str(x).lower() for x in production.get("allowed_circ_mv_sources", [])}
         if allowed and circ_mv not in allowed:
             reasons.append("circ_mv_not_vendor")
-        reasons.extend(_execution_contract_reasons(meta, production))
+        reasons.extend(_execution_contract_reasons(meta, release))
         reasons.append("missing_order_level_execution_simulator")
         report = {
             "schema_version": 1,
@@ -198,7 +204,7 @@ class ReleaseService:
         data_status = DataService(self.cfg).status()
         data_version = data_status.get("data_version")
         reasons: list[str] = _execution_contract_reasons(
-            (data_status.get("meta") or {}), self.cfg.eval.get("production") or {}
+            (data_status.get("meta") or {}), _release_contract(self.cfg)
         )
         if latest_report is None:
             reasons.append("missing_production_report")

@@ -1,7 +1,9 @@
 import pytest
 
 from qfactor.agent.experiments import (
+    candidate_contract_readiness,
     discovery_contract_readiness,
+    require_candidate_contract,
     require_discovery_contract,
 )
 
@@ -25,7 +27,7 @@ class _DataService:
         self.cfg = cfg
 
     def status(self):
-        return {"meta": self.cfg._meta}
+        return {"has_bars": True, "data_version": "data-v1", "meta": self.cfg._meta}
 
 
 def _partitions():
@@ -39,7 +41,7 @@ def _partitions():
     }
 
 
-def test_discovery_requires_pit_vendor_cap_and_frozen_windows(monkeypatch):
+def test_candidate_requires_pit_vendor_cap_and_frozen_windows(monkeypatch):
     import qfactor.agent.experiments as experiments
 
     monkeypatch.setattr(experiments, "DataService", _DataService)
@@ -53,16 +55,16 @@ def test_discovery_requires_pit_vendor_cap_and_frozen_windows(monkeypatch):
         },
         _partitions(),
     )
-    out = require_discovery_contract(cfg)
+    out = require_candidate_contract(cfg)
     assert out["state"] == "configured"
     assert out["sealed_oos"]["state"] == "configured"
 
     cfg._meta["universe_mode"] = "snapshot"
     with pytest.raises(RuntimeError, match="universe_not_pit"):
-        require_discovery_contract(cfg)
+        require_candidate_contract(cfg)
 
 
-def test_discovery_accepts_archive_vendor_cap_without_tushare(monkeypatch):
+def test_candidate_accepts_archive_vendor_cap_without_tushare(monkeypatch):
     import qfactor.agent.experiments as experiments
 
     monkeypatch.setattr(experiments, "DataService", _DataService)
@@ -82,7 +84,7 @@ def test_discovery_accepts_archive_vendor_cap_without_tushare(monkeypatch):
         },
         _partitions(),
     )
-    out = require_discovery_contract(cfg)
+    out = require_candidate_contract(cfg)
     assert out["state"] == "configured"
 
 
@@ -101,10 +103,22 @@ def test_discovery_readiness_returns_structured_blockers(monkeypatch):
     out = discovery_contract_readiness(cfg)
     assert out["state"] == "blocked"
     assert out["universe_mode"] == "snapshot"
-    assert out["coverage"]["daily_basic_coverage"] == 0.0
-    assert out["issues"] == [
+    assert out["issues"] == ["discovery_partitions_unconfigured"]
+
+    candidate = candidate_contract_readiness(cfg)
+    assert candidate["coverage"]["daily_basic_coverage"] == 0.0
+    assert candidate["issues"] == [
         "universe_not_pit",
         "circ_mv_not_verified_provider",
         "daily_basic_coverage_below_contract",
-        "discovery_partitions_unconfigured",
+        "selection_partitions_unconfigured",
     ]
+
+
+def test_research_does_not_require_execution_or_risk_data(monkeypatch):
+    import qfactor.agent.experiments as experiments
+
+    monkeypatch.setattr(experiments, "DataService", _DataService)
+    cfg = _Cfg({"start": "20190101", "end": "20251231"}, _partitions())
+    out = require_discovery_contract(cfg)
+    assert out["state"] == "configured"

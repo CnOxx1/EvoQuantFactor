@@ -38,7 +38,7 @@ def test_promote_screened_skips_when_data_contract_is_blocked(monkeypatch):
     def _blocked(_cfg):
         raise RuntimeError("universe_not_pit")
 
-    monkeypatch.setattr("qfactor.factor.ops.require_discovery_contract", _blocked)
+    monkeypatch.setattr("qfactor.factor.ops.require_candidate_contract", _blocked)
     monkeypatch.setattr(
         "qfactor.factor.ops.EvalService",
         lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("must not evaluate")),

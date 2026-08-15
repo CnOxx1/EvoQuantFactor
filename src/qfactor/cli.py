@@ -277,7 +277,7 @@ def export_trading_releases(
 def library_export_multifactor(
     output: Optional[str] = typer.Option(None, help="output JSON path; defaults to factor_lib"),
 ):
-    """Export only data-version-pinned, production-passing strategy inputs."""
+    """Export statistical candidates for non-trading multi-factor research."""
     inventory = LibraryOps().export_multifactor_inventory(output=output)
     print(
         {
@@ -287,6 +287,14 @@ def library_export_multifactor(
             "n_excluded": inventory["n_excluded"],
         }
     )
+
+
+@app.command("library-export-candidates")
+def library_export_candidates(
+    output: Optional[str] = typer.Option(None, help="output JSON path; defaults to factor_lib"),
+):
+    """Alias for the explicit non-tradable candidate inventory."""
+    library_export_multifactor(output=output)
 
 
 @app.command("library-reeval-screened")
@@ -342,10 +350,10 @@ def data_status():
 
 @app.command("data-contract-readiness")
 def data_contract_readiness():
-    """Show concise PIT/time blockers without starting discovery."""
-    from qfactor.agent.experiments import discovery_contract_readiness
+    """Show separate research, candidate, and active-release blockers."""
+    from qfactor.agent.experiments import factor_contract_readiness
 
-    print(discovery_contract_readiness())
+    print(factor_contract_readiness())
 
 
 @app.command("db-init")

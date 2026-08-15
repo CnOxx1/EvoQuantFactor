@@ -207,20 +207,56 @@ def build_date_partitions(cfg: ProjectConfig | None = None) -> dict[str, Any]:
 def discovery_contract_readiness(
     cfg: ProjectConfig | None = None,
 ) -> dict[str, Any]:
-    """Return the structured data/time readiness behind the discovery gate."""
+    """Return the research-only readiness behind the discovery gate."""
+    cfg = cfg or get_project_config()
+    status = DataService(cfg).status()
+    meta = status.get("meta") or {}
+    partitions = build_date_partitions(cfg)
+    issues: list[str] = []
+    research_data = cfg.eval.get("research_data") or {}
+    if research_data.get("require_bars", True) and not bool(status.get("has_bars")):
+        issues.append("research_bars_missing")
+    if research_data.get("require_discovery_partition", True) and partitions["state"] != "configured":
+        issues.append("discovery_partitions_unconfigured")
+    return {
+        "contract": "research_data_v1",
+        "state": "passed" if not issues else "blocked",
+        "data_version": status.get("data_version"),
+        "issues": issues,
+        "universe_mode": _universe_mode(meta),
+        "circ_mv_source": _circ_mv_source(meta),
+        "partitions": partitions,
+    }
+
+
+def _universe_mode(meta: dict[str, Any]) -> str:
+    limitations = " ".join(str(x) for x in (meta.get("limitations") or [])).lower()
+    universe_mode = str(meta.get("universe_mode") or "").lower()
+    if not universe_mode and "snapshot" in limitations:
+        universe_mode = "snapshot"
+    return universe_mode or "unknown"
+
+
+def _circ_mv_source(meta: dict[str, Any]) -> str:
+    limitations = " ".join(str(x) for x in (meta.get("limitations") or [])).lower()
+    circ_mv_source = str(meta.get("circ_mv_source") or "").lower()
+    if not circ_mv_source and "circ_mv estimated" in limitations:
+        circ_mv_source = "estimated"
+    return circ_mv_source or "none"
+
+
+def candidate_contract_readiness(
+    cfg: ProjectConfig | None = None,
+) -> dict[str, Any]:
+    """Return PIT/neutralization/time evidence required for `candidate`."""
     cfg = cfg or get_project_config()
     status = DataService(cfg).status()
     meta = status.get("meta") or {}
     production = cfg.eval.get("production") or {}
     partitions = build_date_partitions(cfg)
+    universe_mode = _universe_mode(meta)
+    circ_mv_source = _circ_mv_source(meta)
     issues: list[str] = []
-    limitations = " ".join(str(x) for x in (meta.get("limitations") or [])).lower()
-    universe_mode = str(meta.get("universe_mode") or "").lower()
-    if not universe_mode and "snapshot" in limitations:
-        universe_mode = "snapshot"
-    circ_mv_source = str(meta.get("circ_mv_source") or "").lower()
-    if not circ_mv_source and "circ_mv estimated" in limitations:
-        circ_mv_source = "estimated"
     if universe_mode not in {
         str(x).lower() for x in production.get("allowed_universe_modes", ["pit"])
     }:
@@ -230,37 +266,69 @@ def discovery_contract_readiness(
         issues.append("circ_mv_not_verified_provider")
     if float(meta.get("daily_basic_coverage") or 0.0) < float(production.get("min_daily_basic_coverage", 0.0)):
         issues.append("daily_basic_coverage_below_contract")
-    if production.get("require_execution_data", False):
-        requirements = {
-            "security_status_coverage": "min_security_status_coverage",
-            "limit_price_coverage": "min_limit_price_coverage",
-            "adv_20d_coverage": "min_adv_20d_coverage",
-            "corporate_action_coverage": "min_corporate_action_coverage",
-            "industry_pit_coverage": "min_industry_pit_coverage",
-            "risk_exposures_coverage": "min_risk_exposures_coverage",
-        }
-        for metric, threshold in requirements.items():
-            if float(meta.get(metric) or 0.0) < float(production.get(threshold, 1.0)):
-                issues.append(f"{metric}_below_contract")
-    if partitions["state"] != "configured":
-        issues.append("discovery_partitions_unconfigured")
-    coverage_keys = (
-        "daily_basic_coverage",
-        "security_status_coverage",
-        "limit_price_coverage",
-        "adv_20d_coverage",
-        "corporate_action_coverage",
-        "industry_pit_coverage",
-        "risk_exposures_coverage",
-    )
+    if production.get("require_industry_pit", False) and float(
+        meta.get("industry_pit_coverage") or 0.0
+    ) < float(production.get("min_industry_pit_coverage", 1.0)):
+        issues.append("industry_pit_coverage_below_contract")
+    windows = partitions.get("windows") or {}
+    if partitions["state"] != "configured" or not all(
+        windows.get(key)
+        for key in ("selection_start", "selection_end")
+    ):
+        issues.append("selection_partitions_unconfigured")
     return {
+        "contract": "candidate_data_v1",
         "state": "passed" if not issues else "blocked",
         "data_version": status.get("data_version"),
         "issues": issues,
-        "universe_mode": universe_mode or "unknown",
-        "circ_mv_source": circ_mv_source or "none",
-        "coverage": {key: float(meta.get(key) or 0.0) for key in coverage_keys},
+        "universe_mode": universe_mode,
+        "circ_mv_source": circ_mv_source,
+        "coverage": {
+            key: float(meta.get(key) or 0.0)
+            for key in ("daily_basic_coverage", "industry_pit_coverage")
+        },
         "partitions": partitions,
+    }
+
+
+def release_contract_readiness(
+    cfg: ProjectConfig | None = None,
+) -> dict[str, Any]:
+    """Return execution/risk evidence required only for active release."""
+    cfg = cfg or get_project_config()
+    status = DataService(cfg).status()
+    meta = status.get("meta") or {}
+    release = cfg.eval.get("release") or {}
+    requirements = {
+        "security_status_coverage": "min_security_status_coverage",
+        "limit_price_coverage": "min_limit_price_coverage",
+        "adv_20d_coverage": "min_adv_20d_coverage",
+        "corporate_action_coverage": "min_corporate_action_coverage",
+        "industry_pit_coverage": "min_industry_pit_coverage",
+        "risk_exposures_coverage": "min_risk_exposures_coverage",
+    }
+    issues = [
+        f"{metric}_below_contract"
+        for metric, threshold in requirements.items()
+        if float(meta.get(metric) or 0.0) < float(release.get(threshold, 1.0))
+    ]
+    return {
+        "contract": "active_release_data_v1",
+        "state": "passed" if not issues else "blocked",
+        "data_version": status.get("data_version"),
+        "issues": issues,
+        "coverage": {key: float(meta.get(key) or 0.0) for key in requirements},
+    }
+
+
+def factor_contract_readiness(
+    cfg: ProjectConfig | None = None,
+) -> dict[str, Any]:
+    """Summarize all three independent readiness layers."""
+    return {
+        "research": discovery_contract_readiness(cfg),
+        "candidate": candidate_contract_readiness(cfg),
+        "release": release_contract_readiness(cfg),
     }
 
 
@@ -271,5 +339,16 @@ def require_discovery_contract(cfg: ProjectConfig | None = None) -> dict[str, An
     if issues:
         raise RuntimeError(
             "LLM discovery is blocked until the data/time contract passes: " + ", ".join(issues)
+        )
+    return readiness["partitions"]
+
+
+def require_candidate_contract(cfg: ProjectConfig | None = None) -> dict[str, Any]:
+    """Fail closed before a screened factor can become candidate."""
+    readiness = candidate_contract_readiness(cfg)
+    if readiness["issues"]:
+        raise RuntimeError(
+            "Candidate promotion is blocked until the PIT/selection contract passes: "
+            + ", ".join(readiness["issues"])
         )
     return readiness["partitions"]

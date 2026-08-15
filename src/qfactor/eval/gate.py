@@ -118,6 +118,16 @@ def apply_gate(metrics: dict[str, Any], thresholds: dict[str, Any], mode: str = 
             thresholds.get("min_daily_basic_coverage", 0.0)
         )
         checks["vendor_circ_mv"] = source_ok and coverage_ok
+    if thresholds.get("require_industry_pit", False):
+        checks["industry_pit"] = float(metrics.get("industry_pit_coverage", 0.0) or 0.0) >= float(
+            thresholds.get("min_industry_pit_coverage", 1.0)
+        )
+    if thresholds.get("require_selection_partition", False):
+        checks["selection_partition"] = (
+            str(metrics.get("eval_split") or "") == "selection"
+            and bool(metrics.get("interval_start"))
+            and bool(metrics.get("interval_end"))
+        )
     if thresholds.get("require_execution_data", False):
         execution_thresholds = {
             "security_status": ("security_status_coverage", "min_security_status_coverage"),

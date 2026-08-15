@@ -17,7 +17,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from qfactor.agent.experiments import require_discovery_contract
+from qfactor.agent.experiments import (
+    candidate_contract_readiness,
+    discovery_contract_readiness,
+)
 from qfactor.agent.loop import FactorLoop
 from qfactor.data.dataset import DataService
 from qfactor.db.repo import Database
@@ -112,26 +115,36 @@ class FactoryRuntime:
         }
 
     def _discovery_contract(self) -> dict[str, Any]:
-        try:
-            partitions = require_discovery_contract(self.cfg)
-            return {"state": "passed", "partitions": partitions}
-        except Exception as exc:
-            return {"state": "blocked", "reason": str(exc)}
+        readiness = discovery_contract_readiness(self.cfg)
+        return {
+            **readiness,
+            "reason": ", ".join(readiness.get("issues") or []),
+        }
+
+    def _candidate_contract(self) -> dict[str, Any]:
+        readiness = candidate_contract_readiness(self.cfg)
+        return {
+            **readiness,
+            "reason": ", ".join(readiness.get("issues") or []),
+        }
 
     def run_cycle(self, cycle: int) -> dict[str, Any]:
         """Run exactly one auditable lifecycle pass; exceptions are captured."""
         started = utc_now()
         data_status = self.data.status()
         contract = self._discovery_contract()
+        candidate_contract = self._candidate_contract()
         result: dict[str, Any] = {
             "schema_version": STATUS_VERSION,
             "cycle": int(cycle),
             "started_at": started,
             "data_version": data_status.get("data_version"),
             "data_contract": contract,
+            "candidate_contract": candidate_contract,
             "counts_before": self.lifecycle_counts(),
             "actions": {},
             "errors": [],
+            "warnings": [],
         }
 
         # Discovery may execute only when complete PIT/time evidence is present,
@@ -163,10 +176,10 @@ class FactoryRuntime:
         except Exception as exc:
             result["actions"]["refresh_candidates"] = {"state": "error", "error": str(exc)}
             result["errors"].append({"stage": "refresh_candidates", "error": str(exc)})
-        if contract["state"] != "passed":
+        if candidate_contract["state"] != "passed":
             result["actions"]["recheck_screened"] = {
                 "state": "blocked",
-                "reason": contract.get("reason"),
+                "reason": candidate_contract.get("reason"),
             }
         elif cycle % self.screened_every == 0:
             try:
@@ -183,9 +196,27 @@ class FactoryRuntime:
         except Exception as exc:
             result["actions"]["inventories"] = {"state": "error", "error": str(exc)}
             result["errors"].append({"stage": "inventories", "error": str(exc)})
+        try:
+            reconciliation = self.ops.reconcile_state()
+            result["actions"]["library_reconciliation"] = reconciliation
+            if reconciliation.get("state") != "consistent":
+                result["warnings"].append(
+                    {
+                        "stage": "library_reconciliation",
+                        "n_drift": reconciliation.get("n_drift"),
+                    }
+                )
+        except Exception as exc:
+            result["actions"]["library_reconciliation"] = {
+                "state": "error",
+                "error": str(exc),
+            }
+            result["warnings"].append(
+                {"stage": "library_reconciliation", "error": str(exc)}
+            )
         result["counts_after"] = self.lifecycle_counts()
         result["finished_at"] = utc_now()
-        result["state"] = "degraded" if result["errors"] else "ok"
+        result["state"] = "degraded" if result["errors"] or result["warnings"] else "ok"
         _write_json_atomic(self.status_path, result)
         self._append_event(result)
         return result

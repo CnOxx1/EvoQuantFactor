@@ -50,6 +50,19 @@ def test_normalize_vendor_codes_and_dates():
     assert normalize_trade_date(20240102) == "20240102"
 
 
+def test_archive_validation_rejects_unparseable_dates():
+    raw = pd.DataFrame(
+        {
+            "trade_date": ["not-a-date", "20240102"],
+            "ts_code": ["000001.SZ", "600000.SH"],
+            "weight": [0.1, 0.2],
+        }
+    )
+    report = validate_archive_frame(normalize_panel(raw), "universe")
+    assert report["ok"] is False
+    assert "unmappable_keys" in report["issues"]
+
+
 def test_rename_wind_choice_columns_without_inventing_total_mv():
     raw = pd.DataFrame(
         {

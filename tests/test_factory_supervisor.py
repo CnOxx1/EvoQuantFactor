@@ -23,6 +23,9 @@ class _Ops:
     def multifactor_inventory(self):
         return {"n_eligible": 0}
 
+    def reconcile_state(self):
+        return {"state": "consistent", "n_drift": 0}
+
 
 class _Release:
     def export_active(self):
@@ -42,6 +45,7 @@ def test_runtime_cycle_is_fail_closed_and_auditable(tmp_path: Path):
     runtime.screened_every = 10
     runtime.llm_ratio = 0.0
     runtime._discovery_contract = lambda: {"state": "blocked", "reason": "universe_not_pit"}
+    runtime._candidate_contract = lambda: {"state": "blocked", "reason": "universe_not_pit"}
     snapshots = iter(
         [
             {"total": 3, "screened": 3, "candidate": 0, "active_release": 0},
@@ -74,6 +78,7 @@ def test_runtime_does_not_recheck_screened_when_contract_is_blocked(tmp_path: Pa
     runtime.screened_every = 1
     runtime.llm_ratio = 0.0
     runtime._discovery_contract = lambda: {"state": "blocked", "reason": "universe_not_pit"}
+    runtime._candidate_contract = lambda: {"state": "blocked", "reason": "universe_not_pit"}
     snapshots = iter(
         [
             {"total": 3, "screened": 3, "candidate": 0, "active_release": 0},

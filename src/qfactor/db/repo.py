@@ -471,6 +471,38 @@ class Database:
             ).scalars().all()
         return [json.loads(r.event_json) for r in rows]
 
+    def count_generated_trials_scope(
+        self,
+        *,
+        data_version: str | None,
+        discovery_start: str | None,
+        discovery_end: str | None,
+        mechanism: str | None,
+    ) -> int:
+        """Count comparable generated trials across experiments, not one run."""
+        with self.Session() as s:
+            experiments = s.execute(select(ResearchExperiment)).scalars().all()
+        matched: list[str] = []
+        for row in experiments:
+            manifest = json.loads(row.manifest_json)
+            windows = ((manifest.get("date_partitions") or {}).get("windows") or {})
+            if data_version and manifest.get("data_version") != data_version:
+                continue
+            if discovery_start and str(windows.get("discovery_start") or "") != discovery_start:
+                continue
+            if discovery_end and str(windows.get("discovery_end") or "") != discovery_end:
+                continue
+            matched.append(str(row.experiment_id))
+        total = 0
+        for experiment_id in matched:
+            for event in self.list_experiment_trials(experiment_id):
+                if event.get("stage") != "generated":
+                    continue
+                if mechanism and str(event.get("mechanism") or "") != mechanism:
+                    continue
+                total += 1
+        return total
+
     def save_acceptance(self, acceptance_id: str, payload: dict[str, Any]) -> None:
         with self.Session() as s:
             s.merge(

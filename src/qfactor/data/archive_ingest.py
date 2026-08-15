@@ -134,13 +134,15 @@ def validate_archive_frame(df: pd.DataFrame, role: str) -> dict[str, Any]:
     n_keys = 0
     n_dup = 0
     if {"trade_date", "ts_code"}.issubset(df.columns):
-        keys = df[["trade_date", "ts_code"]].dropna()
+        raw_keys = df[["trade_date", "ts_code"]]
+        invalid = raw_keys.isna().any(axis=1) | raw_keys["ts_code"].astype(str).str.strip().eq("")
+        if bool(invalid.any()):
+            issues.append("unmappable_keys")
+        keys = raw_keys.loc[~invalid]
         n_keys = int(len(keys.drop_duplicates()))
         n_dup = int(len(keys) - n_keys)
         if n_dup:
             issues.append("duplicate_keys")
-        if keys["trade_date"].isna().any() or (keys["ts_code"].astype(str) == "").any():
-            issues.append("unmappable_keys")
     if spec.get("require_extra"):
         extra = [c for c in df.columns if c not in {"trade_date", "ts_code"}]
         if not extra:

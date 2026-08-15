@@ -39,6 +39,12 @@ research:
   require_cost_ls_positive: false
   require_years_same_sign: false
 
+# Data needed to create research hypotheses. Snapshot/freeze-start universes are
+# disclosed and can produce `screened`, but never satisfy the candidate contract.
+research_data:
+  require_bars: true
+  require_discovery_partition: true
+
 production:
   min_rank_ic_mean: 0.02
   min_abs_rank_ic_mean: 0.02
@@ -70,8 +76,17 @@ production:
   require_vendor_circ_mv: true
   allowed_circ_mv_sources: [tushare_daily_basic, archive_daily_basic, rqdata_daily_basic]
   min_daily_basic_coverage: 0.80
-  # Execution and risk evidence must be point-in-time and near-complete. Unknown
-  # is not treated as tradable; the release service applies these fail-closed.
+  require_industry_pit: true
+  min_industry_pit_coverage: 0.95
+  require_selection_partition: true
+  require_selection_bias_audit: true
+  # H-day IC observations overlap. Require a material count of independent
+  # observations before a single factor becomes strategy input.
+  min_independent_observations: 60
+
+# Binding only for tradability and active release. Moving these checks out of
+# candidate does not weaken the final trading contract.
+release:
   require_execution_data: true
   min_security_status_coverage: 0.98
   min_limit_price_coverage: 0.98
@@ -79,9 +94,6 @@ production:
   min_corporate_action_coverage: 0.98
   min_industry_pit_coverage: 0.95
   min_risk_exposures_coverage: 0.95
-  # H-day IC observations overlap. Require a material count of independent
-  # observations before a single factor becomes strategy input.
-  min_independent_observations: 60
 
 eval:
   forward_horizon: 5

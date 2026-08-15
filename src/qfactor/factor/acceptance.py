@@ -125,12 +125,28 @@ class AcceptanceService:
         )
 
         experiment_ref = frozen.get("experiment_id")
-        trial_events = self.db.list_experiment_trials(str(experiment_ref)) if experiment_ref else []
-        generated_trials = sum(1 for event in trial_events if event.get("stage") == "generated")
+        generated_trials = self.db.count_generated_trials_scope(
+            data_version=data_version,
+            discovery_start=discovery_start,
+            discovery_end=discovery_end,
+            mechanism=str(factor.spec.mechanism or factor.spec.category or "") or None,
+        )
+        if generated_trials <= 0 and experiment_ref:
+            trial_events = self.db.list_experiment_trials(str(experiment_ref))
+            generated_trials = sum(
+                1 for event in trial_events if event.get("stage") == "generated"
+            )
         if generated_trials > 0:
             selection_audit = familywise_ic_audit(
                 report.get("metrics") or {}, n_trials=generated_trials
             )
+            selection_audit["scope"] = {
+                "data_version": data_version,
+                "discovery_start": discovery_start,
+                "discovery_end": discovery_end,
+                "mechanism": factor.spec.mechanism or factor.spec.category,
+                "generated_trials": generated_trials,
+            }
         else:
             selection_audit = {
                 "contract_version": "familywise_ic_audit_v1",

@@ -90,6 +90,9 @@ def _production_ok_metrics(**overrides):
         "industry_pit_coverage": 1.0,
         "risk_exposures_coverage": 1.0,
         "n_independent": 80,
+        "eval_split": "selection",
+        "interval_start": "20230101",
+        "interval_end": "20241231",
     }
     metrics.update(overrides)
     return metrics

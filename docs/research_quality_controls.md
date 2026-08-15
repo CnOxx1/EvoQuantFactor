@@ -30,6 +30,7 @@ qfactor library-reconcile
 qfactor data-contract-readiness
 ```
 
-命令汇总 PIT 宇宙、流通市值来源、执行/风险覆盖率和日期分区缺口。合同未通过时，
-discovery 与 screened→candidate 扫描继续 fail-closed。数据补齐流程见
+命令分别汇总 research、candidate 和 active-release 三层缺口。research 只要求
+行情和 discovery 分区；candidate 要求 PIT/中性化/selection；release 要求完整
+执行与风险证据。任一层只阻断自己的下一次状态转换。数据补齐流程见
 `docs/production_data_contract.md`。

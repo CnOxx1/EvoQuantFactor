@@ -135,7 +135,7 @@ def overlay_execution_evidence(
     for col in ("is_st", "is_suspended"):
         if col in out.columns:
             out[col] = out[col].map(
-                {True: True, False: False, 1: True, 0: False, "1": True, "0": False,
+                {True: True, False: False, "1": True, "0": False,
                  "true": True, "false": False, "True": True, "False": False}
             ).astype("boolean")
     info = {
@@ -490,11 +490,19 @@ class DataService:
                 corporate_actions = actions_provider.fetch_corporate_actions(start, end)
             except Exception as e:
                 print(f"[sync] corporate-actions provider failed: {e}", flush=True)
+        embedded_status_provider = None
+        if status_provider is None and {"is_st", "is_suspended"}.issubset(panel.columns):
+            if panel[["is_st", "is_suspended"]].notna().any().any():
+                embedded_status_provider = f"{adapter.name}_daily_bars"
         panel, execution_info = overlay_execution_evidence(
             panel,
             security_status,
             corporate_actions,
-            status_provider=status_provider.name if status_provider is not None else None,
+            status_provider=(
+                status_provider.name
+                if status_provider is not None
+                else embedded_status_provider
+            ),
             actions_provider=actions_provider.name if actions_provider is not None else None,
         )
 
