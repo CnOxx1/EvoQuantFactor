@@ -4,10 +4,17 @@
 set -u -o pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-PYTHON_BIN="${PYTHON_BIN:-python3}"
+if [ -z "${PYTHON_BIN:-}" ]; then
+  if [ -x "$ROOT/.venv/bin/python" ]; then
+    PYTHON_BIN="$ROOT/.venv/bin/python"
+  else
+    PYTHON_BIN="python3"
+  fi
+fi
 INTERVAL_SECONDS="${FACTOR_INTERVAL_SECONDS:-300}"
 DISCOVERY_EVERY="${FACTOR_DISCOVERY_EVERY:-12}"
 SCREENED_EVERY="${FACTOR_SCREENED_EVERY:-72}"
+START_CYCLE="${FACTOR_START_CYCLE:-12}"
 LLM_RATIO="${FACTOR_LLM_RATIO:-0.25}"
 # A candidate evaluation may legitimately take a few minutes. Treat no heartbeat
 # beyond two cycles plus a five-minute allowance as stalled rather than looping.
@@ -49,10 +56,11 @@ run_worker() {
     --interval-seconds "$INTERVAL_SECONDS" \
     --discovery-every "$DISCOVERY_EVERY" \
     --screened-every "$SCREENED_EVERY" \
+    --start-cycle "$START_CYCLE" \
     --llm-ratio "$LLM_RATIO" >> "$MONITOR_LOG" 2>&1 &
   local worker=$!
   printf '%s\n' "$worker" > "$WORKER_PID_FILE"
-  log "worker_started pid=$worker interval=$INTERVAL_SECONDS discovery_every=$DISCOVERY_EVERY screened_every=$SCREENED_EVERY llm_ratio=$LLM_RATIO" >&2
+  log "worker_started pid=$worker interval=$INTERVAL_SECONDS discovery_every=$DISCOVERY_EVERY screened_every=$SCREENED_EVERY start_cycle=$START_CYCLE llm_ratio=$LLM_RATIO" >&2
   echo "$worker"
 }
 
