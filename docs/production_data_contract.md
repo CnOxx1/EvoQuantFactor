@@ -76,7 +76,7 @@
 
 ## 4. 导入与验收顺序
 
-首先将经过版本冻结的归档文件放入上述路径，并保留原始供应商批次号、生成时间、字段字典和校验哈希。Wind / Choice / RQData / 中证导出可用 `qfactor ingest-archive --role <role> --source <file>` 归一到合同列（`trade_date` + `ts_code`），再用 `qfactor validate-archive --strict` 检查六类文件是否齐全。入库命令不从行情推断 ST、停牌、涨跌停、行业或流通市值。随后执行 `qfactor sync-data`（行情源可以是 BaoStock / AkShare；PIT 证据走 archive），检查生成的 `data/processed/data_version.json` 与 `data/quality_reports/`。覆盖率、来源和限制会写入不可变数据版本元数据。无 Tushare token 时，`providers.*.auto` 会在对应归档文件存在时解析为 `archive`。
+中证官方最新成分和调样附件可用 `qfactor fetch-archive-universe` 下载；缺失的半年定期调样工作簿会停止回溯，不会把旧调入调出接到后来的快照上。Wind / Choice / RQData 导出以及补齐的中证历史文件用 `qfactor ingest-archive --role <role> --source <file>` 归一到合同列（`trade_date` + `ts_code`），再用 `qfactor validate-archive --strict` 检查六类文件是否齐全。入库命令不从行情推断 ST、停牌、涨跌停、行业或流通市值。随后执行 `qfactor sync-data`（行情源可以是 BaoStock / AkShare；PIT 证据走 archive），检查生成的 `data/processed/data_version.json` 与 `data/quality_reports/`。覆盖率、来源和限制会写入不可变数据版本元数据。无 Tushare token 时，`providers.*.auto` 会在对应归档文件存在时解析为 `archive`。
 
 接着运行研究发现或评估流程。系统会在 LLM 调用之前验证数据与三段日期分区合同；在 production gate、密封验收和 tradability simulation 再次验证。最后仅应通过 `qfactor publish-release` 形成版本化 release，并通过 `qfactor export-trading-releases` 将当前 `active` 因子提供给交易模块。
 

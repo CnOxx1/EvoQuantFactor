@@ -55,6 +55,14 @@ def ingest_archive(
     print(ingest_archive_role(role, Path(source), dest=Path(dest) if dest else None))
 
 
+@app.command("fetch-archive-universe")
+def fetch_archive_universe():
+    """Download official CSIndex CSI100 files and write a gap-safe universe archive."""
+    from qfactor.data.csindex_history import fetch_official_history
+
+    print(fetch_official_history())
+
+
 @app.command("validate-archive")
 def validate_archive(strict: bool = typer.Option(False, help="fail when any role file is missing")):
     """Check registered archive parquet files against the PIT column contract."""
