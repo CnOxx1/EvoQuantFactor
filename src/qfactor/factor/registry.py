@@ -36,9 +36,18 @@ class FactorRegistry:
     def factor_dir(self, name: str) -> Path:
         return self.root / "factors" / name
 
-    def list_factors(self) -> list[dict[str, Any]]:
-        from qfactor.factor.cohort import classify_research_cohort
+    def _live_data_version(self) -> str | None:
+        try:
+            from qfactor.data.dataset import DataService
 
+            return DataService(self.cfg).data_version()
+        except Exception:
+            return None
+
+    def list_factors(self) -> list[dict[str, Any]]:
+        from qfactor.factor.cohort import apply_parent_eligibility
+
+        current_dv = self._live_data_version()
         rows: list[dict[str, Any]] = []
         for raw in self._read_catalog().get("factors", []):
             row = dict(raw)
@@ -51,7 +60,7 @@ class FactorRegistry:
                         row.setdefault("expression", spec.expression)
                 except Exception:
                     row.setdefault("params", params)
-            row.update(classify_research_cohort(row))
+            row.update(apply_parent_eligibility(row, current_dv))
             rows.append(row)
         return rows
 
@@ -192,8 +201,9 @@ class FactorRegistry:
             pass
 
     def existing_summaries(self) -> list[dict[str, Any]]:
-        from qfactor.factor.cohort import classify_research_cohort
+        from qfactor.factor.cohort import apply_parent_eligibility
 
+        current_dv = self._live_data_version()
         rows: list[dict[str, Any]] = []
         for f in self.list_factors():
             row: dict[str, Any] = {
@@ -202,6 +212,7 @@ class FactorRegistry:
                 "status": f.get("status"),
                 "summary": f.get("summary", {}),
                 "source": f.get("source"),
+                "params": f.get("params") if isinstance(f.get("params"), dict) else {},
             }
             try:
                 spec = self.load_spec(str(f["name"]))
@@ -211,7 +222,7 @@ class FactorRegistry:
                 row["params"] = spec.params
             except Exception:
                 pass
-            row.update(classify_research_cohort(row))
+            row.update(apply_parent_eligibility(row, current_dv))
             rows.append(row)
         return rows
 
