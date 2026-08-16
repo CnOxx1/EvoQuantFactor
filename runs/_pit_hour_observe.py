@@ -2,6 +2,7 @@
 
 Prepares the discovery window only (20160102-20260630). Does not loosen
 gates and does not invent selection dates. Candidate must stay blocked.
+Theme is chosen by the factory (keep coverage + hard rotate), not forced.
 
 Usage:
   .venv/bin/python runs/_pit_hour_observe.py
@@ -18,24 +19,15 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from qfactor.agent.coldstart import is_cold_start, parent_count
 from qfactor.agent.experiments import factor_contract_readiness
 from qfactor.agent.loop import FactorLoop
+from qfactor.data.dataset import DataService
 from qfactor.data.prepare import DataPrepareService
-from qfactor.eval.service import EvalService
 from qfactor.factor.cohort import classify_research_cohort
 from qfactor.factor.registry import FactorRegistry
 from qfactor.settings import get_project_config
 
-THEMES = [
-    "amplitude",
-    "liquidity",
-    "momentum",
-    "overnight",
-    "reversal",
-    "shadow",
-    "volatility",
-    "volume_price",
-]
 DISCOVERY_START = "20160102"
 DISCOVERY_END = "20260630"
 
@@ -205,30 +197,39 @@ def main() -> int:
     n_trials = 0
     cycle = 0
 
+    data_version = ""
+    try:
+        data_version = str(DataService(cfg).data_version() or "")
+    except Exception:
+        data_version = ""
+
     while time.time() < deadline:
         cycle += 1
-        theme = THEMES[(cycle - 1) % len(THEMES)]
         remaining = deadline - time.time()
         if remaining < 20:
             _log("time budget exhausted before next cycle", log_path)
             break
         rec: dict[str, Any] = {
             "cycle": cycle,
-            "theme": theme,
             "started_at": utc_now(),
             "remaining_s": remaining,
         }
         try:
+            # Theme is decided inside the factory. Forcing a cycle here would
+            # undo cold-start rotation and keep stacking the first family.
             result = loop.run(
                 rounds=1,
                 batch_size=4,
-                theme=theme,
+                theme=None,
                 gate_name="research",
                 resume=False,
                 clean_experiment=True,
             )
             rec["state"] = "ok"
             rec["loop_status"] = result.get("status")
+            rec["experiment_id"] = result.get("experiment_id")
+            theme = result.get("round_theme_last") or result.get("theme")
+            rec["theme"] = theme
             produced = result.get("produced") or []
             saved_total = result.get("saved_total") or []
             saved_names: list[str] = []
@@ -241,13 +242,20 @@ def main() -> int:
             rec["saved"] = sorted(set(saved_names))
             trials = _collect_trials(result)
             rec["trials"] = trials
-            rec["n_trials"] = len(trials)
-            n_trials += len(trials)
+            generated = int(result.get("trial_count") or 0)
+            rec["n_trials"] = generated or len(trials)
+            n_trials += rec["n_trials"]
             n_saved += len(rec["saved"])
-            themes_used[theme] += 1
+            if theme:
+                themes_used[str(theme)] += 1
             for trial in trials:
                 st = str(trial.get("status") or rec.get("loop_status") or "unknown")
                 reasons[st] += 1
+            live_rows = FactorRegistry().list_factors()
+            rec["parent_count"] = parent_count(live_rows, data_version)
+            rec["cold_start"] = is_cold_start(
+                live_rows, cfg, current_data_version=data_version
+            )
         except Exception as exc:
             rec["state"] = "error"
             rec["error"] = str(exc)
@@ -264,9 +272,12 @@ def main() -> int:
                 {
                     "cycle": cycle,
                     "state": rec.get("state"),
-                    "theme": theme,
+                    "theme": rec.get("theme"),
                     "status": rec.get("loop_status"),
                     "saved": rec.get("saved"),
+                    "parent_count": rec.get("parent_count"),
+                    "cold_start": rec.get("cold_start"),
+                    "n_trials": rec.get("n_trials"),
                     "counts": rec.get("counts"),
                     "elapsed_s": round(float(rec["elapsed_s"]), 1),
                 },
@@ -321,6 +332,8 @@ def main() -> int:
             "n_nonzero": int(sum(1 for v in resids if abs(v) > 1e-12)),
         },
         "candidate_still_zero": int(_counts(rows1).get("candidate") or 0) == 0,
+        "parent_count": parent_count(rows1, data_version),
+        "cold_start": is_cold_start(rows1, cfg, current_data_version=data_version),
         "cycles": cycles,
     }
     _write_json(out_dir / "summary.json", summary)
@@ -338,6 +351,8 @@ def main() -> int:
                 "resid_ic": summary["resid_ic"],
                 "candidate": readiness.get("candidate", {}).get("state"),
                 "candidate_issues": readiness.get("candidate", {}).get("issues"),
+                "parent_count": summary["parent_count"],
+                "cold_start": summary["cold_start"],
             },
             ensure_ascii=False,
         ),
