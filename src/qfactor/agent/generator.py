@@ -692,12 +692,18 @@ class CandidateGenerator:
         self.llm.require_enabled()
         lessons = lessons or []
         if is_cold_start(existing, self.cfg):
-            field_w, _ = field_window_prior(lessons, existing)
-            if field_w:
-                top_field = max(field_w, key=lambda k: field_w[k])
-                mapped = _FIELD_MECH.get(str(top_field))
-                if mapped:
-                    return mapped
+            # Field/window priors still steer compose and mutate. They must not
+            # pick the round theme, or a single passing family (amplitude)
+            # freezes clean-experiment search for the whole night.
+            cs = cold_start_cfg(self.cfg)
+            rotate = bool(cs.get("rotate_themes", True))
+            if not rotate:
+                field_w, _ = field_window_prior(lessons, existing)
+                if field_w:
+                    top_field = max(field_w, key=lambda k: field_w[k])
+                    mapped = _FIELD_MECH.get(str(top_field))
+                    if mapped:
+                        return mapped
             return pick_theme_with_lessons(
                 self.mechanisms,
                 coverage,
@@ -705,7 +711,7 @@ class CandidateGenerator:
                 forced=forced_theme,
                 soft_switch_after=int(self.llm_cfg.get("soft_switch_after", 3)),
                 recent_themes=recent_themes,
-                hard_rotate=False,
+                hard_rotate=rotate and bool(self.llm_cfg.get("hard_rotate", True)),
                 usable_coverage={},
             )
         usable_cov = usable_mechanism_coverage(existing)

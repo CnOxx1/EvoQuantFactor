@@ -682,6 +682,7 @@ def run_production_graph(
     llm_review_ratio: float | None = None,
     llm_spotcheck_every: int | None = None,
     clean_experiment: bool = False,
+    recent_themes: list[str] | None = None,
 ) -> dict[str, Any]:
     if gate_name != "research":
         raise RuntimeError(
@@ -764,7 +765,7 @@ def run_production_graph(
         "banned_skeletons": list(cp.get("banned_skeletons") or []),
         "banned_hashes": list(cp.get("banned_hashes") or []),
         "high_corr_skeletons": list(cp.get("high_corr_skeletons") or []),
-        "recent_themes": list(cp.get("recent_themes") or []),
+        "recent_themes": list(recent_themes or cp.get("recent_themes") or [])[-12:],
         "last_catalog_expand_round": cp.get("last_catalog_expand_round"),
         "produced": [],
         "candidates": [],
@@ -824,6 +825,7 @@ def run_production_graph(
         ),
         "factor": produced[0]["name"] if produced else None,
         "clean_experiment": bool(clean_experiment),
+        "recent_themes": list(final_state.get("recent_themes") or [])[-12:],
     }
     experiment_summary = ctx.experiment.close(
         state="completed",
