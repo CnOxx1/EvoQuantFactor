@@ -3,6 +3,8 @@ import pandas as pd
 from qfactor.data.tushare_adapter import TushareAdapter, fetch_index_weight_pages
 from qfactor.data.vendor_archive_fetch import (
     _calendar_covers_window,
+    _normalize_sw_roster,
+    codes_missing_window_industry,
     expand_industry_to_calendar,
 )
 
@@ -104,6 +106,35 @@ def test_expand_industry_out_date_is_exclusive():
     assert by_date["20240531"] == "银行"
     assert by_date["20240601"] == "非银金融"
     assert by_date["20240603"] == "非银金融"
+
+
+def test_normalize_sw_roster_uses_l1_name_and_open_out_date():
+    raw = pd.DataFrame(
+        {
+            "ts_code": ["000333.SZ"],
+            "l1_name": ["家用电器"],
+            "in_date": ["20130118"],
+            "out_date": [None],
+        }
+    )
+    out = _normalize_sw_roster(raw)
+    assert out.iloc[0]["industry"] == "家用电器"
+    assert out.iloc[0]["out_date"] == "99991231"
+
+
+def test_codes_missing_window_industry_ignores_expired_interval():
+    roster = pd.DataFrame(
+        {
+            "ts_code": ["002352.SZ", "000001.SZ"],
+            "industry": ["机械设备", "银行"],
+            "in_date": ["20100118", "19910403"],
+            "out_date": ["20170228", "99991231"],
+        }
+    )
+    missing = codes_missing_window_industry(
+        roster, ["002352.SZ", "000001.SZ", "000333.SZ"], "20191201", "20251231"
+    )
+    assert missing == ["002352.SZ", "000333.SZ"]
 
 
 def test_calendar_covers_window_rejects_short_research_slice():

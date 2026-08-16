@@ -117,6 +117,45 @@ def fetch_daily_basic_union(
     return pd.concat(frames, ignore_index=True)
 
 
+def _normalize_sw_roster(raw: pd.DataFrame, industry_fallback: str | None = None) -> pd.DataFrame:
+    if raw is None or raw.empty:
+        return pd.DataFrame(columns=["ts_code", "industry", "in_date", "out_date"])
+    df = raw.copy()
+    if "ts_code" not in df.columns and "con_code" in df.columns:
+        df = df.rename(columns={"con_code": "ts_code"})
+    if "industry" not in df.columns:
+        if "l1_name" in df.columns:
+            df["industry"] = df["l1_name"]
+        elif industry_fallback:
+            df["industry"] = industry_fallback
+        else:
+            raise ValueError("SW roster has no industry or l1_name column")
+    keep = df[["ts_code", "industry", "in_date", "out_date"]].copy()
+    keep["ts_code"] = keep["ts_code"].astype(str)
+    keep["in_date"] = keep["in_date"].astype(str).str.replace("-", "", regex=False).str[:8]
+    keep["out_date"] = keep["out_date"].fillna("99991231")
+    keep["out_date"] = keep["out_date"].astype(str).str.replace("-", "", regex=False).str[:8]
+    keep.loc[keep["out_date"].isin({"", "nan", "None", "NaT", "<NA>"}), "out_date"] = "99991231"
+    return keep.drop_duplicates()
+
+
+def codes_missing_window_industry(
+    roster: pd.DataFrame,
+    codes: list[str],
+    start: str,
+    end: str,
+) -> list[str]:
+    """Union names with no SW interval overlapping [start, end]."""
+    have: set[str] = set()
+    if roster is not None and not roster.empty:
+        for rec in roster.itertuples(index=False):
+            in_d = str(rec.in_date)[:8]
+            out_d = str(rec.out_date)[:8]
+            if in_d <= end and out_d > start:
+                have.add(str(rec.ts_code))
+    return [c for c in codes if c not in have]
+
+
 def fetch_sw_industry_roster(
     pro: Any,
     *,
@@ -141,16 +180,32 @@ def fetch_sw_industry_roster(
             frames.append(part)
     if not frames:
         return pd.DataFrame(columns=["ts_code", "industry", "in_date", "out_date"])
-    raw = pd.concat(frames, ignore_index=True)
-    if "ts_code" not in raw.columns and "con_code" in raw.columns:
-        raw = raw.rename(columns={"con_code": "ts_code"})
-    keep = raw[["ts_code", "industry", "in_date", "out_date"]].copy()
-    keep["ts_code"] = keep["ts_code"].astype(str)
-    keep["in_date"] = keep["in_date"].astype(str).str.replace("-", "", regex=False).str[:8]
-    keep["out_date"] = keep["out_date"].fillna("99991231")
-    keep["out_date"] = keep["out_date"].astype(str).str.replace("-", "", regex=False).str[:8]
-    keep.loc[keep["out_date"].isin({"", "nan", "None", "NaT", "<NA>"}), "out_date"] = "99991231"
-    return keep.drop_duplicates()
+    return _normalize_sw_roster(pd.concat(frames, ignore_index=True))
+
+
+def fetch_sw_industry_for_codes(
+    pro: Any,
+    codes: list[str],
+    *,
+    sleep_seconds: float = 0.25,
+) -> pd.DataFrame:
+    """Per-name index_member_all. L1 sweeps on this proxy can drop current members."""
+    frames: list[pd.DataFrame] = []
+    for i, code in enumerate(codes, start=1):
+        _sleep(sleep_seconds)
+        try:
+            df = pro.index_member_all(ts_code=code)
+        except Exception as e:
+            print(f"[vendor-archive] industry {code} failed: {e}", flush=True)
+            continue
+        if df is None or getattr(df, "empty", True):
+            continue
+        frames.append(df)
+        if i % 20 == 0:
+            print(f"[vendor-archive] industry fill {i}/{len(codes)}", flush=True)
+    if not frames:
+        return pd.DataFrame(columns=["ts_code", "industry", "in_date", "out_date"])
+    return _normalize_sw_roster(pd.concat(frames, ignore_index=True))
 
 
 def expand_industry_to_calendar(
@@ -280,8 +335,18 @@ def fetch_and_ingest_vendor_archives(
         }
 
     if "industry" in wanted:
-        print("[vendor-archive] SW2021 industry roster", flush=True)
-        roster = fetch_sw_industry_roster(pro, sleep_seconds=min(sleep_seconds, 0.3))
+        print(f"[vendor-archive] SW2021 industry by ts_code for {len(codes)} names", flush=True)
+        roster = fetch_sw_industry_for_codes(
+            pro, codes, sleep_seconds=min(sleep_seconds, 0.3)
+        )
+        missing = codes_missing_window_industry(roster, codes, start, end)
+        if missing:
+            print(
+                f"[vendor-archive] L1 sweep to fill {len(missing)} names still missing",
+                flush=True,
+            )
+            extra = fetch_sw_industry_roster(pro, sleep_seconds=min(sleep_seconds, 0.3))
+            roster = pd.concat([roster, extra], ignore_index=True).drop_duplicates()
         roster_src = tmp / "sw_industry_roster.csv"
         roster.to_csv(roster_src, index=False)
         dates = _calendar_dates(start, end, cfg)
