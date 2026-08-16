@@ -187,18 +187,31 @@ def expand_industry_to_calendar(
     return pd.concat(rows, ignore_index=True)[["trade_date", "ts_code", "industry"]]
 
 
+def _calendar_covers_window(dates: list[str], start: str, end: str) -> bool:
+    """True when stored open days cover the start and end months.
+
+    Window bounds may fall on weekends; compare YYYYMM so a Sunday
+    `20191201` still matches a calendar that starts `20191202`.
+    """
+    if not dates:
+        return False
+    first, last = min(dates), max(dates)
+    return first[:6] <= start[:6] and last[:6] >= end[:6]
+
+
 def _calendar_dates(start: str, end: str, cfg: ProjectConfig) -> list[str]:
     cal_path = cfg.path("data_processed") / "calendar" / "trade_cal.parquet"
     if cal_path.exists():
         cal = pd.read_parquet(cal_path)
         col = "cal_date" if "cal_date" in cal.columns else "trade_date"
         open_col = "is_open" if "is_open" in cal.columns else None
-        dates = cal[col].astype(str).str.replace("-", "", regex=False).str[:8]
+        raw = cal[col].astype(str).str.replace("-", "", regex=False).str[:8]
         if open_col:
-            dates = dates[cal[open_col].astype(int) == 1]
-        out = [d for d in dates.tolist() if start <= d <= end]
-        if out:
-            return out
+            raw = raw[cal[open_col].astype(int) == 1]
+        stored = [d for d in raw.tolist() if d]
+        # A 2024–2026 research calendar must not silently clip a 2019–2025 pull.
+        if _calendar_covers_window(stored, start, end):
+            return [d for d in stored if start <= d <= end]
     from qfactor.data.baostock_adapter import BaostockAdapter
 
     cal = BaostockAdapter().fetch_trade_calendar(start, end)
@@ -209,6 +222,13 @@ def _calendar_dates(start: str, end: str, cfg: ProjectConfig) -> list[str]:
     )
 
 
+def _load_existing_members(cfg: ProjectConfig) -> pd.DataFrame:
+    path = cfg.root / "data" / "raw" / "providers" / "csi100_members.parquet"
+    if not path.exists():
+        raise RuntimeError("csi100_members.parquet missing; fetch universe first")
+    return pd.read_parquet(path)
+
+
 def fetch_and_ingest_vendor_archives(
     *,
     start: str = "20191201",
@@ -216,57 +236,75 @@ def fetch_and_ingest_vendor_archives(
     token: str | None = None,
     sleep_seconds: float = 0.35,
     cfg: ProjectConfig | None = None,
+    roles: list[str] | None = None,
 ) -> dict[str, Any]:
     cfg = cfg or get_project_config()
+    wanted = {str(r).strip().lower() for r in (roles or ["universe", "daily_basic", "industry"])}
+    unknown = wanted - {"universe", "daily_basic", "industry"}
+    if unknown:
+        raise ValueError(f"unknown vendor archive roles: {sorted(unknown)}")
     pro = connect_pro(token)
-    print(f"[vendor-archive] CSI100 members {start}–{end}", flush=True)
-    members = fetch_csi100_members(pro, start, end, sleep_seconds=sleep_seconds)
-    stats = universe_stats(members)
-    if stats["n_snapshots"] < 2 or stats["n_codes_per_snapshot_mean"] < 80:
-        raise RuntimeError(f"CSI100 member pull is not PIT-complete: {stats}")
     tmp = cfg.root / "data" / "raw" / "providers" / "_tmp"
     tmp.mkdir(parents=True, exist_ok=True)
-    members_src = tmp / "csi100_members.csv"
-    members.to_csv(members_src, index=False)
-    members_report = ingest_archive_role("universe", members_src, cfg=cfg)
+    report: dict[str, Any] = {"start": start, "end": end, "roles": sorted(wanted)}
+
+    if "universe" in wanted:
+        print(f"[vendor-archive] CSI100 members {start}–{end}", flush=True)
+        members = fetch_csi100_members(pro, start, end, sleep_seconds=sleep_seconds)
+        stats = universe_stats(members)
+        if stats["n_snapshots"] < 2 or stats["n_codes_per_snapshot_mean"] < 80:
+            raise RuntimeError(f"CSI100 member pull is not PIT-complete: {stats}")
+        members_src = tmp / "csi100_members.csv"
+        members.to_csv(members_src, index=False)
+        members_report = ingest_archive_role("universe", members_src, cfg=cfg)
+        report["members"] = {**stats, **{k: members_report.get(k) for k in ("path", "n_rows", "ok")}}
+    else:
+        members = _load_existing_members(cfg)
 
     codes = sorted(members["ts_code"].astype(str).unique().tolist())
-    print(f"[vendor-archive] daily_basic for {len(codes)} union names", flush=True)
-    basic = fetch_daily_basic_union(pro, codes, start, end, sleep_seconds=sleep_seconds)
-    if basic.empty or "circ_mv" not in basic.columns:
-        raise RuntimeError("daily_basic pull returned no circ_mv")
-    basic_src = tmp / "daily_basic.csv"
-    basic.to_csv(basic_src, index=False)
-    basic_report = ingest_archive_role("daily_basic", basic_src, cfg=cfg)
 
-    print("[vendor-archive] SW2021 industry roster", flush=True)
-    roster = fetch_sw_industry_roster(pro, sleep_seconds=min(sleep_seconds, 0.3))
-    dates = _calendar_dates(start, end, cfg)
-    industry = expand_industry_to_calendar(roster, dates, codes)
-    if industry.empty:
-        raise RuntimeError("industry expansion produced no rows")
-    industry_src = tmp / "industry_history.csv"
-    industry.to_csv(industry_src, index=False)
-    industry_report = ingest_archive_role("industry", industry_src, cfg=cfg)
-
-    report = {
-        "start": start,
-        "end": end,
-        "members": {**stats, **{k: members_report.get(k) for k in ("path", "n_rows", "ok")}},
-        "daily_basic": {
+    if "daily_basic" in wanted:
+        print(f"[vendor-archive] daily_basic for {len(codes)} union names", flush=True)
+        basic = fetch_daily_basic_union(pro, codes, start, end, sleep_seconds=sleep_seconds)
+        if basic.empty or "circ_mv" not in basic.columns:
+            raise RuntimeError("daily_basic pull returned no circ_mv")
+        basic_src = tmp / "daily_basic.csv"
+        basic.to_csv(basic_src, index=False)
+        basic_report = ingest_archive_role("daily_basic", basic_src, cfg=cfg)
+        report["daily_basic"] = {
             "n_rows": int(len(basic)),
             "n_codes": int(basic["ts_code"].nunique()),
             "circ_mv_coverage": float(basic["circ_mv"].notna().mean()),
             "path": basic_report.get("path"),
             "ok": basic_report.get("ok"),
-        },
-        "industry": {
+        }
+
+    if "industry" in wanted:
+        print("[vendor-archive] SW2021 industry roster", flush=True)
+        roster = fetch_sw_industry_roster(pro, sleep_seconds=min(sleep_seconds, 0.3))
+        roster_src = tmp / "sw_industry_roster.csv"
+        roster.to_csv(roster_src, index=False)
+        dates = _calendar_dates(start, end, cfg)
+        print(
+            f"[vendor-archive] expand industry onto {len(dates)} calendar days "
+            f"{dates[0] if dates else '-'}–{dates[-1] if dates else '-'}",
+            flush=True,
+        )
+        industry = expand_industry_to_calendar(roster, dates, codes)
+        if industry.empty:
+            raise RuntimeError("industry expansion produced no rows")
+        industry_src = tmp / "industry_history.csv"
+        industry.to_csv(industry_src, index=False)
+        industry_report = ingest_archive_role("industry", industry_src, cfg=cfg)
+        report["industry"] = {
             "n_rows": int(len(industry)),
             "n_codes": int(industry["ts_code"].nunique()),
             "n_dates": int(industry["trade_date"].nunique()),
+            "date_min": str(industry["trade_date"].min()),
+            "date_max": str(industry["trade_date"].max()),
             "path": industry_report.get("path"),
             "ok": industry_report.get("ok"),
-        },
-    }
+        }
+
     print(report, flush=True)
     return report

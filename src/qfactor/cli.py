@@ -104,11 +104,16 @@ def fetch_archive_universe():
 def fetch_vendor_archive(
     start: str = typer.Option("20191201", help="YYYYMMDD inclusive"),
     end: str = typer.Option("20251231", help="YYYYMMDD inclusive"),
+    roles: Optional[str] = typer.Option(
+        None,
+        help="comma list: universe,daily_basic,industry; default all three",
+    ),
 ):
     """Pull PIT CSI100, vendor circ_mv, and SW industry via Tushare/tinyshare."""
     from qfactor.data.vendor_archive_fetch import fetch_and_ingest_vendor_archives
 
-    print(fetch_and_ingest_vendor_archives(start=start, end=end))
+    role_list = [p.strip() for p in roles.split(",") if p.strip()] if roles else None
+    print(fetch_and_ingest_vendor_archives(start=start, end=end, roles=role_list))
 
 
 @app.command("validate-archive")

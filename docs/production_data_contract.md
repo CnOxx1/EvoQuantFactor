@@ -78,7 +78,7 @@
 
 ## 4. 导入与验收顺序
 
-中证官方最新成分和调样附件可用 `qfactor fetch-archive-universe` 下载；缺失的半年定期调样工作簿会停止回溯，不会把旧调入调出接到后来的快照上。Tushare 兼容代理（含 tinyshare）用 `qfactor fetch-vendor-archive` 拉 PIT 成分、厂商 `daily_basic` 和申万点时行业；`index_weight` 必须翻页，部分代理对 `000903.SH` 的 2024 年第一页只返回 1 行。Wind / Choice / RQData 导出以及补齐的中证历史文件用 `qfactor ingest-archive --role <role> --source <file>` 归一到合同列（`trade_date` + `ts_code`），再用 `qfactor validate-archive --strict` 检查六类文件是否齐全。入库命令不从行情推断 ST、停牌、涨跌停、行业或流通市值。随后执行 `qfactor sync-data`（行情源可以是 BaoStock / AkShare；PIT 证据走 archive），检查生成的 `data/processed/data_version.json` 与 `data/quality_reports/`。覆盖率、来源和限制会写入不可变数据版本元数据。无 Tushare token 时，`providers.*.auto` 会在对应归档文件存在时解析为 `archive`。
+中证官方最新成分和调样附件可用 `qfactor fetch-archive-universe` 下载；缺失的半年定期调样工作簿会停止回溯，不会把旧调入调出接到后来的快照上。Tushare 兼容代理（含 tinyshare）用 `qfactor fetch-vendor-archive` 拉 PIT 成分、厂商 `daily_basic` 和申万点时行业；`index_weight` 必须翻页，部分代理对 `000903.SH` 的 2024 年第一页只返回 1 行。行业展开必须覆盖请求窗口的交易日；本地只有 2024–2026 研究日历时要回拉完整日历，不能把 2019–2023 静默裁掉。`--roles industry` 可在成分已入库后单独重展行业。Wind / Choice / RQData 导出以及补齐的中证历史文件用 `qfactor ingest-archive --role <role> --source <file>` 归一到合同列（`trade_date` + `ts_code`），再用 `qfactor validate-archive --strict` 检查六类文件是否齐全。入库命令不从行情推断 ST、停牌、涨跌停、行业或流通市值。随后执行 `qfactor sync-data`（行情源可以是 BaoStock / AkShare；PIT 证据走 archive），检查生成的 `data/processed/data_version.json` 与 `data/quality_reports/`。覆盖率、来源和限制会写入不可变数据版本元数据。无 Tushare token 时，`providers.*.auto` 会在对应归档文件存在时解析为 `archive`。
 
 免费研究行情可由 BaoStock 拉长，但必须先准备并审计历史成分并集，避免只对今天的
 100只成分回填历史造成幸存者偏差：

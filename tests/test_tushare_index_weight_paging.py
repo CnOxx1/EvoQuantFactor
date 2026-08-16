@@ -1,7 +1,10 @@
 import pandas as pd
 
 from qfactor.data.tushare_adapter import TushareAdapter, fetch_index_weight_pages
-from qfactor.data.vendor_archive_fetch import expand_industry_to_calendar
+from qfactor.data.vendor_archive_fetch import (
+    _calendar_covers_window,
+    expand_industry_to_calendar,
+)
 
 
 class _PagedPro:
@@ -101,3 +104,12 @@ def test_expand_industry_out_date_is_exclusive():
     assert by_date["20240531"] == "银行"
     assert by_date["20240601"] == "非银金融"
     assert by_date["20240603"] == "非银金融"
+
+
+def test_calendar_covers_window_rejects_short_research_slice():
+    short = ["20240102", "20251231"]
+    assert not _calendar_covers_window(short, "20191201", "20251231")
+    assert _calendar_covers_window(short, "20240101", "20251231")
+    # Sunday window start still matches a Monday first open day.
+    assert _calendar_covers_window(["20191202", "20251231"], "20191201", "20251231")
+    assert not _calendar_covers_window([], "20191201", "20251231")
