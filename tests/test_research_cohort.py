@@ -81,7 +81,7 @@ def test_data_version_mismatch_is_not_a_parent():
     assert apply_parent_eligibility(item, "old_panel")["parent_eligible"] is True
 
 
-def test_clean_experiment_uses_seeds_and_current_experiment_only():
+def test_clean_experiment_keeps_same_version_parents_across_experiments():
     pit = {
         "universe_mode": "pit",
         "circ_mv_source": "archive_daily_basic",
@@ -94,6 +94,13 @@ def test_clean_experiment_uses_seeds_and_current_experiment_only():
             "source": "compose",
             "status": "screened",
             "summary": {"universe_mode": "snapshot", "circ_mv_source": "estimated"},
+        },
+        {
+            "name": "stale",
+            "source": "llm",
+            "status": "screened",
+            "params": {"experiment_id": "exp_old", "research_cohort": "clean_discovery"},
+            "summary": {**pit, "data_version": "old_panel"},
         },
         {
             "name": "current",
@@ -111,13 +118,14 @@ def test_clean_experiment_uses_seeds_and_current_experiment_only():
         },
     ]
     ctx = SimpleNamespace(
-        registry=SimpleNamespace(existing_summaries=lambda: rows)
+        eval=SimpleNamespace(data=SimpleNamespace(data_version=lambda: "live")),
+        registry=SimpleNamespace(existing_summaries=lambda: rows),
     )
     kept = _eligible_research_library(
         ctx,
         {"clean_experiment": True, "experiment_id": "exp_current"},
     )
-    assert {row["name"] for row in kept} == {"seed", "current"}
+    assert {row["name"] for row in kept} == {"seed", "current", "other_clean"}
 
 
 def test_clean_experiment_does_not_write_shared_checkpoint():
@@ -166,6 +174,12 @@ def test_clean_evaluation_excludes_legacy_correlation_peers():
                     "params": {"experiment_id": "exp_current", "research_cohort": "clean_discovery"},
                     "summary": {"data_version": "old", "universe_mode": "pit", "circ_mv_source": "archive_daily_basic"},
                 },
+                {
+                    "name": "prior_clean",
+                    "source": "llm",
+                    "params": {"experiment_id": "exp_other", "research_cohort": "clean_discovery"},
+                    "summary": {"data_version": "live", "universe_mode": "pit", "circ_mv_source": "archive_daily_basic"},
+                },
             ]
 
         def list_factors(self):
@@ -177,6 +191,7 @@ def test_clean_evaluation_excludes_legacy_correlation_peers():
                     "status": "screened",
                     "cohort": "clean_discovery",
                 },
+                {"name": "prior_clean", "status": "screened", "cohort": "clean_discovery"},
             ]
 
         def load_factor(self, name):
@@ -194,4 +209,4 @@ def test_clean_evaluation_excludes_legacy_correlation_peers():
 
     peers = svc._peer_panels("new_factor", set(), statuses=("screened",))
 
-    assert set(peers) == {"current"}
+    assert set(peers) == {"current", "prior_clean"}

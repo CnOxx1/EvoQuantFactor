@@ -143,6 +143,13 @@ def _current_data_version(ctx: ProductionContext) -> str:
 def _eligible_research_library(
     ctx: ProductionContext, state: ProductionState
 ) -> list[dict[str, Any]]:
+    """Parents are same-version eligible factors, not one experiment's 4-trial slice.
+
+    ``clean_experiment`` still excludes snapshot / unverified / other-panel rows
+    via ``apply_parent_eligibility``. It must not zero the parent book every
+    time a factory cycle opens a new experiment_id.
+    """
+    del state  # eligibility is panel + cohort, not the current ledger id
     current_dv = _current_data_version(ctx)
     rows: list[dict[str, Any]] = []
     for row in ctx.registry.existing_summaries():
@@ -152,15 +159,7 @@ def _eligible_research_library(
         merged = dict(row)
         merged.update(meta)
         rows.append(merged)
-    if not state.get("clean_experiment"):
-        return rows
-    experiment_id = str(state.get("experiment_id") or "")
-    return [
-        row
-        for row in rows
-        if row.get("source") == "seed"
-        or str((row.get("params") or {}).get("experiment_id") or "") == experiment_id
-    ]
+    return rows
 
 
 def _node_decide(ctx: ProductionContext):

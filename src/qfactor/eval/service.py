@@ -164,16 +164,17 @@ class EvalService:
         if self.clean_experiment:
             clean_names = set()
             for row in self.registry.existing_summaries():
-                params = row.get("params") if isinstance(row.get("params"), dict) else {}
                 cohort = classify_research_cohort(row)
                 if cohort.get("cohort") == "legacy_snapshot_research":
                     continue
                 if not same_data_version(row, current_dv):
                     continue
-                if row.get("source") == "seed" or (
-                    self.peer_experiment_id
-                    and str(params.get("experiment_id") or "") == self.peer_experiment_id
-                ):
+                if cohort.get("cohort") in {
+                    "fixed_seed",
+                    "clean_discovery",
+                    "current_discovery",
+                    "verified_candidate",
+                }:
                     clean_names.add(str(row.get("name") or ""))
         for item in self.registry.list_factors():
             fname = item["name"]
