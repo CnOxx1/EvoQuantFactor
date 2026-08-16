@@ -2,6 +2,7 @@ import pandas as pd
 
 from qfactor.data.tushare_adapter import TushareAdapter, fetch_index_weight_pages
 from qfactor.data.vendor_archive_fetch import (
+    _auth_lock_wait,
     _calendar_covers_window,
     _normalize_sw_roster,
     codes_missing_window_industry,
@@ -106,6 +107,15 @@ def test_expand_industry_out_date_is_exclusive():
     assert by_date["20240531"] == "银行"
     assert by_date["20240601"] == "非银金融"
     assert by_date["20240603"] == "非银金融"
+
+
+def test_auth_lock_wait_parses_retry_seconds():
+    wait = _auth_lock_wait(
+        RuntimeError("授权验证失败：授权码正在被其他设备使用，请等待 58 秒后重试")
+    )
+    assert wait == 63.0
+    assert _auth_lock_wait(RuntimeError("读取 服务端 响应超时（已等待 60 秒内）")) == 8.0
+    assert _auth_lock_wait(RuntimeError("no permission")) is None
 
 
 def test_normalize_sw_roster_uses_l1_name_and_open_out_date():

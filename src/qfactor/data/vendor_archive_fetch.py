@@ -7,11 +7,14 @@ vendor daily_basic (circ_mv), and date-keyed industry. Does not invent
 ST / limit / risk files. Token stays in the environment; never in git.
 """
 
+import re
 import time
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 import pandas as pd
+
+_AUTH_BUSY_RE = re.compile(r"等待\s*(\d+)\s*秒")
 
 from qfactor.data.archive_ingest import ingest_archive_role
 from qfactor.data.tushare_adapter import (
@@ -27,6 +30,35 @@ from qfactor.settings import ProjectConfig, get_project_config
 def _sleep(seconds: float) -> None:
     if seconds > 0:
         time.sleep(seconds)
+
+
+def _auth_lock_wait(exc: BaseException) -> float | None:
+    msg = str(exc)
+    if "授权码正在被其他设备使用" in msg:
+        hit = _AUTH_BUSY_RE.search(msg)
+        return float(int(hit.group(1)) + 5) if hit else 65.0
+    if "超时" in msg or "timeout" in msg.lower():
+        return 8.0
+    return None
+
+
+def _call_with_auth_retry(fn: Callable[[], Any], *, retries: int = 5) -> Any:
+    last: BaseException | None = None
+    for attempt in range(1, retries + 1):
+        try:
+            return fn()
+        except Exception as e:
+            last = e
+            wait = _auth_lock_wait(e)
+            if wait is None:
+                raise
+            print(
+                f"[vendor-archive] auth lock (attempt {attempt}/{retries}), sleep {wait:.0f}s",
+                flush=True,
+            )
+            time.sleep(wait)
+    assert last is not None
+    raise last
 
 
 def connect_pro(token: str | None = None) -> Any:
@@ -97,11 +129,13 @@ def fetch_daily_basic_union(
     for i, code in enumerate(codes, start=1):
         _sleep(sleep_seconds)
         try:
-            df = pro.daily_basic(
-                ts_code=code,
-                start_date=start,
-                end_date=end,
-                fields="ts_code,trade_date,turnover_rate,circ_mv,free_share",
+            df = _call_with_auth_retry(
+                lambda: pro.daily_basic(
+                    ts_code=code,
+                    start_date=start,
+                    end_date=end,
+                    fields="ts_code,trade_date,turnover_rate,circ_mv,free_share",
+                )
             )
         except Exception as e:
             print(f"[vendor-archive] daily_basic {code} failed: {e}", flush=True)
@@ -162,7 +196,7 @@ def fetch_sw_industry_roster(
     sleep_seconds: float = 0.25,
 ) -> pd.DataFrame:
     _sleep(sleep_seconds)
-    cls = pro.index_classify(level="L1", src="SW2021")
+    cls = _call_with_auth_retry(lambda: pro.index_classify(level="L1", src="SW2021"))
     if cls is None or cls.empty:
         raise RuntimeError("index_classify(SW2021 L1) returned empty")
     frames: list[pd.DataFrame] = []
@@ -170,7 +204,9 @@ def fetch_sw_industry_roster(
         for is_new in ("Y", "N"):
             _sleep(sleep_seconds)
             try:
-                df = pro.index_member_all(l1_code=code, is_new=is_new)
+                df = _call_with_auth_retry(
+                    lambda c=code, flag=is_new: pro.index_member_all(l1_code=c, is_new=flag)
+                )
             except Exception:
                 df = None
             if df is None or getattr(df, "empty", True):
@@ -194,7 +230,7 @@ def fetch_sw_industry_for_codes(
     for i, code in enumerate(codes, start=1):
         _sleep(sleep_seconds)
         try:
-            df = pro.index_member_all(ts_code=code)
+            df = _call_with_auth_retry(lambda c=code: pro.index_member_all(ts_code=c))
         except Exception as e:
             print(f"[vendor-archive] industry {code} failed: {e}", flush=True)
             continue
@@ -335,19 +371,33 @@ def fetch_and_ingest_vendor_archives(
         }
 
     if "industry" in wanted:
-        print(f"[vendor-archive] SW2021 industry by ts_code for {len(codes)} names", flush=True)
-        roster = fetch_sw_industry_for_codes(
-            pro, codes, sleep_seconds=min(sleep_seconds, 0.3)
+        roster_src = tmp / "sw_industry_roster.csv"
+        roster = (
+            _normalize_sw_roster(pd.read_csv(roster_src, dtype=str))
+            if roster_src.exists()
+            else pd.DataFrame(columns=["ts_code", "industry", "in_date", "out_date"])
         )
         missing = codes_missing_window_industry(roster, codes, start, end)
         if missing:
             print(
-                f"[vendor-archive] L1 sweep to fill {len(missing)} names still missing",
+                f"[vendor-archive] SW2021 industry by ts_code for {len(missing)} missing names",
                 flush=True,
             )
-            extra = fetch_sw_industry_roster(pro, sleep_seconds=min(sleep_seconds, 0.3))
+            extra = fetch_sw_industry_for_codes(
+                pro, missing, sleep_seconds=min(sleep_seconds, 0.3)
+            )
             roster = pd.concat([roster, extra], ignore_index=True).drop_duplicates()
-        roster_src = tmp / "sw_industry_roster.csv"
+        still_missing = codes_missing_window_industry(roster, codes, start, end)
+        if still_missing:
+            print(
+                f"[vendor-archive] L1 sweep to fill {len(still_missing)} names still missing",
+                flush=True,
+            )
+            try:
+                extra = fetch_sw_industry_roster(pro, sleep_seconds=min(sleep_seconds, 0.3))
+                roster = pd.concat([roster, extra], ignore_index=True).drop_duplicates()
+            except Exception as e:
+                print(f"[vendor-archive] L1 sweep failed: {e}", flush=True)
         roster.to_csv(roster_src, index=False)
         dates = _calendar_dates(start, end, cfg)
         print(
