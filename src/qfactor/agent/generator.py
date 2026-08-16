@@ -692,12 +692,9 @@ class CandidateGenerator:
         self.llm.require_enabled()
         lessons = lessons or []
         if is_cold_start(existing, self.cfg):
-            field_w, _ = field_window_prior(lessons, existing)
-            if field_w:
-                top_field = max(field_w, key=lambda k: field_w[k])
-                mapped = _FIELD_MECH.get(str(top_field))
-                if mapped:
-                    return mapped
+            # Field/window priors steer templates inside a theme. They must not
+            # lock the factory onto the first family that saved — that stacks
+            # near-duplicate screened parents instead of a quality book.
             return pick_theme_with_lessons(
                 self.mechanisms,
                 coverage,
@@ -705,7 +702,7 @@ class CandidateGenerator:
                 forced=forced_theme,
                 soft_switch_after=int(self.llm_cfg.get("soft_switch_after", 3)),
                 recent_themes=recent_themes,
-                hard_rotate=False,
+                hard_rotate=bool(self.llm_cfg.get("hard_rotate", True)),
                 usable_coverage={},
             )
         usable_cov = usable_mechanism_coverage(existing)
@@ -1824,7 +1821,15 @@ class CandidateGenerator:
         if round_idx > 0 and every > 0 and last is not None and (round_idx - last) < every:
             return False
         if cold:
-            field_p, win_p = field_window_prior(lessons, existing)
+            keep_cov = keep_mechanism_coverage(existing)
+            saturated = {m for m, n in keep_cov.items() if int(n) >= 2}
+            skip_fields = {f for f, m in _FIELD_MECH.items() if m in saturated}
+            field_p, win_p = field_window_prior(
+                lessons,
+                existing,
+                blocked_mechanisms=saturated,
+                blocked_fields=skip_fields,
+            )
         else:
             blocked_fields = {
                 f for f, m in _FIELD_MECH.items() if m in self._blocked_mechs

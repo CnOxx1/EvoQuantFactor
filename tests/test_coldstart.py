@@ -4,7 +4,7 @@ from qfactor.agent.coldstart import (
     is_cold_start,
     parent_count,
 )
-from qfactor.agent.diversity import active_skeleton_bans
+from qfactor.agent.diversity import active_skeleton_bans, keep_mechanism_coverage
 from qfactor.agent.generator import (
     CandidateGenerator,
     _COMPOSE_UNARY,
@@ -99,6 +99,67 @@ def test_active_skeleton_bans_empty_when_cold(monkeypatch):
         lambda cfg=None: {"banned_skeletons": ["high_corr_skel"]},
     )
     assert active_skeleton_bans(max_per=2, extra=["extra_sk"], cold_start=True) == set()
+
+
+def test_decide_theme_cold_start_rotates_off_winning_field():
+    gen = CandidateGenerator(llm=LLMClient(api_key="x"))
+    gen.llm_cfg["llm_decide_theme"] = False
+    existing = [
+        _eligible_parent(
+            "screened",
+            mechanism="amplitude",
+            expression="ma(amplitude,20)",
+            summary={
+                "universe_mode": "pit",
+                "circ_mv_source": "archive_daily_basic",
+                "data_version": "live",
+                "rank_ic_mean": 0.016,
+            },
+        )
+        for _ in range(3)
+    ]
+    assert is_cold_start(existing) is True
+    coverage = keep_mechanism_coverage(existing)
+    theme = gen.decide_theme(
+        coverage,
+        existing,
+        recent_themes=["amplitude", "amplitude"],
+    )
+    assert theme != "amplitude"
+    assert coverage["amplitude"] == 3
+
+
+def test_cold_field_prior_skips_saturated_keep_family():
+    gen = CandidateGenerator(llm=LLMClient(api_key="x"))
+    existing = [
+        _eligible_parent(
+            "screened",
+            mechanism="amplitude",
+            expression="ma(amplitude,20)",
+            summary={
+                "universe_mode": "pit",
+                "circ_mv_source": "archive_daily_basic",
+                "data_version": "live",
+                "rank_ic_mean": 0.016,
+            },
+        )
+        for _ in range(3)
+    ] + [
+        _eligible_parent(
+            "screened",
+            mechanism="reversal",
+            expression="neg(roc(close_adj,5))",
+            summary={
+                "universe_mode": "pit",
+                "circ_mv_source": "archive_daily_basic",
+                "data_version": "live",
+                "rank_ic_mean": 0.012,
+            },
+        )
+    ]
+    assert gen._refresh_field_window_prior([], existing, cold=True, round_idx=0, every=20)
+    assert "amplitude" not in gen._field_prior
+    assert gen._field_prior.get("close_adj", 0) > 0
 
 
 def test_field_window_prior_weights_overnight():
