@@ -45,7 +45,7 @@ class FactorRegistry:
             return None
 
     def list_factors(self) -> list[dict[str, Any]]:
-        from qfactor.factor.cohort import apply_parent_eligibility
+        from qfactor.factor.cohort import apply_parent_eligibility, evidence_from_latest_report
 
         current_dv = self._live_data_version()
         rows: list[dict[str, Any]] = []
@@ -60,6 +60,14 @@ class FactorRegistry:
                         row.setdefault("expression", spec.expression)
                 except Exception:
                     row.setdefault("params", params)
+            summary = row.get("summary") if isinstance(row.get("summary"), dict) else {}
+            if not summary.get("data_version"):
+                latest_path = self.factor_dir(str(row.get("name") or "")) / "reports" / "latest.json"
+                try:
+                    latest = json.loads(latest_path.read_text(encoding="utf-8"))
+                    row["summary"] = evidence_from_latest_report(summary, latest)
+                except Exception:
+                    pass
             row.update(apply_parent_eligibility(row, current_dv))
             rows.append(row)
         return rows

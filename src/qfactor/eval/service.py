@@ -573,6 +573,8 @@ class EvalService:
             "universe_mode": metrics.get("universe_mode"),
             "circ_mv_source": metrics.get("circ_mv_source"),
             "daily_basic_coverage": metrics.get("daily_basic_coverage", 0.0),
+            "data_version": metrics.get("data_version"),
+            "n_peers": metrics.get("n_peers"),
             "freeze_sign_ok": freeze_sign_ok,
             "horizon": horizon,
             "signal_hold_days": hold if hold > 1 else 0,

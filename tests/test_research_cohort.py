@@ -4,7 +4,11 @@ import pandas as pd
 
 from qfactor.agent.graph import _eligible_research_library, _node_persist
 from qfactor.eval.service import EvalService
-from qfactor.factor.cohort import apply_parent_eligibility, classify_research_cohort
+from qfactor.factor.cohort import (
+    apply_parent_eligibility,
+    classify_research_cohort,
+    evidence_from_latest_report,
+)
 
 
 def test_snapshot_screened_is_legacy_and_not_parent():
@@ -37,6 +41,26 @@ def test_declared_clean_snapshot_is_still_legacy():
     )
     assert out["cohort"] == "legacy_snapshot_research"
     assert out["parent_eligible"] is False
+
+
+def test_latest_report_fills_missing_catalog_data_version():
+    summary = {
+        "universe_mode": "pit",
+        "circ_mv_source": "archive_daily_basic",
+    }
+    filled = evidence_from_latest_report(
+        summary,
+        {"metrics": {"data_version": "20260816T073655Z", "n_peers": 0}},
+    )
+    assert filled["data_version"] == "20260816T073655Z"
+    item = {
+        "status": "screened",
+        "source": "llm",
+        "params": {"research_cohort": "clean_discovery"},
+        "summary": filled,
+    }
+    assert apply_parent_eligibility(item, "20260816T073655Z")["parent_eligible"] is True
+    assert apply_parent_eligibility(item, "other_panel")["parent_eligible"] is False
 
 
 def test_data_version_mismatch_is_not_a_parent():

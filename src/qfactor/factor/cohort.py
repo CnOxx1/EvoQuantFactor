@@ -18,6 +18,25 @@ def is_legacy_snapshot_evidence(item: dict[str, Any]) -> bool:
     return universe in {"snapshot", "freeze_start"} or circ_mv == "estimated"
 
 
+def evidence_from_latest_report(
+    summary: dict[str, Any] | None,
+    latest: dict[str, Any] | None,
+) -> dict[str, Any]:
+    """Fill catalog summary gaps from the last eval report without rewriting files."""
+    out = dict(summary or {})
+    if out.get("data_version"):
+        return out
+    blob = latest if isinstance(latest, dict) else {}
+    nested = blob.get("summary") if isinstance(blob.get("summary"), dict) else {}
+    metrics = blob.get("metrics") if isinstance(blob.get("metrics"), dict) else {}
+    dv = nested.get("data_version") or metrics.get("data_version")
+    if dv:
+        out["data_version"] = dv
+    if out.get("n_peers") is None and metrics.get("n_peers") is not None:
+        out["n_peers"] = metrics.get("n_peers")
+    return out
+
+
 def same_data_version(item: dict[str, Any], current_data_version: str | None) -> bool:
     """Seeds may lack a panel version; other parents must match the live panel."""
     if str(item.get("source") or "") == "seed":
