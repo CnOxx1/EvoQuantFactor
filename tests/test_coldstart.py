@@ -23,15 +23,39 @@ def test_graph_rounds_for_budget():
     assert graph_rounds_for_budget(50) == 1
 
 
+def _eligible_parent(status: str, **extra):
+    row = {
+        "status": status,
+        "source": "llm",
+        "params": {"research_cohort": "clean_discovery"},
+        "summary": {
+            "universe_mode": "pit",
+            "circ_mv_source": "archive_daily_basic",
+            "data_version": "live",
+        },
+    }
+    row.update(extra)
+    return row
+
+
 def test_is_cold_start_threshold():
-    seven = [{"status": "screened"}] * 7
-    eight = [{"status": "screened"}] * 8
-    mixed = [{"status": "draft"}] * 20 + [{"status": "candidate"}] * 4
+    seven = [_eligible_parent("screened")] * 7
+    eight = [_eligible_parent("screened")] * 8
+    mixed = [{"status": "draft"}] * 20 + [_eligible_parent("candidate")] * 4
+    legacy = [
+        {
+            "status": "screened",
+            "summary": {"universe_mode": "snapshot", "circ_mv_source": "estimated"},
+        }
+    ] * 137
     assert parent_count(seven) == 7
     assert is_cold_start(seven) is True
     assert is_cold_start(eight) is False
     assert is_cold_start(mixed) is True
     assert is_cold_start([]) is True
+    assert parent_count(legacy) == 0
+    assert is_cold_start(legacy) is True
+    assert parent_count([{"status": "screened"}] * 20) == 0
 
 
 def test_llm_slot_plan_cold_keeps_fresh_when_catalog_thick():
@@ -280,51 +304,87 @@ def test_hot_parent_pool_keeps_eligible_mechs_not_global_ic(monkeypatch):
 
     monkeypatch.setattr("qfactor.factor.registry.FactorRegistry", lambda cfg=None: _Reg())
     existing = [
-        {
-            "name": "amp_c",
-            "expression": "ma(amplitude,20)",
-            "mechanism": "amplitude",
-            "status": "candidate",
-            "summary": {"rank_ic_mean": 0.05, "resid_ic_mean": 0.04},
-        },
-        {
-            "name": "liq_c",
-            "expression": "ma(turnover_rate,20)",
-            "mechanism": "liquidity",
-            "status": "candidate",
-            "summary": {"rank_ic_mean": 0.04, "resid_ic_mean": 0.03},
-        },
+        _eligible_parent(
+            "candidate",
+            name="amp_c",
+            expression="ma(amplitude,20)",
+            mechanism="amplitude",
+            summary={
+                "universe_mode": "pit",
+                "circ_mv_source": "archive_daily_basic",
+                "data_version": "live",
+                "rank_ic_mean": 0.05,
+                "resid_ic_mean": 0.04,
+            },
+        ),
+        _eligible_parent(
+            "candidate",
+            name="liq_c",
+            expression="ma(turnover_rate,20)",
+            mechanism="liquidity",
+            summary={
+                "universe_mode": "pit",
+                "circ_mv_source": "archive_daily_basic",
+                "data_version": "live",
+                "rank_ic_mean": 0.04,
+                "resid_ic_mean": 0.03,
+            },
+        ),
     ] + [
-        {
-            "name": f"amp_s{i}",
-            "expression": f"std(amplitude,{5 + i})",
-            "mechanism": "amplitude",
-            "status": "screened",
-            "summary": {"rank_ic_mean": 0.03, "resid_ic_mean": 0.02},
-        }
+        _eligible_parent(
+            "screened",
+            name=f"amp_s{i}",
+            expression=f"std(amplitude,{5 + i})",
+            mechanism="amplitude",
+            summary={
+                "universe_mode": "pit",
+                "circ_mv_source": "archive_daily_basic",
+                "data_version": "live",
+                "rank_ic_mean": 0.03,
+                "resid_ic_mean": 0.02,
+            },
+        )
         for i in range(12)
     ] + [
-        {
-            "name": "rev_s",
-            "expression": "neg(roc(close_adj,5))",
-            "mechanism": "reversal",
-            "status": "screened",
-            "summary": {"rank_ic_mean": 0.012, "resid_ic_mean": 0.01},
-        },
-        {
-            "name": "sh_s",
-            "expression": "ma(upper_shadow,10)",
-            "mechanism": "shadow",
-            "status": "screened",
-            "summary": {"rank_ic_mean": 0.011, "resid_ic_mean": 0.01},
-        },
-        {
-            "name": "mom_amp_field",
-            "expression": "ma(amplitude,20)",
-            "mechanism": "momentum",
-            "status": "screened",
-            "summary": {"rank_ic_mean": 0.02, "resid_ic_mean": 0.02},
-        },
+        _eligible_parent(
+            "screened",
+            name="rev_s",
+            expression="neg(roc(close_adj,5))",
+            mechanism="reversal",
+            summary={
+                "universe_mode": "pit",
+                "circ_mv_source": "archive_daily_basic",
+                "data_version": "live",
+                "rank_ic_mean": 0.012,
+                "resid_ic_mean": 0.01,
+            },
+        ),
+        _eligible_parent(
+            "screened",
+            name="sh_s",
+            expression="ma(upper_shadow,10)",
+            mechanism="shadow",
+            summary={
+                "universe_mode": "pit",
+                "circ_mv_source": "archive_daily_basic",
+                "data_version": "live",
+                "rank_ic_mean": 0.011,
+                "resid_ic_mean": 0.01,
+            },
+        ),
+        _eligible_parent(
+            "screened",
+            name="mom_amp_field",
+            expression="ma(amplitude,20)",
+            mechanism="momentum",
+            summary={
+                "universe_mode": "pit",
+                "circ_mv_source": "archive_daily_basic",
+                "data_version": "live",
+                "rank_ic_mean": 0.02,
+                "resid_ic_mean": 0.02,
+            },
+        ),
     ]
     pool = gen._parent_pool(existing)
     mechs = {str(p.get("mechanism")) for p in pool if p.get("status") == "screened"}
@@ -332,3 +392,42 @@ def test_hot_parent_pool_keeps_eligible_mechs_not_global_ic(monkeypatch):
     assert "shadow" in mechs
     assert "amplitude" not in mechs
     assert not any(p.get("name") == "mom_amp_field" for p in pool)
+
+
+def test_parent_pool_drops_legacy_snapshot_rows(monkeypatch):
+    gen = CandidateGenerator(llm=LLMClient(api_key="x"))
+    monkeypatch.setattr(
+        "qfactor.agent.generator.is_cold_start",
+        lambda existing, cfg=None: True,
+    )
+
+    class _Reg:
+        def list_factors(self):
+            return []
+
+        def load_spec(self, name):
+            raise KeyError(name)
+
+    monkeypatch.setattr("qfactor.factor.registry.FactorRegistry", lambda cfg=None: _Reg())
+    existing = [
+        {
+            "name": "legacy_amp",
+            "expression": "ma(amplitude,20)",
+            "mechanism": "amplitude",
+            "status": "screened",
+            "source": "compose",
+            "summary": {"universe_mode": "snapshot", "circ_mv_source": "estimated"},
+        },
+        _eligible_parent(
+            "screened",
+            name="clean_rev",
+            expression="neg(roc(close_adj,5))",
+            mechanism="reversal",
+        ),
+    ]
+    pool = gen._parent_pool(existing)
+    names = {p["name"] for p in pool}
+    assert "legacy_amp" not in names
+    assert "clean_rev" in names
+    assert parent_count(existing) == 1
+    assert is_cold_start(existing) is True

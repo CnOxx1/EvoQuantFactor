@@ -37,7 +37,23 @@ class FactorRegistry:
         return self.root / "factors" / name
 
     def list_factors(self) -> list[dict[str, Any]]:
-        return list(self._read_catalog().get("factors", []))
+        from qfactor.factor.cohort import classify_research_cohort
+
+        rows: list[dict[str, Any]] = []
+        for raw in self._read_catalog().get("factors", []):
+            row = dict(raw)
+            params = row.get("params") if isinstance(row.get("params"), dict) else {}
+            if not params.get("research_cohort"):
+                try:
+                    spec = self.load_spec(str(row.get("name") or ""))
+                    row["params"] = spec.params if isinstance(spec.params, dict) else {}
+                    if spec.expression:
+                        row.setdefault("expression", spec.expression)
+                except Exception:
+                    row.setdefault("params", params)
+            row.update(classify_research_cohort(row))
+            rows.append(row)
+        return rows
 
     def save_factor_files(
         self,
@@ -86,6 +102,12 @@ class FactorRegistry:
 
         catalog = self._read_catalog()
         factors = catalog.get("factors", [])
+        spec_params = spec.params if isinstance(spec.params, dict) else {}
+        catalog_params = {
+            key: spec_params[key]
+            for key in ("experiment_id", "research_cohort")
+            if spec_params.get(key)
+        }
         entry = {
             "name": spec.name,
             "version": spec.version,
@@ -95,6 +117,7 @@ class FactorRegistry:
             "source": source,
             "path": str(fdir.relative_to(self.cfg.root)).replace("\\", "/"),
             "summary": summary,
+            "params": catalog_params,
         }
         factors = [f for f in factors if f.get("name") != spec.name]
         factors.append(entry)

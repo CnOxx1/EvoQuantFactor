@@ -146,6 +146,11 @@ class ExperimentLedger:
             "name": candidate.get("name"),
             "expression": candidate.get("expression"),
             "mechanism": candidate.get("mechanism"),
+            "research_cohort": (
+                candidate.get("research_cohort")
+                or (candidate.get("params") or {}).get("research_cohort")
+                or (detail or {}).get("research_cohort")
+            ),
             "expr_hash": candidate.get("expr_hash") or candidate.get("_expr_hash"),
             "detail": _safe_json(detail or {}),
         }

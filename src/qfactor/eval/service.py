@@ -128,10 +128,24 @@ class EvalService:
         statuses = statuses or KEEP_STATUSES
         others: dict[str, pd.DataFrame] = {}
         clean_names: set[str] | None = None
+        current_dv = None
+        data = getattr(self, "data", None)
+        if data is not None:
+            try:
+                current_dv = data.data_version()
+            except Exception:
+                current_dv = None
+        from qfactor.factor.cohort import classify_research_cohort, same_data_version
+
         if self.clean_experiment:
             clean_names = set()
             for row in self.registry.existing_summaries():
                 params = row.get("params") if isinstance(row.get("params"), dict) else {}
+                cohort = classify_research_cohort(row)
+                if cohort.get("cohort") == "legacy_snapshot_research":
+                    continue
+                if not same_data_version(row, current_dv):
+                    continue
                 if row.get("source") == "seed" or (
                     self.peer_experiment_id
                     and str(params.get("experiment_id") or "") == self.peer_experiment_id
@@ -142,6 +156,8 @@ class EvalService:
             if fname == name or fname in exclude_names:
                 continue
             if item.get("status") not in statuses:
+                continue
+            if item.get("cohort") == "legacy_snapshot_research":
                 continue
             if clean_names is not None and fname not in clean_names:
                 continue
@@ -387,17 +403,11 @@ class EvalService:
         else:
             others = {}
 
-        if thresholds.get("require_residual_ic", False):
-            resid_panel = residualize_on_peers(signed, others, min_obs=min_obs)
-            resid_ic = rank_ic(resid_panel, fwd, min_obs=min_obs)
-            resid_summary = summarize_ic(resid_ic, nw_lags=nw_lags)
-        else:
-            resid_summary = {
-                "rank_ic_mean": 0.0,
-                "icir": 0.0,
-                "icir_ann": 0.0,
-                "icir_nw": 0.0,
-            }
+        # Residual IC is always a diagnosis / parent-ranking signal. Production
+        # still applies resid bars only when require_residual_ic is on.
+        resid_panel = residualize_on_peers(signed, others, min_obs=min_obs)
+        resid_ic = rank_ic(resid_panel, fwd, min_obs=min_obs)
+        resid_summary = summarize_ic(resid_ic, nw_lags=nw_lags)
 
         cost_bps = float(ev.get("cost_bps", 10))
         cost_horizon = hold if hold > 1 else 1

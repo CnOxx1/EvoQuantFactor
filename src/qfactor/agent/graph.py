@@ -30,6 +30,7 @@ from qfactor.agent.llm import LLMClient
 from qfactor.agent.reviewer import CandidateReviewer
 from qfactor.eval.service import EvalService
 from qfactor.factor.base import FactorSpec
+from qfactor.factor.cohort import apply_parent_eligibility
 from qfactor.factor.registry import FactorRegistry
 from qfactor.settings import ProjectConfig, get_project_config
 
@@ -132,14 +133,25 @@ class ProductionContext:
         self.experiment: ExperimentLedger | None = None
 
 
+def _current_data_version(ctx: ProductionContext) -> str:
+    try:
+        return str(ctx.eval.data.data_version() or "")
+    except Exception:
+        return ""
+
+
 def _eligible_research_library(
     ctx: ProductionContext, state: ProductionState
 ) -> list[dict[str, Any]]:
-    rows = [
-        row
-        for row in ctx.registry.existing_summaries()
-        if row.get("parent_eligible") is not False
-    ]
+    current_dv = _current_data_version(ctx)
+    rows: list[dict[str, Any]] = []
+    for row in ctx.registry.existing_summaries():
+        meta = apply_parent_eligibility(row, current_dv)
+        if not meta.get("parent_eligible"):
+            continue
+        merged = dict(row)
+        merged.update(meta)
+        rows.append(merged)
     if not state.get("clean_experiment"):
         return rows
     experiment_id = str(state.get("experiment_id") or "")
@@ -158,7 +170,9 @@ def _node_decide(ctx: ProductionContext):
         lessons = list(state.get("lessons") or [])
         recent_themes = list(state.get("recent_themes") or [])
         forced = state.get("theme")
-        cold = is_cold_start(existing, ctx.cfg)
+        cold = is_cold_start(
+            existing, ctx.cfg, current_data_version=_current_data_version(ctx)
+        )
         disable_fsa = bool(cold_start_cfg(ctx.cfg)["disable_fsa"] and cold)
         index = (
             ctx.generator.diversity_index(existing)
@@ -234,6 +248,9 @@ def _node_generate(ctx: ProductionContext):
         for ordinal, c in enumerate(cands, 1):
             src = str(c.get("source", "unknown"))
             src_counts[src] = src_counts.get(src, 0) + 1
+            c["research_cohort"] = (
+                "clean_discovery" if state.get("clean_experiment") else "current_discovery"
+            )
             if ledger is not None:
                 trial_id = f"{ledger.experiment_id}:r{int(state.get('rounds_done') or 0)}:{ordinal}"
                 c["_trial_id"] = trial_id

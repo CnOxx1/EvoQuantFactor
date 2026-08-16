@@ -1665,6 +1665,16 @@ class CandidateGenerator:
 
     def _parent_pool(self, existing: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Prefer candidate/approved parents; demote high-corr rejects."""
+        from qfactor.factor.cohort import apply_parent_eligibility
+
+        def _keep_parent(item: dict[str, Any]) -> bool:
+            if str(item.get("source") or "") == "seed":
+                return True
+            name = str(item.get("name") or "")
+            if str(item.get("status") or "") == "draft" and name.startswith("seed_"):
+                return True
+            return bool(apply_parent_eligibility(item).get("parent_eligible"))
+
         pool: list[dict[str, Any]] = []
         for item in existing:
             expr = item.get("expression")
@@ -1680,32 +1690,43 @@ class CandidateGenerator:
             row = dict(item)
             row["expression"] = expr
             row["status"] = status
+            if not _keep_parent(row):
+                continue
             pool.append(row)
-        try:
-            from qfactor.factor.registry import FactorRegistry
+        # When the caller already passed an eligible library, do not re-import
+        # the whole catalog (legacy snapshot screened would reheat the pool).
+        if not existing:
+            try:
+                from qfactor.factor.registry import FactorRegistry
 
-            reg = FactorRegistry(self.cfg)
-            for f in reg.list_factors():
-                status = str(f.get("status") or "draft")
-                if status in {"deprecated"}:
-                    continue
-                try:
-                    spec = reg.load_spec(f["name"])
-                    if spec.expression:
-                        pool.append(
-                            {
-                                "name": spec.name,
-                                "expression": spec.expression,
-                                "mechanism": spec.mechanism or spec.category,
-                                "hypothesis": spec.hypothesis,
-                                "status": status or spec.status,
-                                "summary": f.get("summary") or {},
-                            }
-                        )
-                except Exception:
-                    continue
-        except Exception:
-            pass
+                reg = FactorRegistry(self.cfg)
+                have = {str(p.get("name") or "") for p in pool}
+                for f in reg.list_factors():
+                    status = str(f.get("status") or "draft")
+                    if status in {"deprecated"}:
+                        continue
+                    try:
+                        spec = reg.load_spec(f["name"])
+                        if not spec.expression:
+                            continue
+                        row = {
+                            "name": spec.name,
+                            "expression": spec.expression,
+                            "mechanism": spec.mechanism or spec.category,
+                            "hypothesis": spec.hypothesis,
+                            "status": status or spec.status,
+                            "summary": f.get("summary") or {},
+                            "source": f.get("source"),
+                            "params": f.get("params") or spec.params or {},
+                        }
+                        if str(row["name"]) in have or not _keep_parent(row):
+                            continue
+                        pool.append(row)
+                        have.add(str(row["name"]))
+                    except Exception:
+                        continue
+            except Exception:
+                pass
         seen: set[str] = set()
         uniq: list[dict[str, Any]] = []
         for p in pool:
@@ -1725,6 +1746,7 @@ class CandidateGenerator:
                     "mechanism": seed["mechanism"],
                     "hypothesis": seed["hypothesis"],
                     "status": "draft",
+                    "source": "seed",
                     "summary": {},
                 }
             )

@@ -67,6 +67,7 @@ class FactoryRuntime:
         self.screened_every = max(1, int(screened_every))
         production = (self.cfg.project.get("production") or {}).get("llm") or {}
         self.llm_ratio = float(production.get("llm_ratio", 0.0) if llm_ratio is None else llm_ratio)
+        self.llm_batch_size = max(1, int(production.get("llm_batch_size") or 4))
         experiment = self.cfg.project.get("experiment") or {}
         self.clean_experiment = bool(experiment.get("clean_discovery_default", True))
         self.registry = FactorRegistry(self.cfg)
@@ -181,7 +182,7 @@ class FactoryRuntime:
             try:
                 result["actions"]["research_discovery"] = FactorLoop(self.cfg).run(
                     rounds=1,
-                    batch_size=2,
+                    batch_size=int(getattr(self, "llm_batch_size", 4)),
                     gate_name="research",
                     llm_ratio=self.llm_ratio,
                     llm_review_ratio=0.0,

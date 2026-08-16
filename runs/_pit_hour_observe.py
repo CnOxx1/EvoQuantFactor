@@ -221,7 +221,7 @@ def main() -> int:
         try:
             result = loop.run(
                 rounds=1,
-                batch_size=2,
+                batch_size=4,
                 theme=theme,
                 gate_name="research",
                 resume=False,
@@ -229,15 +229,21 @@ def main() -> int:
             )
             rec["state"] = "ok"
             rec["loop_status"] = result.get("status")
-            rec["saved"] = result.get("saved") or result.get("produced") or []
-            if isinstance(rec["saved"], dict):
-                rec["saved"] = rec["saved"].get("names") or []
+            produced = result.get("produced") or []
+            saved_total = result.get("saved_total") or []
+            saved_names: list[str] = []
+            for item in list(saved_total) + list(produced):
+                if isinstance(item, str) and item:
+                    saved_names.append(item)
+                elif isinstance(item, dict) and item.get("name"):
+                    if item.get("status") in {None, "screened", "candidate", "approved"}:
+                        saved_names.append(str(item["name"]))
+            rec["saved"] = sorted(set(saved_names))
             trials = _collect_trials(result)
             rec["trials"] = trials
             rec["n_trials"] = len(trials)
             n_trials += len(trials)
-            saved_names = [x for x in rec["saved"] if isinstance(x, str)]
-            n_saved += len(saved_names)
+            n_saved += len(rec["saved"])
             themes_used[theme] += 1
             for trial in trials:
                 st = str(trial.get("status") or rec.get("loop_status") or "unknown")

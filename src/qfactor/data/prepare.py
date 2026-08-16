@@ -71,7 +71,7 @@ def data_prepare_settings(
     resolved_end = str(end if end is not None else raw.get("end") or "").strip()
     if not resolved_end:
         resolved_end = today_yyyymmdd(tz)
-    allow = raw.get("allow_snapshot_universe", True)
+    allow = raw.get("allow_snapshot_universe", False)
     if allow_snapshot_universe is not None:
         allow = allow_snapshot_universe
     return {

@@ -4,7 +4,7 @@ import pandas as pd
 
 from qfactor.agent.graph import _eligible_research_library, _node_persist
 from qfactor.eval.service import EvalService
-from qfactor.factor.cohort import classify_research_cohort
+from qfactor.factor.cohort import apply_parent_eligibility, classify_research_cohort
 
 
 def test_snapshot_screened_is_legacy_and_not_parent():
@@ -23,25 +23,67 @@ def test_snapshot_screened_is_legacy_and_not_parent():
     assert out["candidate_eligible"] is False
 
 
+def test_declared_clean_snapshot_is_still_legacy():
+    out = classify_research_cohort(
+        {
+            "status": "screened",
+            "source": "llm",
+            "params": {"research_cohort": "clean_discovery"},
+            "summary": {
+                "universe_mode": "snapshot",
+                "circ_mv_source": "estimated",
+            },
+        }
+    )
+    assert out["cohort"] == "legacy_snapshot_research"
+    assert out["parent_eligible"] is False
+
+
+def test_data_version_mismatch_is_not_a_parent():
+    item = {
+        "status": "screened",
+        "source": "llm",
+        "params": {"research_cohort": "clean_discovery"},
+        "summary": {
+            "universe_mode": "pit",
+            "circ_mv_source": "archive_daily_basic",
+            "data_version": "old_panel",
+        },
+    }
+    assert classify_research_cohort(item)["parent_eligible"] is True
+    out = apply_parent_eligibility(item, "new_panel")
+    assert out["parent_eligible"] is False
+    assert out["reason"] == "data_version_mismatch"
+    assert apply_parent_eligibility(item, "old_panel")["parent_eligible"] is True
+
+
 def test_clean_experiment_uses_seeds_and_current_experiment_only():
+    pit = {
+        "universe_mode": "pit",
+        "circ_mv_source": "archive_daily_basic",
+        "data_version": "live",
+    }
     rows = [
-        {"name": "seed", "source": "seed", "parent_eligible": True},
+        {"name": "seed", "source": "seed", "status": "draft"},
         {
             "name": "legacy",
             "source": "compose",
-            "parent_eligible": False,
+            "status": "screened",
+            "summary": {"universe_mode": "snapshot", "circ_mv_source": "estimated"},
         },
         {
             "name": "current",
             "source": "llm",
-            "parent_eligible": True,
-            "params": {"experiment_id": "exp_current"},
+            "status": "screened",
+            "params": {"experiment_id": "exp_current", "research_cohort": "clean_discovery"},
+            "summary": pit,
         },
         {
             "name": "other_clean",
             "source": "llm",
-            "parent_eligible": True,
-            "params": {"experiment_id": "exp_other"},
+            "status": "screened",
+            "params": {"experiment_id": "exp_other", "research_cohort": "clean_discovery"},
+            "summary": pit,
         },
     ]
     ctx = SimpleNamespace(
@@ -91,14 +133,26 @@ def test_clean_evaluation_excludes_legacy_correlation_peers():
                 {
                     "name": "current",
                     "source": "llm",
-                    "params": {"experiment_id": "exp_current"},
+                    "params": {"experiment_id": "exp_current", "research_cohort": "clean_discovery"},
+                    "summary": {"data_version": "live", "universe_mode": "pit", "circ_mv_source": "archive_daily_basic"},
+                },
+                {
+                    "name": "stale",
+                    "source": "llm",
+                    "params": {"experiment_id": "exp_current", "research_cohort": "clean_discovery"},
+                    "summary": {"data_version": "old", "universe_mode": "pit", "circ_mv_source": "archive_daily_basic"},
                 },
             ]
 
         def list_factors(self):
             return [
-                {"name": "legacy", "status": "screened"},
-                {"name": "current", "status": "screened"},
+                {"name": "legacy", "status": "screened", "cohort": "legacy_snapshot_research"},
+                {"name": "current", "status": "screened", "cohort": "clean_discovery"},
+                {
+                    "name": "stale",
+                    "status": "screened",
+                    "cohort": "clean_discovery",
+                },
             ]
 
         def load_factor(self, name):
@@ -112,6 +166,7 @@ def test_clean_evaluation_excludes_legacy_correlation_peers():
     svc.trade_lag = lambda: 1
     svc._context = lambda: None
     svc._prepare_eval_panel = lambda raw: (raw, [])
+    svc.data = SimpleNamespace(data_version=lambda: "live")
 
     peers = svc._peer_panels("new_factor", set(), statuses=("screened",))
 

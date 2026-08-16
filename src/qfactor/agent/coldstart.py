@@ -106,16 +106,33 @@ def cold_start_cfg(cfg: ProjectConfig | None = None) -> dict[str, Any]:
     return out
 
 
-def parent_count(existing: list[dict[str, Any]] | None) -> int:
+def parent_count(
+    existing: list[dict[str, Any]] | None,
+    current_data_version: str | None = None,
+) -> int:
+    """Count KEEP-status parents that are eligible on the live data version.
+
+    Legacy snapshot / unverified screened rows do not heat the library. Missing
+    ``parent_eligible`` is classified rather than treated as a production parent.
+    """
+    from qfactor.factor.cohort import apply_parent_eligibility
+
     n = 0
     for item in existing or []:
-        if str(item.get("status") or "") in KEEP_STATUSES:
+        if str(item.get("status") or "") not in KEEP_STATUSES:
+            continue
+        if apply_parent_eligibility(item, current_data_version).get("parent_eligible"):
             n += 1
     return n
 
 
-def is_cold_start(existing: list[dict[str, Any]] | None, cfg: ProjectConfig | None = None) -> bool:
-    return parent_count(existing) < int(cold_start_cfg(cfg)["min_parents"])
+def is_cold_start(
+    existing: list[dict[str, Any]] | None,
+    cfg: ProjectConfig | None = None,
+    *,
+    current_data_version: str | None = None,
+) -> bool:
+    return parent_count(existing, current_data_version) < int(cold_start_cfg(cfg)["min_parents"])
 
 
 def _walk_fields_windows(node: Expr | str | int | float, fields: set[str], windows: list[int]) -> None:

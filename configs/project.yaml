@@ -50,12 +50,12 @@ production:
     parent_top_screened: 12     # screened parent budget, split across unblocked mechanisms
 
 # Fetch / keep / check bars before any mining. Supervisor and `produce` call
-# this first. PIT is tried first; snapshot is a research-only fallback.
+# this first. Snapshot fallback stays off so mining cannot quietly leave PIT.
 data_prepare:
   start: "20160102"
   end: ""                    # empty = today in project timezone
   source: baostock
-  allow_snapshot_universe: true
+  allow_snapshot_universe: false
   refresh_if_incomplete: true
   require_research_contract: true
   require_window_coverage: true
