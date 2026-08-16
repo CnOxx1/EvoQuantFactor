@@ -100,6 +100,17 @@ def fetch_archive_universe():
     print(fetch_official_history())
 
 
+@app.command("fetch-vendor-archive")
+def fetch_vendor_archive(
+    start: str = typer.Option("20191201", help="YYYYMMDD inclusive"),
+    end: str = typer.Option("20251231", help="YYYYMMDD inclusive"),
+):
+    """Pull PIT CSI100, vendor circ_mv, and SW industry via Tushare/tinyshare."""
+    from qfactor.data.vendor_archive_fetch import fetch_and_ingest_vendor_archives
+
+    print(fetch_and_ingest_vendor_archives(start=start, end=end))
+
+
 @app.command("validate-archive")
 def validate_archive(strict: bool = typer.Option(False, help="fail when any role file is missing")):
     """Check registered archive parquet files against the PIT column contract."""

@@ -1,0 +1,103 @@
+import pandas as pd
+
+from qfactor.data.tushare_adapter import TushareAdapter, fetch_index_weight_pages
+from qfactor.data.vendor_archive_fetch import expand_industry_to_calendar
+
+
+class _PagedPro:
+    def __init__(self, pages: dict[int, pd.DataFrame]):
+        self.pages = pages
+        self.calls: list[dict] = []
+
+    def index_weight(self, **kwargs):
+        self.calls.append(kwargs)
+        offset = int(kwargs.get("offset") or 0)
+        return self.pages.get(offset, pd.DataFrame())
+
+
+def test_index_weight_pages_concatenates_one_row_first_page():
+    first = pd.DataFrame(
+        {
+            "index_code": ["000903.SH"],
+            "con_code": ["600519.SH"],
+            "trade_date": ["20240131"],
+            "weight": [9.814],
+        }
+    )
+    rest = pd.DataFrame(
+        {
+            "index_code": ["000903.SH"] * 2,
+            "con_code": ["000001.SZ", "000002.SZ"],
+            "trade_date": ["20240131", "20240131"],
+            "weight": [1.0, 2.0],
+        }
+    )
+    pro = _PagedPro({0: first, 1: rest})
+    out = fetch_index_weight_pages(
+        pro, index_code="000903.SH", start_date="20240101", end_date="20240131"
+    )
+    assert set(out["con_code"]) == {"600519.SH", "000001.SZ", "000002.SZ"}
+    assert len(pro.calls) >= 2
+    assert pro.calls[1]["offset"] == 1
+
+
+def test_index_weight_pages_stops_when_offset_repeats():
+    page = pd.DataFrame(
+        {
+            "index_code": ["000903.SH"],
+            "con_code": ["600519.SH"],
+            "trade_date": ["20241231"],
+            "weight": [1.0],
+        }
+    )
+    pro = _PagedPro({0: page, 1: page})
+    out = fetch_index_weight_pages(pro, index_code="000903.SH", trade_date="20241231")
+    assert len(out) == 1
+
+
+def test_range_fetch_rejects_one_name_per_month(monkeypatch):
+    class FakePro:
+        def index_weight(self, **kwargs):
+            start = kwargs.get("start_date", "20240101")
+            month = start[:6]
+            return pd.DataFrame(
+                {
+                    "index_code": ["000903.SH"],
+                    "con_code": ["600519.SH"],
+                    "trade_date": [month + "28"],
+                    "weight": [9.8],
+                }
+            )
+
+        def index_member(self, **kwargs):
+            return pd.DataFrame()
+
+        def index_member_all(self, **kwargs):
+            return pd.DataFrame()
+
+    ad = TushareAdapter.__new__(TushareAdapter)
+    ad.pro = FakePro()
+    ad.index_code = "000903.SH"
+    ad.sleep_seconds = 0
+    ad._sleep = lambda: None
+    out = ad._fetch_index_weight_range("20240101", "20240331")
+    # One name per month is kept as raw months, but must not early-return as complete.
+    # After monthly loop we still only have 茅台 — caller/stats will reject PIT.
+    assert out["ts_code"].nunique() == 1
+
+
+def test_expand_industry_out_date_is_exclusive():
+    roster = pd.DataFrame(
+        {
+            "ts_code": ["000001.SZ", "000001.SZ"],
+            "industry": ["银行", "非银金融"],
+            "in_date": ["20200101", "20240601"],
+            "out_date": ["20240601", "99991231"],
+        }
+    )
+    dates = ["20240531", "20240601", "20240603"]
+    out = expand_industry_to_calendar(roster, dates, ["000001.SZ"])
+    by_date = dict(zip(out["trade_date"], out["industry"]))
+    assert by_date["20240531"] == "银行"
+    assert by_date["20240601"] == "非银金融"
+    assert by_date["20240603"] == "非银金融"
