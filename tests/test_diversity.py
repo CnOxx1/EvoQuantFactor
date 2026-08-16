@@ -74,6 +74,37 @@ def test_pick_theme_hard_rotate():
     assert theme == "liquidity"
 
 
+def test_pick_theme_hard_rotate_visits_all_eight_mechanisms():
+    mechs = [
+        {"id": mid}
+        for mid in (
+            "reversal",
+            "momentum",
+            "volatility",
+            "liquidity",
+            "overnight",
+            "amplitude",
+            "volume_price",
+            "shadow",
+        )
+    ]
+    recent: list[str] = []
+    seen: list[str] = []
+    for _ in range(8):
+        theme = pick_theme_with_lessons(
+            mechs,
+            coverage={},
+            lessons=[],
+            recent_themes=recent,
+            hard_rotate=True,
+        )
+        assert theme is not None
+        seen.append(theme)
+        recent = (recent + [theme])[-12:]
+    assert len(set(seen)) == 8
+    assert set(seen) == {m["id"] for m in mechs}
+
+
 def test_pick_theme_hard_rotate_off_allows_recent():
     mechs = [{"id": "reversal"}, {"id": "overnight"}]
     theme = pick_theme_with_lessons(

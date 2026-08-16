@@ -114,3 +114,43 @@ def test_explicit_run_forever_clears_stale_stop_marker(tmp_path: Path):
     assert runtime.run_forever(start_cycle=12) == 0
     assert calls == [12]
     assert "stopped" in runtime.status_path.read_text(encoding="utf-8")
+
+
+def test_runtime_carries_recent_themes_across_discovery_cycles(tmp_path: Path, monkeypatch):
+    runtime = object.__new__(FactoryRuntime)
+    runtime.runtime_dir = tmp_path
+    runtime.status_path = tmp_path / "status.json"
+    runtime.events_path = tmp_path / "events.jsonl"
+    runtime.stop_path = tmp_path / "STOP"
+    runtime.data = _Data()
+    runtime.ops = _Ops()
+    runtime.release = _Release()
+    runtime.discovery_every = 1
+    runtime.screened_every = 10
+    runtime.llm_ratio = 0.0
+    runtime.clean_experiment = True
+    runtime.cfg = None
+    runtime.recent_themes = ["amplitude"]
+    runtime._discovery_contract = lambda: {"state": "passed", "reason": ""}
+    runtime._candidate_contract = lambda: {"state": "blocked", "reason": "universe_not_pit"}
+    runtime.lifecycle_counts = lambda: {
+        "total": 0,
+        "screened": 0,
+        "candidate": 0,
+        "active_release": 0,
+    }
+    captured: list[list[str]] = []
+
+    class _Loop:
+        def __init__(self, cfg=None, llm=None):
+            pass
+
+        def run(self, **kwargs):
+            captured.append(list(kwargs.get("recent_themes") or []))
+            return {"recent_themes": captured[-1] + ["liquidity"], "state": "ok"}
+
+    monkeypatch.setattr("qfactor.agent.supervisor.FactorLoop", _Loop)
+    result = runtime.run_cycle(1)
+    assert captured == [["amplitude"]]
+    assert runtime.recent_themes == ["amplitude", "liquidity"]
+    assert result["recent_themes"] == ["amplitude", "liquidity"]

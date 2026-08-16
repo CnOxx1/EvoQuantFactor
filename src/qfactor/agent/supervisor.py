@@ -80,6 +80,13 @@ class FactoryRuntime:
         self.status_path = self.runtime_dir / "status.json"
         self.events_path = self.runtime_dir / "events.jsonl"
         self.stop_path = self.runtime_dir / "STOP"
+        self.recent_themes: list[str] = []
+        if self.status_path.exists():
+            try:
+                prev = json.loads(self.status_path.read_text(encoding="utf-8"))
+                self.recent_themes = list(prev.get("recent_themes") or [])[-12:]
+            except Exception:
+                self.recent_themes = []
 
     def _append_event(self, event: dict[str, Any]) -> None:
         self.runtime_dir.mkdir(parents=True, exist_ok=True)
@@ -179,14 +186,18 @@ class FactoryRuntime:
             and cycle % self.discovery_every == 0
         ):
             try:
-                result["actions"]["research_discovery"] = FactorLoop(self.cfg).run(
+                discovery = FactorLoop(self.cfg).run(
                     rounds=1,
                     batch_size=2,
                     gate_name="research",
                     llm_ratio=self.llm_ratio,
                     llm_review_ratio=0.0,
                     clean_experiment=self.clean_experiment,
+                    recent_themes=list(getattr(self, "recent_themes", None) or [])[-12:],
                 )
+                self.recent_themes = list(discovery.get("recent_themes") or [])[-12:]
+                result["actions"]["research_discovery"] = discovery
+                result["recent_themes"] = list(self.recent_themes)
             except Exception as exc:
                 result["actions"]["research_discovery"] = {"state": "error", "error": str(exc)}
                 result["errors"].append({"stage": "research_discovery", "error": str(exc)})
@@ -249,6 +260,7 @@ class FactoryRuntime:
                 {"stage": "library_reconciliation", "error": str(exc)}
             )
         result["counts_after"] = self.lifecycle_counts()
+        result["recent_themes"] = list(getattr(self, "recent_themes", None) or [])[-12:]
         result["finished_at"] = utc_now()
         result["state"] = "degraded" if result["errors"] or result["warnings"] else "ok"
         _write_json_atomic(self.status_path, result)

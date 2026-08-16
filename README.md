@@ -85,7 +85,7 @@ flowchart LR
 
 KEEP = `screened` + `candidate` + `approved`。  
 USABLE = `candidate` + `approved`。  
-冷启动：KEEP 父本少于 `production.cold_start.min_parents`（默认 8）时放开骨架冻结，seed `draft` 可作 mutate 父本。主题仍硬轮转（`cold_start.rotate_themes`，默认开）；字段先验只影响 compose / mutate，不锁定当轮机制。
+冷启动：KEEP 父本少于 `production.cold_start.min_parents`（默认 8）时放开骨架冻结，seed `draft` 可作 mutate 父本。主题仍硬轮转全部机制（`cold_start.rotate_themes`，默认开）；字段先验只影响 compose / mutate，不锁定当轮机制。supervisor 每周期 `rounds=1` 时会把 `recent_themes` 写入 `status.json`，避免每个新 experiment 都从 amplitude 重来。
 
 每个因子目录：
 

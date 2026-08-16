@@ -255,6 +255,10 @@ def pick_theme_with_lessons(
     pool = eligible_mechanisms(mechanisms, usable_coverage)
     ids = [m["id"] for m in pool]
     recent = list(recent_themes or [])
+    # Penalize every other family in the pool, not just the last 3. A window
+    # of 3 plus alphabetical ties only cycles the first four ids.
+    rotate_span = max(0, len(ids) - 1)
+    recent_window = recent[-rotate_span:] if rotate_span else []
     if forced and forced in ids:
         fails = weak_mechanisms(lessons).get(forced, 0)
         if fails < soft_switch_after:
@@ -264,7 +268,7 @@ def pick_theme_with_lessons(
     for m in pool:
         mid = m["id"]
         score = coverage.get(mid, 0) + 2 * weak.get(mid, 0)
-        if hard_rotate and mid in recent[-3:]:
+        if hard_rotate and mid in recent_window:
             score += 5  # push recently used themes down
         scored.append((score, mid))
     scored.sort()
