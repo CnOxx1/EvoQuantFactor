@@ -102,8 +102,8 @@ def fetch_archive_universe():
 
 @app.command("fetch-vendor-archive")
 def fetch_vendor_archive(
-    start: str = typer.Option("20191201", help="YYYYMMDD inclusive"),
-    end: str = typer.Option("20251231", help="YYYYMMDD inclusive"),
+    start: str = typer.Option("20150901", help="YYYYMMDD inclusive"),
+    end: str = typer.Option("20260630", help="YYYYMMDD inclusive"),
     roles: Optional[str] = typer.Option(
         None,
         help="comma list: universe,daily_basic,industry; default all three",

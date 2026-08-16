@@ -97,8 +97,8 @@ qfactor sync-data --start 20200101 --end YYYYMMDD --source baostock --allow-snap
 ```
 
 已有 2024–2026 切片不会被当成 2020 年起的完整覆盖；缺前缀的代码会重新下载。
-新数据版本写入后，才能把 discovery 分区扩到 `20200102–20251231`。2026 行情入库，
-但不进入 discovery。
+新数据版本写入后，才能把 discovery 分区扩到 `20160102–20260630`。discovery 可以
+使用已经入库的 2026 行情，但不能把 `discovery_end` 设到数据结束日之后。
 
 BaoStock 适配器保留逐日 `isST` 与 `tradestatus`；这些属于公开来源证据，但不会
 把估算流通市值升级为 candidate 可用的供应商市值。

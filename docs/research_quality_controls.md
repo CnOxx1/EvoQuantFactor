@@ -48,8 +48,8 @@ qfactor loop --clean-experiment --no-resume
 以及本次 experiment 新产生的 screened。生成的因子写入 experiment/cohort 来源，
 后续多重检验可按数据版本、discovery 窗口和机制累计。
 
-当前仓库在长历史行情入库后，discovery 使用 `20200102–20251231`，以便
-`years_consistent` 能看到至少三年。该窗口只能生产 `screened`；snapshot
-universe 与 estimated `circ_mv` 仍使 candidate 保持为零。2026 数据入库但不被
-discovery 读取。补齐长 PIT 历史后必须创建新 data version 和新分区，不能把
+当前仓库在长历史行情入库后，discovery 使用 `20160102–20260630`，以便
+`years_consistent` 能看到多年样本。该窗口只能生产 `screened`，直到
+selection 分区被冻结。snapshot universe 与 estimated `circ_mv` 仍使
+candidate 保持为零。补齐长 PIT 历史后必须创建新 data version，不能把
 旧 bootstrap 报告升级。

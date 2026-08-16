@@ -52,7 +52,7 @@ production:
 # Fetch / keep / check bars before any mining. Supervisor and `produce` call
 # this first. PIT is tried first; snapshot is a research-only fallback.
 data_prepare:
-  start: "20200101"
+  start: "20160102"
   end: ""                    # empty = today in project timezone
   source: baostock
   allow_snapshot_universe: true

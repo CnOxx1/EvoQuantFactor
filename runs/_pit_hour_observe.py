@@ -1,6 +1,6 @@
 """One-hour factory observe on the vendor-archive PIT data version.
 
-Prepares the discovery window only (20240102-20251231). Does not loosen
+Prepares the discovery window only (20160102-20260630). Does not loosen
 gates and does not invent selection dates. Candidate must stay blocked.
 
 Usage:
@@ -36,8 +36,8 @@ THEMES = [
     "volatility",
     "volume_price",
 ]
-DISCOVERY_START = "20240102"
-DISCOVERY_END = "20251231"
+DISCOVERY_START = "20160102"
+DISCOVERY_END = "20260630"
 
 
 def utc_now() -> str:

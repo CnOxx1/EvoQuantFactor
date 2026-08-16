@@ -322,8 +322,8 @@ def _load_existing_members(cfg: ProjectConfig) -> pd.DataFrame:
 
 def fetch_and_ingest_vendor_archives(
     *,
-    start: str = "20191201",
-    end: str = "20251231",
+    start: str = "20150901",
+    end: str = "20260630",
     token: str | None = None,
     sleep_seconds: float = 0.35,
     cfg: ProjectConfig | None = None,

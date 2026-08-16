@@ -183,7 +183,7 @@ flowchart TD
     M --> Q[candidate / release 只报告, 不解锁挖掘]
 ```
 
-直接 `loop`（不加 `--prepare-data`）仍可能用仓库里的两年切片开挖，因为当前 discovery 窗口就在 `20240102–20251231`。服务器上一键启动：
+直接 `loop`（不加 `--prepare-data`）仍可能用仓库里已覆盖的切片开挖，因为当前 discovery 窗口是 `20160102–20260630`。服务器上一键启动：
 
 ```bash
 scripts/start_factory.sh              # pull main → prepare-data → 后台 supervisor
@@ -313,7 +313,7 @@ qfactor data-contract-readiness
 qfactor prepare-data
 ```
 
-已有 2024–2026 切片不会被当成 2020 年起的完整覆盖；缺前缀的代码会重新下载。新数据版本写入后，才能把 discovery 扩到 `20200102–20251231`。2026 行情可以入库，但不进入 discovery。
+已有 2024–2026 切片不会被当成 2016 年起的完整覆盖；缺前缀的代码会重新下载。新数据版本写入后，才能把 discovery 扩到 `20160102–20260630`。已经入库的 2026 行情可以进入 discovery，但不能把窗口设到数据结束日之后。
 
 表：行情 `daily_bars`、成分 `universe_members`、行业 `industry_map`、因子 `factors` / `factor_reports`、任务 `jobs`、checkpoint `loop_checkpoints`、实验账本。
 
@@ -321,7 +321,7 @@ qfactor prepare-data
 
 ## 评估闸
 
-配置：`configs/eval_thresholds.yaml`。交易滞后 1 日、前瞻 5 日、分层 5 档、成本 10bp。研究默认 discovery 窗口 `20240102–20251231`；生产闸还要求 selection 分区，密封验收只读 sealed 分区。
+配置：`configs/eval_thresholds.yaml`。交易滞后 1 日、前瞻 5 日、分层 5 档、成本 10bp。研究默认 discovery 窗口 `20160102–20260630`；生产闸还要求 selection 分区，密封验收只读 sealed 分区。
 
 **不要放松 production / release 闸。** 不要加大 `llm_ratio` / `llm_batch_size`，不要把冷启动阈值开到 KEEP 接近全库。
 
@@ -437,7 +437,7 @@ python -m qfactor.agent.supervisor run-forever --start-cycle 12
 
 `configs/data_sources.yaml`：指数代码 `000903`；`providers.*.auto` 在无 Tushare token 且 archive 文件存在时解析为 `archive`。
 
-`configs/eval_thresholds.yaml`：研究 discovery 默认 `20240102–20251231`；selection / sealed 未配置。生产要求 3 年稳定。
+`configs/eval_thresholds.yaml`：研究 discovery 默认 `20160102–20260630`；selection / sealed 未配置。生产要求 3 年稳定。
 
 ---
 

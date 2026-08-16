@@ -163,6 +163,6 @@ git fetch origin main && git checkout main && git pull origin main
 .venv/bin/python -m qfactor.agent.supervisor run-forever --start-cycle 12
 ```
 
-长历史进库并生成**新** `data_version` 之后，才能把 `eval.partitions.discovery_start` 改成 `20200102`。如果先改分区再拉数，`discovery_window_before_data` 会挡住 LLM，这是正确的。
+长历史进库并生成**新** `data_version` 之后，才能把 `eval.partitions.discovery_start` 改成 `20160102`。如果先改分区再拉数，`discovery_window_before_data` 会挡住 LLM，这是正确的。
 
-2026 行情可以留在库里，但不要写进 discovery。candidate 在 PIT 成分、供应商市值和 selection 分区补齐之前必须保持为 0。
+2026 行情可以进入 discovery，但 `discovery_end` 不得超过当前面板结束日。candidate 在 PIT 成分、供应商市值和 selection 分区补齐之前必须保持为 0。
