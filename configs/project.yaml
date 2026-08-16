@@ -48,6 +48,7 @@ production:
     prior_update_every: 20      # rebuild field/window weights every N rounds (0 = every batch)
     cheap_ic_min: 0.008         # skip full gate when |train IC| below this
     parent_top_screened: 12     # screened parent budget, split across unblocked mechanisms
+    rotate_themes: true         # hard-rotate mechanisms while cold; do not lock on first passing field
 
 # Fetch / keep / check bars before any mining. Supervisor and `produce` call
 # this first. PIT is tried first; snapshot is a research-only fallback.

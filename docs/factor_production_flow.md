@@ -115,6 +115,8 @@ flowchart TD
     M -->|无| N[结束: 只产出 screened]
 ```
 
+`decide` 在冷启动（KEEP < 8）时仍硬轮转八个机制。字段先验只用于 compose / mutate，不能把主题锁在第一个过闸的字段上。seed 保持 `draft`，不计入 KEEP；旧 snapshot 库仍不能当父本。闸门和“不自动升 candidate”不变。
+
 循环**不会**自动 `promote_screened`。supervisor 每个周期都会看 candidate 合同；不过就明确 `recheck_screened=blocked`。
 
 ## 5. 工厂 supervisor 一个周期

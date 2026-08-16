@@ -18,6 +18,9 @@ DEFAULTS = {
     "prior_update_every": 20,
     "cheap_ic_min": 0.008,
     "parent_top_screened": 12,
+    # Cold start may loosen skeleton bans. It must not lock the round theme
+    # onto the first field that passes the research gate.
+    "rotate_themes": True,
 }
 
 # Classic A-share price-volume priors, expressed in the same DSL the miner mutates.
@@ -103,6 +106,7 @@ def cold_start_cfg(cfg: ProjectConfig | None = None) -> dict[str, Any]:
     out["prior_update_every"] = int(out["prior_update_every"])
     out["cheap_ic_min"] = float(out["cheap_ic_min"])
     out["parent_top_screened"] = int(out["parent_top_screened"])
+    out["rotate_themes"] = bool(out["rotate_themes"])
     return out
 
 

@@ -34,6 +34,64 @@ def test_is_cold_start_threshold():
     assert is_cold_start([]) is True
 
 
+def test_decide_theme_cold_start_hard_rotates_off_amplitude(monkeypatch):
+    gen = CandidateGenerator(llm=LLMClient(api_key="x"))
+    gen.llm_cfg["llm_decide_theme"] = False
+    monkeypatch.setattr(
+        "qfactor.agent.generator.is_cold_start", lambda existing, cfg=None: True
+    )
+    existing = [
+        {
+            "mechanism": "amplitude",
+            "status": "screened",
+            "expression": "ma(amplitude,20)",
+            "summary": {"rank_ic_mean": 0.04},
+        }
+    ]
+    lessons = [
+        {
+            "mechanism": "amplitude",
+            "expression": "std(high,20)",
+            "reason": "weak_ic",
+            "detail": {"rank_ic_mean": 0.02},
+        }
+    ] * 8
+    theme = gen.decide_theme(
+        {"amplitude": 4},
+        existing,
+        lessons=lessons,
+        recent_themes=["amplitude", "amplitude", "amplitude"],
+    )
+    assert theme != "amplitude"
+
+
+def test_decide_theme_cold_field_lock_only_when_rotate_disabled(monkeypatch):
+    gen = CandidateGenerator(llm=LLMClient(api_key="x"))
+    gen.llm_cfg["llm_decide_theme"] = False
+    monkeypatch.setattr(
+        "qfactor.agent.generator.is_cold_start", lambda existing, cfg=None: True
+    )
+    monkeypatch.setattr(
+        "qfactor.agent.generator.cold_start_cfg",
+        lambda cfg=None: {"rotate_themes": False},
+    )
+    existing = [
+        {
+            "mechanism": "amplitude",
+            "status": "screened",
+            "expression": "ma(amplitude,20)",
+            "summary": {"rank_ic_mean": 0.05},
+        }
+    ]
+    theme = gen.decide_theme(
+        {"amplitude": 4},
+        existing,
+        lessons=[],
+        recent_themes=["amplitude", "amplitude", "amplitude"],
+    )
+    assert theme == "amplitude"
+
+
 def test_llm_slot_plan_cold_keeps_fresh_when_catalog_thick():
     plan = llm_slot_plan(
         8,
