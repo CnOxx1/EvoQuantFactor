@@ -33,6 +33,30 @@ from qfactor.factor.transforms import (
 from qfactor.settings import ProjectConfig, get_project_config
 
 
+def panel_coverage(
+    panel: pd.DataFrame,
+    universe_mask: pd.DataFrame | None = None,
+) -> float:
+    """Fraction of valid factor values on the eligible PIT cross-section.
+
+    The processed panel keeps the union of members as columns. Non-members are
+    NaN after the universe mask; they must not count against research coverage.
+    """
+    if panel is None or panel.empty:
+        return 0.0
+    if universe_mask is None:
+        return float(panel.notna().mean().mean())
+    eligible = (
+        universe_mask.reindex(index=panel.index, columns=panel.columns)
+        .fillna(False)
+        .to_numpy(dtype=bool)
+    )
+    n = int(eligible.sum())
+    if n <= 0:
+        return 0.0
+    return float(panel.notna().to_numpy()[eligible].mean())
+
+
 class EvalService:
     def __init__(self, cfg: ProjectConfig | None = None):
         self.cfg = cfg or get_project_config()
@@ -371,7 +395,12 @@ class EvalService:
         layered_h = layered_returns(signed, fwd, n_quantiles=n_q, min_obs=min_obs)
         layered_1d = layered_returns(signed, fwd_1d, n_quantiles=n_q, min_obs=min_obs)
 
-        coverage = float(signed.notna().mean().mean()) if not signed.empty else 0.0
+        universe_mask = None
+        try:
+            universe_mask = self._context().universe_mask
+        except Exception:
+            universe_mask = None
+        coverage = panel_coverage(signed, universe_mask)
         turnover = approx_daily_turnover(signed)
 
         min_abs = float(thresholds.get("min_abs_rank_ic_mean", 0.0))
