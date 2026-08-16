@@ -215,8 +215,7 @@ def main() -> int:
             "remaining_s": remaining,
         }
         try:
-            # Theme is decided inside the factory. Forcing a cycle here would
-            # undo cold-start rotation and keep stacking the first family.
+            # Theme is decided inside the factory. Do not force a quota cycle.
             result = loop.run(
                 rounds=1,
                 batch_size=4,

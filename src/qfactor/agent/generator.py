@@ -697,12 +697,11 @@ class CandidateGenerator:
         self.llm.require_enabled()
         lessons = lessons or []
         if is_cold_start(existing, self.cfg):
-            # Field/window priors steer templates inside a theme. They must not
-            # lock the factory onto the first family that saved — that stacks
-            # near-duplicate screened parents instead of a quality book.
+            # Keep inventory must not ban a working family. Clones are stopped
+            # by skeleton/corr caps, not by refusing to mine amplitude.
             return pick_theme_with_lessons(
                 self.mechanisms,
-                coverage,
+                {},
                 lessons,
                 forced=forced_theme,
                 soft_switch_after=int(self.llm_cfg.get("soft_switch_after", 3)),
@@ -1826,15 +1825,7 @@ class CandidateGenerator:
         if round_idx > 0 and every > 0 and last is not None and (round_idx - last) < every:
             return False
         if cold:
-            keep_cov = keep_mechanism_coverage(existing)
-            saturated = {m for m, n in keep_cov.items() if int(n) >= 2}
-            skip_fields = {f for f, m in _FIELD_MECH.items() if m in saturated}
-            field_p, win_p = field_window_prior(
-                lessons,
-                existing,
-                blocked_mechanisms=saturated,
-                blocked_fields=skip_fields,
-            )
+            field_p, win_p = field_window_prior(lessons, existing)
         else:
             blocked_fields = {
                 f for f, m in _FIELD_MECH.items() if m in self._blocked_mechs

@@ -141,7 +141,7 @@ def test_active_skeleton_bans_cold_skips_library_fsa_keeps_eligible_cap(monkeypa
     assert expression_fingerprint("ma(amplitude,20)")["skeleton"] in banned
 
 
-def test_decide_theme_cold_start_rotates_off_winning_field():
+def test_decide_theme_cold_start_does_not_ban_high_keep_family():
     gen = CandidateGenerator(llm=LLMClient(api_key="x"))
     gen.llm_cfg["llm_decide_theme"] = False
     existing = [
@@ -160,16 +160,12 @@ def test_decide_theme_cold_start_rotates_off_winning_field():
     ]
     assert is_cold_start(existing) is True
     coverage = keep_mechanism_coverage(existing)
-    theme = gen.decide_theme(
-        coverage,
-        existing,
-        recent_themes=["amplitude", "amplitude"],
-    )
-    assert theme != "amplitude"
     assert coverage["amplitude"] == 3
+    theme = gen.decide_theme(coverage, existing, recent_themes=[])
+    assert theme == "amplitude"
 
 
-def test_cold_field_prior_skips_saturated_keep_family():
+def test_cold_field_prior_keeps_winning_family_fields():
     gen = CandidateGenerator(llm=LLMClient(api_key="x"))
     existing = [
         _eligible_parent(
@@ -184,22 +180,9 @@ def test_cold_field_prior_skips_saturated_keep_family():
             },
         )
         for _ in range(3)
-    ] + [
-        _eligible_parent(
-            "screened",
-            mechanism="reversal",
-            expression="neg(roc(close_adj,5))",
-            summary={
-                "universe_mode": "pit",
-                "circ_mv_source": "archive_daily_basic",
-                "data_version": "live",
-                "rank_ic_mean": 0.012,
-            },
-        )
     ]
     assert gen._refresh_field_window_prior([], existing, cold=True, round_idx=0, every=20)
-    assert "amplitude" not in gen._field_prior
-    assert gen._field_prior.get("close_adj", 0) > 0
+    assert gen._field_prior.get("amplitude", 0) > 0
 
 
 def test_field_window_prior_weights_overnight():
