@@ -7,18 +7,17 @@ vendor daily_basic (circ_mv), and date-keyed industry. Does not invent
 ST / limit / risk files. Token stays in the environment; never in git.
 """
 
-import re
 import time
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 import pandas as pd
-
-_AUTH_BUSY_RE = re.compile(r"等待\s*(\d+)\s*秒")
 
 from qfactor.data.archive_ingest import ingest_archive_role
 from qfactor.data.tushare_adapter import (
     CSI100_INDEX_CODES,
+    _auth_lock_wait,
+    _call_with_auth_retry,
     fetch_index_weight_pages,
     import_ts_client,
     resolve_ts_token,
@@ -32,35 +31,6 @@ def _sleep(seconds: float) -> None:
         time.sleep(seconds)
 
 
-def _auth_lock_wait(exc: BaseException) -> float | None:
-    msg = str(exc)
-    if "授权码正在被其他设备使用" in msg:
-        hit = _AUTH_BUSY_RE.search(msg)
-        return float(int(hit.group(1)) + 5) if hit else 65.0
-    if "超时" in msg or "timeout" in msg.lower():
-        return 8.0
-    return None
-
-
-def _call_with_auth_retry(fn: Callable[[], Any], *, retries: int = 5) -> Any:
-    last: BaseException | None = None
-    for attempt in range(1, retries + 1):
-        try:
-            return fn()
-        except Exception as e:
-            last = e
-            wait = _auth_lock_wait(e)
-            if wait is None:
-                raise
-            print(
-                f"[vendor-archive] auth lock (attempt {attempt}/{retries}), sleep {wait:.0f}s",
-                flush=True,
-            )
-            time.sleep(wait)
-    assert last is not None
-    raise last
-
-
 def connect_pro(token: str | None = None) -> Any:
     tok = resolve_ts_token(token)
     if not tok:
@@ -68,10 +38,14 @@ def connect_pro(token: str | None = None) -> Any:
     ts = import_ts_client()
     if hasattr(ts, "set_token"):
         ts.set_token(tok)
-    try:
-        return ts.pro_api(tok)
-    except TypeError:
-        return ts.pro_api()
+
+    def _open():
+        try:
+            return ts.pro_api(tok)
+        except TypeError:
+            return ts.pro_api()
+
+    return _call_with_auth_retry(_open)
 
 
 def _month_starts(start: str, end: str) -> list[tuple[str, str]]:
@@ -92,9 +66,13 @@ def fetch_csi100_members(
     end: str,
     *,
     sleep_seconds: float = 0.35,
+    skip_months: set[str] | None = None,
 ) -> pd.DataFrame:
     frames: list[pd.DataFrame] = []
+    skip = {str(m)[:6] for m in (skip_months or set())}
     for m_start, m_end in _month_starts(start, end):
+        if m_start[:6] in skip:
+            continue
         best = pd.DataFrame()
         for code in CSI100_INDEX_CODES:
             chunk = fetch_index_weight_pages(
@@ -149,6 +127,70 @@ def fetch_daily_basic_union(
     if not frames:
         return pd.DataFrame(columns=["trade_date", "ts_code", "circ_mv", "turnover_rate", "free_float_shares"])
     return pd.concat(frames, ignore_index=True)
+
+
+def _shift_yyyymmdd(day: str, delta: int) -> str:
+    return (pd.Timestamp(day) + pd.Timedelta(days=delta)).strftime("%Y%m%d")
+
+
+def fetch_daily_basic_gaps(
+    pro: Any,
+    codes: list[str],
+    start: str,
+    end: str,
+    existing: pd.DataFrame | None,
+    *,
+    sleep_seconds: float = 0.35,
+) -> pd.DataFrame:
+    """Pull only missing date ranges so a 2019–2025 file can grow to 2015–2026."""
+    have: dict[str, tuple[str, str]] = {}
+    if existing is not None and not existing.empty and "circ_mv" in existing.columns:
+        tmp = existing.copy()
+        tmp["trade_date"] = tmp["trade_date"].astype(str).str.replace("-", "", regex=False).str[:8]
+        tmp["ts_code"] = tmp["ts_code"].astype(str)
+        for code, grp in tmp.groupby("ts_code", sort=False):
+            have[str(code)] = (str(grp["trade_date"].min()), str(grp["trade_date"].max()))
+    frames: list[pd.DataFrame] = []
+    if existing is not None and not existing.empty:
+        frames.append(existing)
+    for i, code in enumerate(codes, start=1):
+        spans: list[tuple[str, str]] = []
+        covered = have.get(code)
+        if covered is None:
+            spans.append((start, end))
+        else:
+            emin, emax = covered
+            if start < emin:
+                spans.append((start, _shift_yyyymmdd(emin, -1)))
+            if end > emax:
+                spans.append((_shift_yyyymmdd(emax, 1), end))
+        for s, e in spans:
+            if s > e:
+                continue
+            _sleep(sleep_seconds)
+            try:
+                df = _call_with_auth_retry(
+                    lambda c=code, a=s, b=e: pro.daily_basic(
+                        ts_code=c,
+                        start_date=a,
+                        end_date=b,
+                        fields="ts_code,trade_date,turnover_rate,circ_mv,free_share",
+                    )
+                )
+            except Exception as exc:
+                print(f"[vendor-archive] daily_basic {code} {s}-{e} failed: {exc}", flush=True)
+                continue
+            if df is None or getattr(df, "empty", True):
+                continue
+            frames.append(df.rename(columns={"free_share": "free_float_shares"}))
+        if i % 20 == 0:
+            print(f"[vendor-archive] daily_basic gaps {i}/{len(codes)}", flush=True)
+    if not frames:
+        return pd.DataFrame(columns=["trade_date", "ts_code", "circ_mv", "turnover_rate", "free_float_shares"])
+    out = pd.concat(frames, ignore_index=True)
+    out["trade_date"] = out["trade_date"].astype(str).str.replace("-", "", regex=False).str[:8]
+    out["ts_code"] = out["ts_code"].astype(str)
+    return out.drop_duplicates(["trade_date", "ts_code"], keep="last")
 
 
 def _normalize_sw_roster(raw: pd.DataFrame, industry_fallback: str | None = None) -> pd.DataFrame:
@@ -339,9 +381,31 @@ def fetch_and_ingest_vendor_archives(
     tmp.mkdir(parents=True, exist_ok=True)
     report: dict[str, Any] = {"start": start, "end": end, "roles": sorted(wanted)}
 
+    existing_members = (
+        _load_existing_members(cfg)
+        if (cfg.root / "data" / "raw" / "providers" / "csi100_members.parquet").exists()
+        else pd.DataFrame(columns=["trade_date", "ts_code", "weight"])
+    )
+
     if "universe" in wanted:
-        print(f"[vendor-archive] CSI100 members {start}–{end}", flush=True)
-        members = fetch_csi100_members(pro, start, end, sleep_seconds=sleep_seconds)
+        have_months = set()
+        if not existing_members.empty:
+            have_months = set(existing_members["trade_date"].astype(str).str[:6])
+        print(
+            f"[vendor-archive] CSI100 members {start}–{end} "
+            f"(reuse {len(have_months)} months)",
+            flush=True,
+        )
+        fresh = fetch_csi100_members(
+            pro, start, end, sleep_seconds=sleep_seconds, skip_months=have_months
+        )
+        members = (
+            pd.concat([existing_members, fresh], ignore_index=True)
+            if not existing_members.empty
+            else fresh
+        )
+        if not members.empty:
+            members = normalize_members(members)
         stats = universe_stats(members)
         if stats["n_snapshots"] < 2 or stats["n_codes_per_snapshot_mean"] < 80:
             raise RuntimeError(f"CSI100 member pull is not PIT-complete: {stats}")
@@ -350,13 +414,21 @@ def fetch_and_ingest_vendor_archives(
         members_report = ingest_archive_role("universe", members_src, cfg=cfg)
         report["members"] = {**stats, **{k: members_report.get(k) for k in ("path", "n_rows", "ok")}}
     else:
-        members = _load_existing_members(cfg)
+        members = existing_members if not existing_members.empty else _load_existing_members(cfg)
 
     codes = sorted(members["ts_code"].astype(str).unique().tolist())
 
     if "daily_basic" in wanted:
-        print(f"[vendor-archive] daily_basic for {len(codes)} union names", flush=True)
-        basic = fetch_daily_basic_union(pro, codes, start, end, sleep_seconds=sleep_seconds)
+        basic_path = cfg.root / "data" / "raw" / "providers" / "daily_basic.parquet"
+        existing_basic = pd.read_parquet(basic_path) if basic_path.exists() else pd.DataFrame()
+        print(
+            f"[vendor-archive] daily_basic gaps for {len(codes)} union names "
+            f"{start}–{end}",
+            flush=True,
+        )
+        basic = fetch_daily_basic_gaps(
+            pro, codes, start, end, existing_basic, sleep_seconds=sleep_seconds
+        )
         if basic.empty or "circ_mv" not in basic.columns:
             raise RuntimeError("daily_basic pull returned no circ_mv")
         basic_src = tmp / "daily_basic.csv"
@@ -366,6 +438,8 @@ def fetch_and_ingest_vendor_archives(
             "n_rows": int(len(basic)),
             "n_codes": int(basic["ts_code"].nunique()),
             "circ_mv_coverage": float(basic["circ_mv"].notna().mean()),
+            "date_min": str(basic["trade_date"].min()),
+            "date_max": str(basic["trade_date"].max()),
             "path": basic_report.get("path"),
             "ok": basic_report.get("ok"),
         }

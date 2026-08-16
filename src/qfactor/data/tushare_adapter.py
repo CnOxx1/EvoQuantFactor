@@ -1,13 +1,45 @@
 from __future__ import annotations
 
 import os
+import re
 import time
-from typing import Any
+from typing import Any, Callable
 
 import pandas as pd
 
 from qfactor.data.base import DataAdapter
 from qfactor.settings import get_settings
+
+_AUTH_BUSY_RE = re.compile(r"等待\s*(\d+)\s*秒")
+
+
+def _auth_lock_wait(exc: BaseException) -> float | None:
+    msg = str(exc)
+    if "授权码正在被其他设备使用" in msg:
+        hit = _AUTH_BUSY_RE.search(msg)
+        return float(int(hit.group(1)) + 5) if hit else 65.0
+    if "超时" in msg or "timeout" in msg.lower():
+        return 8.0
+    return None
+
+
+def _call_with_auth_retry(fn: Callable[[], Any], *, retries: int = 6) -> Any:
+    last: BaseException | None = None
+    for attempt in range(1, retries + 1):
+        try:
+            return fn()
+        except Exception as e:
+            last = e
+            wait = _auth_lock_wait(e)
+            if wait is None:
+                raise
+            print(
+                f"[tinyshare] auth lock (attempt {attempt}/{retries}), sleep {wait:.0f}s",
+                flush=True,
+            )
+            time.sleep(wait)
+    assert last is not None
+    raise last
 
 # CSI100 also lists as 399903.SZ. Some Tushare-compatible proxies return a
 # one-row first page for 000903.SH on 2024+ months; 399903.SZ is often complete.
@@ -70,7 +102,7 @@ def fetch_index_weight_pages(
                 kwargs["start_date"] = start_date
             if end_date:
                 kwargs["end_date"] = end_date
-        df = pro.index_weight(**kwargs)
+        df = _call_with_auth_retry(lambda: pro.index_weight(**kwargs))
         if df is None or getattr(df, "empty", True):
             break
         code_col = "con_code" if "con_code" in df.columns else "ts_code"
@@ -261,7 +293,9 @@ class TushareAdapter(DataAdapter):
 
     def fetch_daily_bars(self, ts_code: str, start: str, end: str) -> pd.DataFrame:
         self._sleep()
-        df = self.pro.daily(ts_code=ts_code, start_date=start, end_date=end)
+        df = _call_with_auth_retry(
+            lambda: self.pro.daily(ts_code=ts_code, start_date=start, end_date=end)
+        )
         if df is None or df.empty:
             return pd.DataFrame(
                 columns=[

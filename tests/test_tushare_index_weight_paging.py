@@ -1,12 +1,13 @@
 import pandas as pd
 
 from qfactor.data.tushare_adapter import TushareAdapter, fetch_index_weight_pages
+from qfactor.data.tushare_adapter import _auth_lock_wait
 from qfactor.data.vendor_archive_fetch import (
-    _auth_lock_wait,
     _calendar_covers_window,
     _normalize_sw_roster,
     codes_missing_window_industry,
     expand_industry_to_calendar,
+    fetch_csi100_members,
 )
 
 
@@ -107,6 +108,31 @@ def test_expand_industry_out_date_is_exclusive():
     assert by_date["20240531"] == "银行"
     assert by_date["20240601"] == "非银金融"
     assert by_date["20240603"] == "非银金融"
+
+
+def test_member_fetch_skips_months_already_on_disk():
+    class _Pro:
+        def __init__(self):
+            self.months: list[str] = []
+
+        def index_weight(self, **kwargs):
+            start = kwargs["start_date"]
+            self.months.append(start[:6])
+            return pd.DataFrame(
+                {
+                    "index_code": ["000903.SH"] * 2,
+                    "con_code": ["000001.SZ", "600519.SH"],
+                    "trade_date": [start[:6] + "28", start[:6] + "28"],
+                    "weight": [1.0, 2.0],
+                }
+            )
+
+    pro = _Pro()
+    out = fetch_csi100_members(
+        pro, "20150901", "20151130", sleep_seconds=0, skip_months={"201510"}
+    )
+    assert "201510" not in pro.months
+    assert set(out["trade_date"].astype(str).str[:6]) == {"201509", "201511"}
 
 
 def test_auth_lock_wait_parses_retry_seconds():
