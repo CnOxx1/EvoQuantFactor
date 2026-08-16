@@ -89,23 +89,48 @@ def library_diversity_index(cfg: ProjectConfig | None = None) -> dict[str, Any]:
     }
 
 
+def keep_skeleton_counts(items: list[dict[str, Any]] | None) -> dict[str, int]:
+    """KEEP-status skeleton counts from an explicit cohort, not the whole catalog."""
+    counts: Counter[str] = Counter()
+    for item in items or []:
+        if str(item.get("status") or "") not in KEEP_STATUSES:
+            continue
+        expr = item.get("expression")
+        if not expr:
+            continue
+        try:
+            counts[expression_fingerprint(str(expr))["skeleton"]] += 1
+        except Exception:
+            continue
+    return dict(counts)
+
+
 def skeleton_keep_counts(cfg: ProjectConfig | None = None) -> dict[str, int]:
     """How many screened/candidate/approved factors share each skeleton."""
     cfg = cfg or get_project_config()
     reg = FactorRegistry(cfg)
-    counts: Counter[str] = Counter()
+    rows: list[dict[str, Any]] = []
     for item in reg.list_factors():
         if item.get("status") not in KEEP_STATUSES:
             continue
         try:
             spec = reg.load_spec(str(item["name"]))
             expr = spec.expression or (spec.params or {}).get("expression")
-            if not expr:
-                continue
-            counts[expression_fingerprint(str(expr))["skeleton"]] += 1
         except Exception:
             continue
-    return dict(counts)
+        if not expr:
+            continue
+        row = dict(item)
+        row["expression"] = expr
+        rows.append(row)
+    return keep_skeleton_counts(rows)
+
+
+def saturated_keep_skeletons(
+    items: list[dict[str, Any]] | None, max_per: int = 2
+) -> set[str]:
+    """Skeletons that already have enough kept rows in this cohort."""
+    return {sk for sk, n in keep_skeleton_counts(items).items() if n >= max_per}
 
 
 def saturated_skeletons(
@@ -120,24 +145,31 @@ def active_skeleton_bans(
     extra: list[str] | None = None,
     max_per: int | None = None,
     cold_start: bool = False,
+    existing: list[dict[str, Any]] | None = None,
 ) -> set[str]:
     """
     Live skeleton bans: high-corr / FSA from the library, plus saturated
     kept-skeletons. Does not replay a checkpoint graveyard of one-off accepts.
 
-    Cold start: only exact hashes matter — FSA and per-skeleton caps stay off
-    until there are enough parents to evolve.
+    Cold start still skips snapshot FSA. Keep-skeleton caps from the eligible
+    cohort stay on so window-shopped clones cannot fill the parent book.
     """
-    if cold_start:
-        return set()
     cfg = cfg or get_project_config()
     prod = (cfg.project.get("production") or {}).get("diversity") or {}
     if max_per is None:
         max_per = int(prod.get("max_per_skeleton", 2))
-    index = library_diversity_index(cfg)
-    return set(index.get("banned_skeletons") or []) | saturated_skeletons(cfg, max_per) | set(
-        extra or []
+    extra_set = set(extra or [])
+    keep_sat = (
+        saturated_keep_skeletons(existing, max_per)
+        if existing is not None
+        else set()
     )
+    if cold_start:
+        return keep_sat | extra_set
+    index = library_diversity_index(cfg)
+    if existing is None:
+        keep_sat = saturated_skeletons(cfg, max_per)
+    return set(index.get("banned_skeletons") or []) | keep_sat | extra_set
 
 
 def merge_bans(

@@ -4,7 +4,9 @@ from qfactor.agent.diversity import (
     expression_fingerprint,
     is_banned_expression,
     keep_mechanism_coverage,
+    keep_skeleton_counts,
     pick_theme_with_lessons,
+    saturated_keep_skeletons,
     saturated_skeletons,
     unique_factor_name,
 )
@@ -96,6 +98,36 @@ def test_pick_theme_penalizes_usable_library_families():
         hard_rotate=False,
     )
     assert theme in {"liquidity", "reversal"}
+
+
+def test_keep_skeleton_counts_ignore_drafts_and_cap_cohort():
+    rows = [
+        {"status": "screened", "expression": "ma(amplitude,20)"},
+        {"status": "screened", "expression": "ma(amplitude,40)"},
+        {"status": "draft", "expression": "ma(amplitude,60)"},
+        {"status": "screened", "expression": "neg(roc(close_adj,5))"},
+    ]
+    sk_amp = expression_fingerprint("ma(amplitude,20)")["skeleton"]
+    sk_rev = expression_fingerprint("neg(roc(close_adj,5))")["skeleton"]
+    counts = keep_skeleton_counts(rows)
+    assert counts[sk_amp] == 2
+    assert counts[sk_rev] == 1
+    assert saturated_keep_skeletons(rows, max_per=2) == {sk_amp}
+
+
+def test_diversity_index_bans_saturated_keep_skeletons():
+    existing = [
+        {"status": "screened", "expression": "ma(amplitude,20)"},
+        {"status": "screened", "expression": "ma(amplitude,40)"},
+        {"status": "candidate", "expression": "neg(roc(close_adj,5))"},
+        {"status": "draft", "expression": "ma(overnight,20)"},
+    ]
+    idx = CandidateGenerator.diversity_index(existing, max_per_skeleton=2)
+    sk_amp = expression_fingerprint("ma(amplitude,20)")["skeleton"]
+    sk_rev = expression_fingerprint("neg(roc(close_adj,5))")["skeleton"]
+    assert sk_amp in idx["banned_skeletons"]
+    assert sk_rev not in idx["banned_skeletons"]
+    assert expression_fingerprint("ma(amplitude,20)")["expr_hash"] in idx["expr_hashes"]
 
 
 def test_saturated_skeletons_caps_window_shopping(monkeypatch):

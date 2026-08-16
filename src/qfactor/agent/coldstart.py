@@ -110,19 +110,33 @@ def parent_count(
     existing: list[dict[str, Any]] | None,
     current_data_version: str | None = None,
 ) -> int:
-    """Count KEEP-status parents that are eligible on the live data version.
+    """Count distinct eligible KEEP parents on the live data version.
 
     Legacy snapshot / unverified screened rows do not heat the library. Missing
     ``parent_eligible`` is classified rather than treated as a production parent.
+    Window-shopped copies of the same skeleton count as one parent.
     """
+    from qfactor.agent.diversity import expression_fingerprint
     from qfactor.factor.cohort import apply_parent_eligibility
 
     n = 0
+    seen: set[str] = set()
     for item in existing or []:
         if str(item.get("status") or "") not in KEEP_STATUSES:
             continue
-        if apply_parent_eligibility(item, current_data_version).get("parent_eligible"):
-            n += 1
+        if not apply_parent_eligibility(item, current_data_version).get("parent_eligible"):
+            continue
+        expr = item.get("expression")
+        if expr:
+            try:
+                sk = expression_fingerprint(str(expr))["skeleton"]
+            except Exception:
+                sk = ""
+            if sk:
+                if sk in seen:
+                    continue
+                seen.add(sk)
+        n += 1
     return n
 
 

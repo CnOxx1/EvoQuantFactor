@@ -19,7 +19,8 @@ from qfactor.agent.diversity import (
     merge_bans,
     record_lesson,
     active_skeleton_bans,
-    skeleton_keep_counts,
+    keep_skeleton_counts,
+    saturated_keep_skeletons,
 )
 from qfactor.agent.generator import (
     CandidateGenerator,
@@ -173,19 +174,24 @@ def _node_decide(ctx: ProductionContext):
             existing, ctx.cfg, current_data_version=_current_data_version(ctx)
         )
         disable_fsa = bool(cold_start_cfg(ctx.cfg)["disable_fsa"] and cold)
+        div_cfg = (ctx.cfg.project.get("production") or {}).get("diversity") or {}
+        max_per_skel = int(div_cfg.get("max_per_skeleton", 2))
         index = (
-            ctx.generator.diversity_index(existing)
+            ctx.generator.diversity_index(existing, max_per_skel)
             if state.get("clean_experiment")
             else library_diversity_index(ctx.cfg)
         )
+        keep_sat = saturated_keep_skeletons(existing, max_per_skel)
+        extra_hc = list(state.get("high_corr_skeletons") or [])
         banned_skels = (
-            sorted(set(index.get("banned_skeletons") or []))
+            sorted(set(index.get("banned_skeletons") or []) | keep_sat | set(extra_hc))
             if state.get("clean_experiment")
             else sorted(
                 active_skeleton_bans(
                     ctx.cfg,
-                    extra=list(state.get("high_corr_skeletons") or []),
+                    extra=extra_hc,
                     cold_start=disable_fsa,
+                    existing=existing,
                 )
             )
         )
@@ -329,7 +335,7 @@ def _node_review_validate(ctx: ProductionContext):
         div_cfg = (ctx.cfg.project.get("production") or {}).get("diversity") or {}
         corr_ban = float(div_cfg.get("max_corr_ban", 0.95))
         max_per_skel = int(div_cfg.get("max_per_skeleton", 2))
-        keep_counts = skeleton_keep_counts(ctx.cfg)
+        keep_counts = keep_skeleton_counts(_eligible_research_library(ctx, state))
         round_eval_skels: set[str] = set()
         cold = bool(state.get("cold_start"))
         cheap_min = float(cold_start_cfg(ctx.cfg)["cheap_ic_min"])
@@ -341,7 +347,7 @@ def _node_review_validate(ctx: ProductionContext):
             try:
                 fp0 = expression_fingerprint(cand["expression"])
                 sk = fp0["skeleton"]
-                if not banned and sk in round_eval_skels and not cold:
+                if not banned and sk in round_eval_skels:
                     banned, why = True, "same_batch_skeleton"
             except Exception:
                 pass
@@ -400,7 +406,7 @@ def _node_review_validate(ctx: ProductionContext):
             tested.add(h)
             banned_hashes.add(h)
             bans.setdefault("hashes", set()).add(h)
-            if sk and not cold:
+            if sk:
                 round_eval_skels.add(sk)
 
             name = cand["name"]
@@ -512,7 +518,7 @@ def _node_review_validate(ctx: ProductionContext):
                 try:
                     sk_keep = expression_fingerprint(cand["expression"])["skeleton"]
                     keep_counts[sk_keep] = keep_counts.get(sk_keep, 0) + 1
-                    if not cold and keep_counts[sk_keep] >= max_per_skel:
+                    if keep_counts[sk_keep] >= max_per_skel:
                         banned_skels.add(sk_keep)
                         bans.setdefault("skeletons", set()).add(sk_keep)
                 except Exception:

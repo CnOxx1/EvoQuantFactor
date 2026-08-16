@@ -58,6 +58,29 @@ def test_is_cold_start_threshold():
     assert parent_count([{"status": "screened"}] * 20) == 0
 
 
+def test_parent_count_collapses_window_shopped_skeletons():
+    clones = [
+        _eligible_parent("screened", expression="ma(amplitude,20)")
+        for _ in range(8)
+    ]
+    assert parent_count(clones) == 1
+    assert is_cold_start(clones) is True
+    mixed_exprs = [
+        "neg(roc(close_adj,5))",
+        "ma(overnight,20)",
+        "ma(div(abs(ret_1d),amount),20)",
+        "std(ret_1d,20)",
+        "ma(turnover_rate,20)",
+        "ma(lower_shadow,20)",
+        "div(vol,ma(vol,20))",
+    ]
+    mixed = clones[:1] + [
+        _eligible_parent("screened", expression=expr) for expr in mixed_exprs
+    ]
+    assert parent_count(mixed) == 8
+    assert is_cold_start(mixed) is False
+
+
 def test_llm_slot_plan_cold_keeps_fresh_when_catalog_thick():
     plan = llm_slot_plan(
         8,
@@ -89,7 +112,7 @@ def test_llm_slot_plan_hot_thin_catalog_splits_fresh_and_mutate():
     assert plan["n_fresh"] + plan["n_mutate"] + plan["n_crossover"] + plan["n_template"] == 8
 
 
-def test_active_skeleton_bans_empty_when_cold(monkeypatch):
+def test_active_skeleton_bans_cold_skips_library_fsa_keeps_eligible_cap(monkeypatch):
     monkeypatch.setattr(
         "qfactor.agent.diversity.skeleton_keep_counts",
         lambda cfg=None: {"std(ret_1d,N)": 2},
@@ -98,7 +121,24 @@ def test_active_skeleton_bans_empty_when_cold(monkeypatch):
         "qfactor.agent.diversity.library_diversity_index",
         lambda cfg=None: {"banned_skeletons": ["high_corr_skel"]},
     )
-    assert active_skeleton_bans(max_per=2, extra=["extra_sk"], cold_start=True) == set()
+    assert active_skeleton_bans(max_per=2, extra=["extra_sk"], cold_start=True) == {
+        "extra_sk"
+    }
+    existing = [
+        _eligible_parent(
+            "screened",
+            expression="ma(amplitude,20)",
+        )
+        for _ in range(2)
+    ]
+    banned = active_skeleton_bans(
+        max_per=2, extra=["extra_sk"], cold_start=True, existing=existing
+    )
+    assert "high_corr_skel" not in banned
+    assert "extra_sk" in banned
+    from qfactor.agent.diversity import expression_fingerprint
+
+    assert expression_fingerprint("ma(amplitude,20)")["skeleton"] in banned
 
 
 def test_decide_theme_cold_start_rotates_off_winning_field():

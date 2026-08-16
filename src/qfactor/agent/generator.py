@@ -26,6 +26,7 @@ from qfactor.agent.diversity import (
     merge_bans,
     keep_mechanism_coverage,
     pick_theme_with_lessons,
+    saturated_keep_skeletons,
     unique_factor_name,
     usable_mechanism_coverage,
     weak_mechanisms,
@@ -647,7 +648,9 @@ class CandidateGenerator:
         self.llm_cfg = _production_llm_cfg(self.cfg)
 
     @staticmethod
-    def diversity_index(existing: list[dict[str, Any]]) -> dict[str, Any]:
+    def diversity_index(
+        existing: list[dict[str, Any]], max_per_skeleton: int = 2
+    ) -> dict[str, Any]:
         """Build bans only from the explicitly eligible research cohort."""
         hashes: set[str] = set()
         expressions: list[str] = []
@@ -662,13 +665,15 @@ class CandidateGenerator:
                 continue
             hashes.add(fp["expr_hash"])
             expressions.append(fp["canonical"])
-            if str(item.get("status") or "") in USABLE_STATUSES:
+            if str(item.get("status") or "") in KEEP_STATUSES:
                 skeletons.append(fp["skeleton"])
         return {
             "expr_hashes": sorted(hashes),
             "expressions": expressions,
             "skeletons": skeletons,
-            "banned_skeletons": [],
+            "banned_skeletons": sorted(
+                saturated_keep_skeletons(existing, max_per_skeleton)
+            ),
         }
 
     def _pick_mechanism(self, theme: str | None, coverage: dict[str, int]) -> dict[str, Any]:
@@ -1877,8 +1882,13 @@ class CandidateGenerator:
             self.cfg,
             extra=[] if clean_experiment else None,
         )
+        max_per_skel = int(
+            ((self.cfg.project.get("production") or {}).get("diversity") or {}).get(
+                "max_per_skeleton", 2
+            )
+        )
         index = (
-            self.diversity_index(existing)
+            self.diversity_index(existing, max_per_skel)
             if clean_experiment
             else library_diversity_index(self.cfg)
         )
@@ -1916,6 +1926,7 @@ class CandidateGenerator:
                 self.cfg,
                 extra=list(extra_banned_skeletons or []),
                 cold_start=bool(cs_cfg["disable_fsa"] and cold),
+                existing=existing,
             )
 
         unused_compose = self._unused_compose_count(bans)
@@ -2001,8 +2012,7 @@ class CandidateGenerator:
                     return False
             out.append(cand)
             bans["hashes"].add(fp["expr_hash"])
-            if not cold:
-                bans.setdefault("skeletons", set()).add(fp["skeleton"])
+            bans.setdefault("skeletons", set()).add(fp["skeleton"])
             mid = cand.get("mechanism", "unknown")
             coverage[mid] = coverage.get(mid, 0) + 1
             return True
