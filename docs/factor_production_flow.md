@@ -1,6 +1,6 @@
 # 因子生产逻辑与服务器启动顺序
 
-`loop` 默认仍不下载行情。生产前的获取、保持和检查由 `DataPrepareService`（`qfactor prepare-data` / `produce` / supervisor）负责：对照配置窗口检查覆盖，缺了再 `sync`，再跑三层合同。窗口没覆盖或 research 没过，就不能开挖。缺哪一层证据，就停在哪一层，不会为了出因子而降门槛。
+这是量价因子挖矿工厂：职责是高质量因子输出，不是实盘交易。当前 PIT 面板已经足够继续量价挖矿。`loop` 默认仍不下载行情。生产前的获取、保持和检查由 `DataPrepareService`（`qfactor prepare-data` / `produce` / supervisor）负责：对照配置窗口检查覆盖，缺了再 `sync`，再跑三层合同。窗口没覆盖或 research 没过，就不能开挖。缺哪一层证据，就停在哪一层，不会为了出因子而降门槛。挖矿 KPI 是 `library-export-quality`；`candidate=0` 在 selection 未冻结时是预期结果。
 
 ## 1. 总流程
 
@@ -24,8 +24,9 @@ flowchart TD
     K --> L[research 闸]
     L -->|未过| M[reject / 写入 trial ledger]
     L -->|通过| N[入库 screened]
+    N --> QL[library-export-quality]
     N --> O{candidate 合同}
-    O -->|快照宇宙 / 估算市值 / 无 PIT 行业 / 无 selection| P[保持 screened<br/>candidate 仍为 0]
+    O -->|无 selection 分区| P[保持 screened<br/>质量库可导出；candidate 仍为 0]
     O -->|PIT + 供应商 circ_mv + selection 通过| Q[production 闸]
     Q -->|通过| R[candidate]
     R --> S[freeze 定义]
@@ -90,7 +91,7 @@ flowchart LR
     research --> candidate --> release
 ```
 
-快照成分 + 估算市值可以通过 research，**不能**通过 candidate。这是设计，不是故障。
+快照成分 + 估算市值可以通过 research，**不能**通过 candidate。当前仓库已切到 PIT + 供应商 `circ_mv`，research 合同已通过，可以继续挖矿。candidate 仍被空的 selection 分区挡住；不要编造日期。
 
 ## 4. 单次 discovery 怎么生产 screened
 
@@ -115,7 +116,7 @@ flowchart TD
     M -->|无| N[结束: 只产出 screened]
 ```
 
-循环**不会**自动 `promote_screened`。supervisor 每个周期都会看 candidate 合同；不过就明确 `recheck_screened=blocked`。
+循环**不会**自动 `promote_screened`。每个周期导出质量库作为挖矿交付物。supervisor 仍会看 candidate 合同；不过就明确 `recheck_screened=blocked`。
 
 ## 5. 工厂 supervisor 一个周期
 
@@ -137,7 +138,8 @@ flowchart TD
     G --> J
     H --> J
     I --> J
-    J --> K[library-export-candidates]
+    J --> Q[library-export-quality]
+    Q --> K[library-export-candidates]
     K --> L[library-reconcile]
     L --> M[写 status.json / events.jsonl]
 ```
@@ -165,4 +167,4 @@ git fetch origin main && git checkout main && git pull origin main
 
 长历史进库并生成**新** `data_version` 之后，才能把 `eval.partitions.discovery_start` 改成 `20160102`。如果先改分区再拉数，`discovery_window_before_data` 会挡住 LLM，这是正确的。
 
-2026 行情可以进入 discovery，但 `discovery_end` 不得超过当前面板结束日。candidate 在 PIT 成分、供应商市值和 selection 分区补齐之前必须保持为 0。
+2026 行情可以进入 discovery，但 `discovery_end` 不得超过当前面板结束日。当前 PIT 数据足够继续量价挖矿。candidate 在 selection 分区冻结之前必须保持为 0；不要编造日期。

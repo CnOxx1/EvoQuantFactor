@@ -205,6 +205,7 @@ def test_supervisor_blocks_discovery_when_prepare_forbids(tmp_path: Path):
     runtime.ops = SimpleNamespace(
         refresh_production=lambda include_screened=False: {"kept_candidates": []},
         multifactor_inventory=lambda: {"n_eligible": 0},
+        export_quality_library=lambda output=None: {"n_eligible": 0},
         reconcile_state=lambda: {"state": "consistent", "n_drift": 0},
     )
     runtime.release = SimpleNamespace(export_active=lambda: {"n_active": 0})

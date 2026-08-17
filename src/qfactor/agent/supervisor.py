@@ -7,7 +7,8 @@ acceptance, and trading release as separate lifecycle gates. A failed data
 contract is an auditable idle state, never a reason to relax criteria or create
 synthetic production factors. Research mining is gated by DataPrepareService:
 inspect the configured bar window, sync only if incomplete, then require the
-research contract. Candidate / release evidence stays fail-closed.
+research contract. The mining KPI is the PIT quality library, not candidate
+count. Candidate / release evidence stays fail-closed.
 """
 
 import argparse
@@ -225,6 +226,11 @@ class FactoryRuntime:
         else:
             result["actions"]["recheck_screened"] = {"state": "skipped", "reason": "cadence"}
 
+        try:
+            result["actions"]["quality_library"] = self.ops.export_quality_library()
+        except Exception as exc:
+            result["actions"]["quality_library"] = {"state": "error", "error": str(exc)}
+            result["errors"].append({"stage": "quality_library", "error": str(exc)})
         try:
             result["actions"]["trading_releases"] = self.release.export_active()
             result["actions"]["multifactor_inventory"] = self.ops.multifactor_inventory()

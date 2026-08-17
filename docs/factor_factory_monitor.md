@@ -11,6 +11,7 @@
 | 阶段 | 周期内行为 | 可能状态 | 是否可被交易模块使用 |
 |---|---|---|---:|
 | Discovery | 行情与 discovery 日期合同通过时，运行 research-only 搜索 | `draft` / `screened` | 否 |
+| Quality library export | 每周期导出 PIT KEEP 质量库 | `mining_quality`，`tradable=false` | 否 |
 | Dynamic production refresh | 每周期复评 `candidate` | 保留 `candidate` 或降回 `screened` | 否 |
 | Screened recheck | 低频尝试 production gate | `screened` 或 `candidate` | 否 |
 | Freeze / sealed acceptance | 人工冻结后才可消耗密封 OOS | `sealed_oos_passed` 或失败 | 否 |
@@ -41,8 +42,8 @@ scripts/factor_factory_monitor.sh stop
 
 运行状态保存在 `runs/factory_monitor/status.json`，逐周期事件保存在 `runs/factory_monitor/events.jsonl`。`counts_before` 与 `counts_after` 至少包括 `draft`、`screened`、`candidate`、`approved`、已冻结定义、已通过密封验收、已通过可交易性和 `active_release`。
 
-状态同时展示 research、candidate 和 release 合同。缺 discovery 分区只阻断研究；
-缺 PIT 成分、供应商市值或 PIT 行业阻断 candidate；缺 ST/停牌/涨跌停、ADV、
+状态同时展示 research、candidate 和 release 合同，以及挖矿交付物说明。缺 discovery 分区只阻断研究；
+当前 PIT 数据足够继续挖矿。缺冻结 selection 分区阻断 candidate，不阻断质量库导出；缺 ST/停牌/涨跌停、ADV、
 公司行动或风险暴露阻断 active release。任一缺口都不会通过放宽门槛自动重试。
 
 ## 4. 长期主机部署建议

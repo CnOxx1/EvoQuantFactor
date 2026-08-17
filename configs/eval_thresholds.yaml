@@ -99,8 +99,10 @@ eval:
   forward_horizon: 5
   trade_lag: 1          # override project.defaults.trade_lag if set
   train_end: "20260630" # legacy research boundary; sealed acceptance uses partitions below
-  # Long PIT research window. Candidate and sealed stay disabled until
-  # selection dates are frozen. Discovery may use 2026 bars that are already in
+  # Long PIT research window. Mining output is the quality library on this
+  # discovery panel; current PIT bars are enough to keep mining PV factors.
+  # selection_start/selection_end stay empty on purpose. Do not invent dates
+  # just to force candidate promotion. Discovery may use 2026 bars already in
   # the panel; do not set discovery_end past available data.
   partitions:
     discovery_start: "20160102"

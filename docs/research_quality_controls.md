@@ -30,7 +30,7 @@ qfactor library-reconcile
 qfactor data-contract-readiness
 ```
 
-命令分别汇总 research、candidate 和 active-release 三层缺口。research 只要求
+命令分别汇总 research、candidate 和 active-release 三层缺口，并注明挖矿交付物是质量库。research 只要求
 行情和 discovery 分区；candidate 要求 PIT/中性化/selection；release 要求完整
 执行与风险证据。任一层只阻断自己的下一次状态转换。数据补齐流程见
 `docs/production_data_contract.md`。
@@ -48,8 +48,4 @@ qfactor loop --clean-experiment --no-resume
 以及本次 experiment 新产生的 screened。生成的因子写入 experiment/cohort 来源，
 后续多重检验可按数据版本、discovery 窗口和机制累计。
 
-当前仓库在长历史行情入库后，discovery 使用 `20160102–20260630`，以便
-`years_consistent` 能看到多年样本。该窗口只能生产 `screened`，直到
-selection 分区被冻结。snapshot universe 与 estimated `circ_mv` 仍使
-candidate 保持为零。补齐长 PIT 历史后必须创建新 data version，不能把
-旧 bootstrap 报告升级。
+当前仓库在长历史 PIT 行情入库后，discovery 使用 `20160102–20260630`，已经足够继续量价挖矿。挖矿交付物是 `library-export-quality`（live 面板上的 PIT KEEP）。该窗口只能生产 `screened`，直到 selection 分区被冻结；不要编造日期把质量库行升级成 candidate。snapshot / estimated-size 的旧报告仍隔离为 `legacy_snapshot_research`，不能当父本。补齐新数据后必须创建新 data version，不能把旧 bootstrap 报告升级。

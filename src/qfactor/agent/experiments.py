@@ -349,6 +349,18 @@ def factor_contract_readiness(
         "research": discovery_contract_readiness(cfg),
         "candidate": candidate_contract_readiness(cfg),
         "release": release_contract_readiness(cfg),
+        "mining_output": {
+            "contract": "quality-library-v1",
+            "usage": "price_volume_research_library",
+            "tradable": False,
+            "note": (
+                "Mining KPI is library-export-quality: PIT KEEP factors on the "
+                "live data_version that passed the research gate. candidate=0 "
+                "is expected until a frozen selection partition exists; do not "
+                "invent selection dates. Current PIT bars are enough to keep "
+                "mining price-volume factors."
+            ),
+        },
     }
 
 

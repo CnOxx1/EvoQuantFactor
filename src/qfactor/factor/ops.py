@@ -7,7 +7,9 @@ from pathlib import Path
 from typing import Any, Literal
 
 from qfactor.agent.experiments import require_candidate_contract
+from qfactor.eval.gate import KEEP_STATUSES
 from qfactor.eval.service import EvalService
+from qfactor.factor.cohort import apply_parent_eligibility
 from qfactor.factor.registry import FactorRegistry
 from qfactor.settings import ProjectConfig, get_project_config
 
@@ -417,6 +419,148 @@ class LibraryOps:
                 demoted.append(name)
         return {"demoted": demoted, "max_per": max_per}
 
+    def quality_library(self) -> dict[str, Any]:
+        """Mining output: PIT research-gate KEEP factors on the live panel.
+
+        This factory's job is a high-quality price-volume library, not live
+        trading. Later research modules should read this inventory
+        (``tradable=false``). Snapshot / unverified / other-panel rows stay out.
+        Candidate promotion is a separate, still-blocked contract.
+        """
+        production = self.cfg.eval.get("production") or {}
+        data_version = EvalService(self.cfg).data.data_version()
+        expected_universe = {
+            str(x).strip().lower()
+            for x in production.get("allowed_universe_modes", ["pit"])
+        }
+        expected_circ_mv = {
+            str(x).strip().lower()
+            for x in production.get("allowed_circ_mv_sources", ["tushare_daily_basic"])
+        }
+        min_daily_basic = float(production.get("min_daily_basic_coverage", 0.0))
+        factors: list[dict[str, Any]] = []
+        excluded: list[dict[str, Any]] = []
+        for item in self.registry.list_factors():
+            name = str(item.get("name") or "")
+            if not name:
+                continue
+            status = str(item.get("status") or "")
+            if status not in KEEP_STATUSES:
+                continue
+            if str(item.get("source") or "") == "seed":
+                excluded.append({"name": name, "reasons": ["seed_template_not_mining_output"]})
+                continue
+            meta = apply_parent_eligibility(item, data_version)
+            if not meta.get("parent_eligible"):
+                excluded.append(
+                    {
+                        "name": name,
+                        "reasons": [str(meta.get("reason") or "parent_ineligible")],
+                    }
+                )
+                continue
+            latest = self.registry.factor_dir(name) / "reports" / "latest.json"
+            if not latest.exists():
+                excluded.append({"name": name, "reasons": ["missing_latest_report"]})
+                continue
+            try:
+                report = json.loads(latest.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError) as exc:
+                excluded.append({"name": name, "reasons": [f"invalid_latest_report:{exc}"]})
+                continue
+            gate = report.get("gate") if isinstance(report.get("gate"), dict) else {}
+            metrics = report.get("metrics") if isinstance(report.get("metrics"), dict) else {}
+            reasons: list[str] = []
+            # Research soft-pass can keep status=screened while passed is False.
+            if not bool(gate.get("passed")) and str(gate.get("status") or "") != "screened":
+                reasons.append("latest_report_not_passing_research_gate")
+            if str(gate.get("mode") or "") not in {"research", "production"}:
+                reasons.append("latest_report_not_research_or_production")
+            if data_version and str(metrics.get("data_version") or "") != str(data_version):
+                reasons.append("stale_data_version")
+            if expected_universe and str(metrics.get("universe_mode") or "").lower() not in expected_universe:
+                reasons.append("universe_not_pit")
+            if expected_circ_mv and str(metrics.get("circ_mv_source") or "").lower() not in expected_circ_mv:
+                reasons.append("circ_mv_not_vendor")
+            if float(metrics.get("daily_basic_coverage") or 0.0) < min_daily_basic:
+                reasons.append("daily_basic_coverage_below_contract")
+            if production.get("require_industry_pit", False) and float(
+                metrics.get("industry_pit_coverage") or 0.0
+            ) < float(production.get("min_industry_pit_coverage", 1.0)):
+                reasons.append("industry_pit_coverage_below_contract")
+            if reasons:
+                excluded.append({"name": name, "reasons": reasons})
+                continue
+            spec = self.registry.load_spec(name)
+            factor_dir = self.registry.factor_dir(name)
+            try:
+                factor_path = str(factor_dir.relative_to(self.cfg.root))
+            except ValueError:
+                factor_path = str(factor_dir)
+            factors.append(
+                {
+                    "name": name,
+                    "status": status,
+                    "layer": "mining_quality",
+                    "cohort": meta.get("cohort"),
+                    "mechanism": spec.mechanism or spec.category,
+                    "expression": spec.expression or (spec.params or {}).get("expression"),
+                    "data_version": metrics.get("data_version") or data_version,
+                    "tradable": False,
+                    "usage": "price_volume_research_library",
+                    "factor_path": factor_path,
+                    "quality": {
+                        key: metrics.get(key)
+                        for key in (
+                            "rank_ic_mean",
+                            "resid_ic_mean",
+                            "icir_ann",
+                            "coverage",
+                            "max_corr",
+                            "n_peers",
+                            "n_independent",
+                            "oos_ic_mean",
+                            "daily_turnover",
+                            "universe_mode",
+                            "circ_mv_source",
+                            "industry_pit_coverage",
+                        )
+                    },
+                }
+            )
+        factors.sort(
+            key=lambda x: (
+                -abs(float((x.get("quality") or {}).get("rank_ic_mean") or 0)),
+                str(x.get("mechanism") or ""),
+                str(x.get("name") or ""),
+            )
+        )
+        return {
+            "contract_version": "quality-library-v1",
+            "usage": "price_volume_research_library",
+            "tradable": False,
+            "data_version": data_version,
+            "n_eligible": len(factors),
+            "n_excluded": len(excluded),
+            "factors": factors,
+            "excluded": excluded,
+            "notes": [
+                "Mining deliverable on the live PIT panel. Not candidate and not a trading release.",
+                "Do not invent selection dates to force candidate promotion.",
+            ],
+        }
+
+    def export_quality_library(self, output: str | None = None) -> dict[str, Any]:
+        """Persist the mining quality library without changing factor states."""
+        inventory = self.quality_library()
+        path = Path(output) if output else self.cfg.path("factor_lib") / "quality_library.json"
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(
+            json.dumps(inventory, ensure_ascii=False, indent=2, default=str),
+            encoding="utf-8",
+        )
+        return {**inventory, "path": str(path)}
+
     def multifactor_inventory(self) -> dict[str, Any]:
         """Build a strict, data-version-pinned inventory for downstream strategies.
 
@@ -424,6 +568,8 @@ class LibraryOps:
         quality boundary between the factor factory and any future multi-factor
         optimizer: only current `candidate`/`approved` records with a passing
         production report generated on the active data version are exported.
+        Mining output lives in ``quality_library`` until a frozen selection
+        window exists.
         """
         production = self.cfg.eval.get("production") or {}
         data_version = EvalService(self.cfg).data.data_version()

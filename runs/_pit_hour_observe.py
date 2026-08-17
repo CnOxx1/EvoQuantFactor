@@ -25,6 +25,7 @@ from qfactor.agent.loop import FactorLoop
 from qfactor.data.dataset import DataService
 from qfactor.data.prepare import DataPrepareService
 from qfactor.factor.cohort import classify_research_cohort
+from qfactor.factor.ops import LibraryOps
 from qfactor.factor.registry import FactorRegistry
 from qfactor.settings import get_project_config
 
@@ -150,16 +151,19 @@ def main() -> int:
     t0 = time.time()
     deadline = t0 + duration_s
     rows0 = FactorRegistry().list_factors()
+    quality0 = LibraryOps().quality_library()
     baseline = {
         "counts": _counts(rows0),
         "readiness": factor_contract_readiness(),
         "clean_quality": _library_quality(rows0),
+        "n_quality": quality0.get("n_eligible"),
     }
     _write_json(out_dir / "baseline.json", baseline)
     _write_json(artifact_dir / f"{tag}_baseline.json", baseline)
     _log(
         f"start {duration_s}s data_version={baseline['readiness'].get('data_version')} "
         f"research={baseline['readiness'].get('research', {}).get('state')} "
+        f"n_quality={baseline.get('n_quality')} "
         f"candidate={baseline['readiness'].get('candidate', {}).get('state')}",
         log_path,
     )
@@ -287,6 +291,7 @@ def main() -> int:
 
     rows1 = FactorRegistry().list_factors()
     readiness = factor_contract_readiness()
+    quality1 = LibraryOps().quality_library()
     ics = [
         float(t["rank_ic_mean"])
         for c in cycles
@@ -310,6 +315,7 @@ def main() -> int:
         "final_counts": _counts(rows1),
         "baseline_clean": baseline["clean_quality"],
         "final_clean": _library_quality(rows1),
+        "n_quality": quality1.get("n_eligible"),
         "readiness": readiness,
         "n_cycles": cycle,
         "n_trials": n_trials,
@@ -350,6 +356,7 @@ def main() -> int:
                 "resid_ic": summary["resid_ic"],
                 "candidate": readiness.get("candidate", {}).get("state"),
                 "candidate_issues": readiness.get("candidate", {}).get("issues"),
+                "n_quality": summary.get("n_quality"),
                 "parent_count": summary["parent_count"],
                 "cold_start": summary["cold_start"],
             },

@@ -1,8 +1,8 @@
 # EvoQuantFactor 生产数据合同与归档导入清单
 
-**适用范围：** 中证 100、日频、量价因子工厂。研究发现、统计 candidate
-与可交易 release 使用分层合同：研究层只保留假说，candidate 要求 PIT 与选择
-区间统计证据，active release 再要求完整执行/风险证据。
+**适用范围：** 中证 100、日频、量价因子挖矿工厂。研究发现、统计 candidate
+与可交易 release 使用分层合同：研究层输出高质量价量因子库，candidate 要求 PIT 与选择
+区间统计证据，active release 再要求完整执行/风险证据。当前 PIT 归档已经足够继续量价挖矿。
 
 > **发布原则：** 只有在当前数据版本同时具备 PIT 成分、供应商日频流通市值、证券状态、涨跌停价、ADV、公司行动、点时行业和风险暴露，且通过密封验收及订单账本时，因子才可能成为 `active release`。缺少执行数据不阻止 research，但仍阻止交易 release。
 
@@ -106,10 +106,11 @@ BaoStock 适配器保留逐日 `isST` 与 `tradestatus`；这些属于公开来�
 接着运行研究发现或评估流程。LLM 调用前只验证行情与 discovery 分区；
 screened→candidate 验证 PIT 成分、供应商流通市值、PIT 行业和 selection 分区；
 密封验收只读取 sealed 分区；tradability/release 再验证完整执行与风险合同。
-`qfactor library-export-candidates` 仅向非交易多因子研究提供 `tradable=false` 的
-统计候选；交易模块只能读取 `qfactor export-trading-releases` 的 active release。
+`qfactor library-export-quality` 向后续价量研究模块提供当前面板上的 PIT KEEP 质量库（`tradable=false`）。
+`qfactor library-export-candidates` 仅在冻结 selection 后向非交易多因子研究提供统计候选；
+交易模块只能读取 `qfactor export-trading-releases` 的 active release。
 
-> **当前仓库状态：** 内置行情和现有快照数据未满足本合同。因此 `qfactor export-trading-releases` 与 `qfactor library-export-multifactor` 应继续输出零个可用因子。这是预期的 fail-closed 结果，不是可通过调低阈值解决的问题。
+> **当前仓库状态：** PIT 成分、供应商 `circ_mv` 和 discovery 窗口已够继续量价挖矿。`library-export-quality` 是挖矿交付物。`export-trading-releases` 与 `library-export-multifactor` 仍应输出零个可用因子，因为 selection 未冻结、执行/风险合同未过。这是预期的 fail-closed 结果，不是可通过调低阈值或编造 selection 日期解决的问题。
 
 ## 5. 不允许的替代做法
 
