@@ -209,6 +209,27 @@ def test_field_window_prior_weights_overnight():
     assert win_w.get(20, 0) > 0
 
 
+def test_field_window_prior_skips_asi_replay_traces():
+    existing = [
+        {
+            "expression": "ma(overnight,20)",
+            "status": "candidate",
+            "summary": {"rank_ic_mean": 0.04},
+        }
+    ]
+    replay = [
+        {
+            "expression": "ma(amplitude,20)",
+            "mechanism": "amplitude",
+            "reason": "weak_ic",
+            "detail": {"rank_ic_mean": 0.03, "skip_prior": True, "skeleton": "ma(amplitude,N)"},
+        }
+    ]
+    field_w, _ = field_window_prior(replay, existing)
+    assert "amplitude" not in field_w
+    assert field_w["overnight"] > 0
+
+
 def test_field_window_prior_hot_skips_blocked_and_prefers_resid():
     existing = [
         {

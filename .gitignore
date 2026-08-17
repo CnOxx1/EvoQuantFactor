@@ -28,5 +28,6 @@ data/raw/providers/csindex/
 # Generated mining artifacts (script itself is tracked)
 runs/extra_templates.yaml
 runs/loop_*/
+runs/search_memory.json
 runs/*_mine.log
 runs/*_mine_status.json

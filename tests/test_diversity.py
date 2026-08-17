@@ -76,6 +76,34 @@ def test_pick_theme_hard_rotate():
     assert theme == "liquidity"
 
 
+def test_pick_theme_hard_rotate_does_not_ban_amplitude():
+    mechs = [{"id": "amplitude"}, {"id": "liquidity"}, {"id": "reversal"}]
+    first = pick_theme_with_lessons(
+        mechs, coverage={}, lessons=[], recent_themes=[], hard_rotate=True
+    )
+    assert first == "amplitude"
+    second = pick_theme_with_lessons(
+        mechs, coverage={}, lessons=[], recent_themes=["amplitude"], hard_rotate=True
+    )
+    assert second != "amplitude"
+    third = pick_theme_with_lessons(
+        mechs,
+        coverage={},
+        lessons=[],
+        recent_themes=["amplitude", second],
+        hard_rotate=True,
+    )
+    assert third not in {first, second}
+    again = pick_theme_with_lessons(
+        mechs,
+        coverage={},
+        lessons=[],
+        recent_themes=["liquidity", "reversal"],
+        hard_rotate=True,
+    )
+    assert again == "amplitude"
+
+
 def test_pick_theme_hard_rotate_off_allows_recent():
     mechs = [{"id": "reversal"}, {"id": "overnight"}]
     theme = pick_theme_with_lessons(
@@ -293,6 +321,52 @@ def test_mutate_failure_modes_omit_holdout_numbers(monkeypatch):
     assert "resid" not in blob
     assert "cost_ls" not in blob
     assert "-0.01" not in blob
+    assert "0.03" not in blob
+
+
+def test_mutate_failure_modes_use_structured_reject_traces(monkeypatch):
+    gen = CandidateGenerator(llm=LLMClient(api_key="x"))
+
+    class _Reg:
+        def list_factors(self):
+            return []
+
+        def load_spec(self, name):
+            raise KeyError(name)
+
+    monkeypatch.setattr("qfactor.factor.registry.FactorRegistry", lambda cfg=None: _Reg())
+    lessons = [
+        {
+            "mechanism": "amplitude",
+            "reason": "high_corr",
+            "expression": "div(amplitude,ma(amplitude,20))",
+            "detail": {
+                "skeleton": "div(amplitude,ma(amplitude,N))",
+                "failed_checks": ["max_corr"],
+                "max_corr": 0.97,
+                "rank_ic_mean": 0.011,
+                "skip_prior": True,
+            },
+        },
+        {
+            "mechanism": "amplitude",
+            "reason": "weak_ic",
+            "expression": "std(amplitude,20)",
+            "detail": {
+                "skeleton": "std(amplitude,N)",
+                "failed_checks": ["abs_rank_ic"],
+                "rank_ic_mean": 0.006,
+                "cheap": True,
+                "skip_prior": True,
+            },
+        },
+    ]
+    modes = gen._mutate_failure_modes([], lessons)
+    blob = " ".join(modes)
+    assert "failed_checks=max_corr" in blob
+    assert "div(amplitude,ma(amplitude,N))" in blob
+    assert "failed_checks=abs_rank_ic" in blob or "failed_checks=cheap_ic" in blob or "|IC|=" in blob
+    assert "resid" not in blob
     assert "0.03" not in blob
 
 

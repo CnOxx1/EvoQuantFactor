@@ -235,6 +235,8 @@ def field_window_prior(
         if mid and mid in blocked_mechs:
             continue
         detail = lesson.get("detail") if isinstance(lesson.get("detail"), dict) else {}
+        if detail.get("skip_prior"):
+            continue
         ic = _abs_ic(detail, prefer_oos)
         _add(lesson.get("expression"), ic, 0.4)
     return dict(field_w), dict(win_w)
