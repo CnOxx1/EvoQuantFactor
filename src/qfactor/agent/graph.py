@@ -11,6 +11,11 @@ from langgraph.graph import END, START, StateGraph
 from qfactor.agent.checkpoint import CheckpointStore
 from qfactor.agent.coldstart import cold_start_cfg, ensure_dsl_seeds, is_cold_start
 from qfactor.agent.experiments import ExperimentLedger, require_discovery_contract
+from qfactor.agent.search_memory import (
+    SearchMemory,
+    failed_checks_from_report,
+    seed_clean_checkpoint,
+)
 from qfactor.agent.diversity import (
     expression_fingerprint,
     is_banned_expression,
@@ -19,7 +24,8 @@ from qfactor.agent.diversity import (
     merge_bans,
     record_lesson,
     active_skeleton_bans,
-    skeleton_keep_counts,
+    keep_skeleton_counts,
+    saturated_keep_skeletons,
 )
 from qfactor.agent.generator import (
     CandidateGenerator,
@@ -30,6 +36,7 @@ from qfactor.agent.llm import LLMClient
 from qfactor.agent.reviewer import CandidateReviewer
 from qfactor.eval.service import EvalService
 from qfactor.factor.base import FactorSpec
+from qfactor.factor.cohort import apply_parent_eligibility
 from qfactor.factor.registry import FactorRegistry
 from qfactor.settings import ProjectConfig, get_project_config
 
@@ -130,25 +137,65 @@ class ProductionContext:
         self.reviewer = CandidateReviewer(self.llm)
         self.checkpoint = CheckpointStore("loop_csi100", self.cfg)
         self.experiment: ExperimentLedger | None = None
+        self.search_memory: SearchMemory | None = None
+
+
+def _current_data_version(ctx: ProductionContext) -> str:
+    try:
+        return str(ctx.eval.data.data_version() or "")
+    except Exception:
+        return ""
 
 
 def _eligible_research_library(
     ctx: ProductionContext, state: ProductionState
 ) -> list[dict[str, Any]]:
-    rows = [
-        row
-        for row in ctx.registry.existing_summaries()
-        if row.get("parent_eligible") is not False
-    ]
-    if not state.get("clean_experiment"):
-        return rows
-    experiment_id = str(state.get("experiment_id") or "")
-    return [
-        row
-        for row in rows
-        if row.get("source") == "seed"
-        or str((row.get("params") or {}).get("experiment_id") or "") == experiment_id
-    ]
+    """Parents are same-version eligible factors, not one experiment's 4-trial slice.
+
+    ``clean_experiment`` still excludes snapshot / unverified / other-panel rows
+    via ``apply_parent_eligibility``. It must not zero the parent book every
+    time a factory cycle opens a new experiment_id.
+    """
+    del state  # eligibility is panel + cohort, not the current ledger id
+    current_dv = _current_data_version(ctx)
+    rows: list[dict[str, Any]] = []
+    for row in ctx.registry.existing_summaries():
+        meta = apply_parent_eligibility(row, current_dv)
+        if not meta.get("parent_eligible"):
+            continue
+        merged = dict(row)
+        merged.update(meta)
+        rows.append(merged)
+    return rows
+
+
+def _remember_reject(
+    ctx: ProductionContext,
+    cand: dict[str, Any],
+    *,
+    reason: str,
+    stage: str,
+    detail: dict[str, Any] | None = None,
+) -> None:
+    memory = getattr(ctx, "search_memory", None)
+    if memory is None:
+        return
+    info = dict(detail or {})
+    expr = str(cand.get("expression") or "")
+    if expr and not info.get("skeleton"):
+        try:
+            fp = expression_fingerprint(expr)
+            info.setdefault("expr_hash", fp.get("expr_hash"))
+            info.setdefault("skeleton", fp.get("skeleton"))
+        except Exception:
+            pass
+    memory.record_reject(
+        expression=expr or None,
+        mechanism=str(cand.get("mechanism") or "unknown"),
+        reason=reason,
+        stage=stage,
+        detail=info,
+    )
 
 
 def _node_decide(ctx: ProductionContext):
@@ -158,21 +205,28 @@ def _node_decide(ctx: ProductionContext):
         lessons = list(state.get("lessons") or [])
         recent_themes = list(state.get("recent_themes") or [])
         forced = state.get("theme")
-        cold = is_cold_start(existing, ctx.cfg)
+        cold = is_cold_start(
+            existing, ctx.cfg, current_data_version=_current_data_version(ctx)
+        )
         disable_fsa = bool(cold_start_cfg(ctx.cfg)["disable_fsa"] and cold)
+        div_cfg = (ctx.cfg.project.get("production") or {}).get("diversity") or {}
+        max_per_skel = int(div_cfg.get("max_per_skeleton", 2))
         index = (
-            ctx.generator.diversity_index(existing)
+            ctx.generator.diversity_index(existing, max_per_skel)
             if state.get("clean_experiment")
             else library_diversity_index(ctx.cfg)
         )
+        keep_sat = saturated_keep_skeletons(existing, max_per_skel)
+        extra_hc = list(state.get("high_corr_skeletons") or [])
         banned_skels = (
-            sorted(set(index.get("banned_skeletons") or []))
+            sorted(set(index.get("banned_skeletons") or []) | keep_sat | set(extra_hc))
             if state.get("clean_experiment")
             else sorted(
                 active_skeleton_bans(
                     ctx.cfg,
-                    extra=list(state.get("high_corr_skeletons") or []),
+                    extra=extra_hc,
                     cold_start=disable_fsa,
+                    existing=existing,
                 )
             )
         )
@@ -188,6 +242,10 @@ def _node_decide(ctx: ProductionContext):
         )
         if round_theme:
             recent_themes = (recent_themes + [round_theme])[-12:]
+        memory = getattr(ctx, "search_memory", None)
+        if memory is not None:
+            memory.set_recent_themes(recent_themes)
+            memory.save()
         return {
             "round_theme": round_theme,
             "recent_themes": recent_themes,
@@ -234,6 +292,9 @@ def _node_generate(ctx: ProductionContext):
         for ordinal, c in enumerate(cands, 1):
             src = str(c.get("source", "unknown"))
             src_counts[src] = src_counts.get(src, 0) + 1
+            c["research_cohort"] = (
+                "clean_discovery" if state.get("clean_experiment") else "current_discovery"
+            )
             if ledger is not None:
                 trial_id = f"{ledger.experiment_id}:r{int(state.get('rounds_done') or 0)}:{ordinal}"
                 c["_trial_id"] = trial_id
@@ -277,6 +338,8 @@ def _node_generate(ctx: ProductionContext):
             "curriculum": gen_stats.get("curriculum"),
             "keep_coverage": gen_stats.get("keep_coverage"),
             "prior_refreshed": gen_stats.get("prior_refreshed"),
+            "n_mutate_parents": gen_stats.get("n_mutate_parents"),
+            "mutate_parent_mechs": gen_stats.get("mutate_parent_mechs"),
             "catalog_expand": None,
             "reviewed_ok": 0,
             "saved": [],
@@ -313,7 +376,7 @@ def _node_review_validate(ctx: ProductionContext):
         div_cfg = (ctx.cfg.project.get("production") or {}).get("diversity") or {}
         corr_ban = float(div_cfg.get("max_corr_ban", 0.95))
         max_per_skel = int(div_cfg.get("max_per_skeleton", 2))
-        keep_counts = skeleton_keep_counts(ctx.cfg)
+        keep_counts = keep_skeleton_counts(_eligible_research_library(ctx, state))
         round_eval_skels: set[str] = set()
         cold = bool(state.get("cold_start"))
         cheap_min = float(cold_start_cfg(ctx.cfg)["cheap_ic_min"])
@@ -325,7 +388,7 @@ def _node_review_validate(ctx: ProductionContext):
             try:
                 fp0 = expression_fingerprint(cand["expression"])
                 sk = fp0["skeleton"]
-                if not banned and sk in round_eval_skels and not cold:
+                if not banned and sk in round_eval_skels:
                     banned, why = True, "same_batch_skeleton"
             except Exception:
                 pass
@@ -345,6 +408,13 @@ def _node_review_validate(ctx: ProductionContext):
                     mechanism=str(cand.get("mechanism") or "unknown"),
                     reason="banned_skeleton" if "skeleton" in why else "duplicate_expr",
                     expression=cand.get("expression"),
+                    detail={"why": why},
+                )
+                _remember_reject(
+                    ctx,
+                    cand,
+                    reason="banned_skeleton" if "skeleton" in why else "duplicate_expr",
+                    stage="diversity",
                     detail={"why": why},
                 )
                 try:
@@ -378,13 +448,20 @@ def _node_review_validate(ctx: ProductionContext):
                     expression=cand.get("expression"),
                     detail={"errors": rev.get("errors")},
                 )
+                _remember_reject(
+                    ctx,
+                    cand,
+                    reason="review_reject",
+                    stage="review",
+                    detail={"errors": rev.get("errors")},
+                )
                 continue
             round_stats["reviewed_ok"] = int(round_stats.get("reviewed_ok") or 0) + 1
             h = str(rev["hash"])
             tested.add(h)
             banned_hashes.add(h)
             bans.setdefault("hashes", set()).add(h)
-            if sk and not cold:
+            if sk:
                 round_eval_skels.add(sk)
 
             name = cand["name"]
@@ -409,7 +486,22 @@ def _node_review_validate(ctx: ProductionContext):
                         mechanism=str(cand.get("mechanism") or "unknown"),
                         reason="weak_ic",
                         expression=cand.get("expression"),
-                        detail={"rank_ic_mean": ic_abs, "cheap": True},
+                        detail={
+                            "rank_ic_mean": ic_abs,
+                            "cheap": True,
+                            "failed_checks": ["cheap_ic"],
+                        },
+                    )
+                    _remember_reject(
+                        ctx,
+                        cand,
+                        reason="weak_ic",
+                        stage="cheap_ic",
+                        detail={
+                            "rank_ic_mean": ic_abs,
+                            "cheap": True,
+                            "failed_checks": ["cheap_ic"],
+                        },
                     )
                     continue
             try:
@@ -496,7 +588,7 @@ def _node_review_validate(ctx: ProductionContext):
                 try:
                     sk_keep = expression_fingerprint(cand["expression"])["skeleton"]
                     keep_counts[sk_keep] = keep_counts.get(sk_keep, 0) + 1
-                    if not cold and keep_counts[sk_keep] >= max_per_skel:
+                    if keep_counts[sk_keep] >= max_per_skel:
                         banned_skels.add(sk_keep)
                         bans.setdefault("skeletons", set()).add(sk_keep)
                 except Exception:
@@ -523,6 +615,8 @@ def _node_review_validate(ctx: ProductionContext):
                 metrics = report.get("metrics") or {}
                 max_corr = float(summary.get("max_corr") or metrics.get("max_corr") or 0)
                 ic = abs(float(summary.get("rank_ic_mean") or metrics.get("rank_ic_mean") or 0))
+                failed_checks = failed_checks_from_report(report)
+                years = summary.get("years") if isinstance(summary.get("years"), dict) else {}
                 reason = "gate_reject"
                 if max_corr >= corr_ban:
                     reason = "high_corr"
@@ -536,16 +630,27 @@ def _node_review_validate(ctx: ProductionContext):
                             pass
                 elif ic < 0.01:
                     reason = "weak_ic"
+                reject_detail = {
+                    "rank_ic_mean": summary.get("rank_ic_mean"),
+                    "max_corr": max_corr,
+                    "status": status,
+                    "failed_checks": failed_checks,
+                    "dominant_years": years.get("dominant_years"),
+                    "n_years": years.get("n_years"),
+                }
                 lessons = record_lesson(
                     lessons,
                     mechanism=str(cand.get("mechanism") or "unknown"),
                     reason=reason,
                     expression=cand.get("expression"),
-                    detail={
-                        "rank_ic_mean": summary.get("rank_ic_mean"),
-                        "max_corr": max_corr,
-                        "status": status,
-                    },
+                    detail=reject_detail,
+                )
+                _remember_reject(
+                    ctx,
+                    cand,
+                    reason=reason,
+                    stage="research_gate",
+                    detail=reject_detail,
                 )
 
         return {
@@ -618,6 +723,10 @@ def _node_persist(ctx: ProductionContext):
             "recent_themes": list(state.get("recent_themes") or [])[-12:],
             "last_catalog_expand_round": last_expand,
         }
+        memory = getattr(ctx, "search_memory", None)
+        if memory is not None:
+            memory.set_recent_themes(list(state.get("recent_themes") or []))
+            memory.save()
         if not state.get("clean_experiment"):
             ctx.checkpoint.save(cp)
         run_dir = Path(str(state.get("run_dir") or ""))
@@ -720,10 +829,16 @@ def run_production_graph(
     # No model call occurs before bars and the immutable discovery window exist.
     # PIT/selection evidence remains a separate, binding candidate gate.
     date_partitions = require_discovery_contract(ctx.cfg)
+    data_version = str(ctx.eval.data.status().get("data_version") or "")
+    ctx.search_memory = SearchMemory.load(ctx.cfg, data_version=data_version)
+    if clean_experiment:
+        # New experiment_id, but keep failed hashes / high-corr skeletons /
+        # recent themes / ASI traces. Do not replay keep-inventory counts.
+        cp = {**cp, **seed_clean_checkpoint(ctx.search_memory)}
     ctx.experiment = ExperimentLedger(ctx.cfg, run_dir=run_dir / "experiment")
     manifest = ctx.experiment.start(
         run_id=run_id,
-        data_version=ctx.eval.data.status().get("data_version"),
+        data_version=data_version or None,
         llm=ctx.llm,
         search_config={
             "gate_name": gate_name,
@@ -778,6 +893,8 @@ def run_production_graph(
     try:
         final_state = graph.invoke(initial)
     except Exception as exc:
+        if ctx.search_memory is not None:
+            ctx.search_memory.save()
         ctx.experiment.close(
             state="error",
             summary={"error": str(exc), "run_id": run_id, "rounds_requested": rounds},

@@ -185,6 +185,19 @@ def test_live_yaml_production_matches_gate_contract():
     assert weak_train["checks"]["train_ic"] is False
 
 
+def test_live_yaml_research_does_not_gate_on_residual():
+    from qfactor.settings import get_project_config
+
+    live = dict(get_project_config().eval["research"])
+    assert live.get("require_residual_ic") in {None, False}
+    out = apply_gate(
+        _research_metrics(resid_ic_mean=0.0, resid_icir=0.0, oos_ic_mean=0.02, oos_pos_folds=1),
+        live,
+        mode="research",
+    )
+    assert "resid_ic" not in out["checks"]
+
+
 def test_recent_ic_rejects_negative_after_orientation():
     metrics = _production_ok_metrics(recent_rank_ic_mean=-0.04)
     out = apply_gate(metrics, _production_thresholds(), mode="production")

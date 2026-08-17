@@ -100,6 +100,22 @@ def fetch_archive_universe():
     print(fetch_official_history())
 
 
+@app.command("fetch-vendor-archive")
+def fetch_vendor_archive(
+    start: str = typer.Option("20150901", help="YYYYMMDD inclusive"),
+    end: str = typer.Option("20260630", help="YYYYMMDD inclusive"),
+    roles: Optional[str] = typer.Option(
+        None,
+        help="comma list: universe,daily_basic,industry; default all three",
+    ),
+):
+    """Pull PIT CSI100, vendor circ_mv, and SW industry via Tushare/tinyshare."""
+    from qfactor.data.vendor_archive_fetch import fetch_and_ingest_vendor_archives
+
+    role_list = [p.strip() for p in roles.split(",") if p.strip()] if roles else None
+    print(fetch_and_ingest_vendor_archives(start=start, end=end, roles=role_list))
+
+
 @app.command("validate-archive")
 def validate_archive(strict: bool = typer.Option(False, help="fail when any role file is missing")):
     """Check registered archive parquet files against the PIT column contract."""
@@ -396,6 +412,24 @@ def export_trading_releases(
     print({"path": out["path"], "data_version": out["data_version"], "n_active": out["n_active"]})
 
 
+@app.command("library-export-quality")
+def library_export_quality(
+    output: Optional[str] = typer.Option(None, help="output JSON path; defaults to factor_lib"),
+):
+    """Export the mining quality library for later price-volume research modules."""
+    inventory = LibraryOps().export_quality_library(output=output)
+    print(
+        {
+            "path": inventory["path"],
+            "data_version": inventory["data_version"],
+            "n_eligible": inventory["n_eligible"],
+            "n_excluded": inventory["n_excluded"],
+            "tradable": inventory.get("tradable"),
+            "usage": inventory.get("usage"),
+        }
+    )
+
+
 @app.command("library-export-multifactor")
 def library_export_multifactor(
     output: Optional[str] = typer.Option(None, help="output JSON path; defaults to factor_lib"),
@@ -489,7 +523,7 @@ def data_status():
 
 @app.command("data-contract-readiness")
 def data_contract_readiness():
-    """Show separate research, candidate, and active-release blockers."""
+    """Show research, candidate, release blockers, and the mining quality-library note."""
     from qfactor.agent.experiments import factor_contract_readiness
 
     print(factor_contract_readiness())

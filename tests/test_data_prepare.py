@@ -8,6 +8,7 @@ from qfactor.agent.supervisor import FactoryRuntime
 from qfactor.data.prepare import (
     DataPrepareResult,
     DataPrepareService,
+    data_prepare_settings,
     is_snapshot_universe_error,
 )
 
@@ -107,6 +108,12 @@ def _ready_contracts(monkeypatch, *, research="passed"):
     )
 
 
+def test_snapshot_fallback_defaults_off():
+    cfg = _Cfg(prepare={"start": "20160102", "end": "20260630", "source": "baostock"})
+    settings = data_prepare_settings(cfg)
+    assert settings["allow_snapshot_universe"] is False
+
+
 def test_is_snapshot_universe_error_detects_pit_gap():
     assert is_snapshot_universe_error(RuntimeError(PIT_ERROR))
     assert not is_snapshot_universe_error(RuntimeError("No daily bars downloaded"))
@@ -198,6 +205,7 @@ def test_supervisor_blocks_discovery_when_prepare_forbids(tmp_path: Path):
     runtime.ops = SimpleNamespace(
         refresh_production=lambda include_screened=False: {"kept_candidates": []},
         multifactor_inventory=lambda: {"n_eligible": 0},
+        export_quality_library=lambda output=None: {"n_eligible": 0},
         reconcile_state=lambda: {"state": "consistent", "n_drift": 0},
     )
     runtime.release = SimpleNamespace(export_active=lambda: {"n_active": 0})

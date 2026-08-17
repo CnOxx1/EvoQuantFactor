@@ -635,9 +635,13 @@ class DataService:
             hist = hist[["trade_date", "ts_code", "industry"]].drop_duplicates(
                 ["trade_date", "ts_code"]
             )
+            if "industry_pit" in panel.columns:
+                panel = panel.drop(columns=["industry_pit"])
             panel = panel.merge(hist.rename(columns={"industry": "industry_pit"}), on=["trade_date", "ts_code"], how="left")
             if "industry" not in panel.columns:
                 panel["industry"] = pd.NA
+            if "industry_pit" not in panel.columns:
+                panel["industry_pit"] = pd.NA
             panel["industry"] = panel["industry_pit"].where(
                 panel["industry_pit"].notna(), panel["industry"]
             )

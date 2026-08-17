@@ -106,16 +106,47 @@ def cold_start_cfg(cfg: ProjectConfig | None = None) -> dict[str, Any]:
     return out
 
 
-def parent_count(existing: list[dict[str, Any]] | None) -> int:
+def parent_count(
+    existing: list[dict[str, Any]] | None,
+    current_data_version: str | None = None,
+) -> int:
+    """Count distinct eligible KEEP parents on the live data version.
+
+    Legacy snapshot / unverified screened rows do not heat the library. Missing
+    ``parent_eligible`` is classified rather than treated as a production parent.
+    Window-shopped copies of the same skeleton count as one parent.
+    """
+    from qfactor.agent.diversity import expression_fingerprint
+    from qfactor.factor.cohort import apply_parent_eligibility
+
     n = 0
+    seen: set[str] = set()
     for item in existing or []:
-        if str(item.get("status") or "") in KEEP_STATUSES:
-            n += 1
+        if str(item.get("status") or "") not in KEEP_STATUSES:
+            continue
+        if not apply_parent_eligibility(item, current_data_version).get("parent_eligible"):
+            continue
+        expr = item.get("expression")
+        if expr:
+            try:
+                sk = expression_fingerprint(str(expr))["skeleton"]
+            except Exception:
+                sk = ""
+            if sk:
+                if sk in seen:
+                    continue
+                seen.add(sk)
+        n += 1
     return n
 
 
-def is_cold_start(existing: list[dict[str, Any]] | None, cfg: ProjectConfig | None = None) -> bool:
-    return parent_count(existing) < int(cold_start_cfg(cfg)["min_parents"])
+def is_cold_start(
+    existing: list[dict[str, Any]] | None,
+    cfg: ProjectConfig | None = None,
+    *,
+    current_data_version: str | None = None,
+) -> bool:
+    return parent_count(existing, current_data_version) < int(cold_start_cfg(cfg)["min_parents"])
 
 
 def _walk_fields_windows(node: Expr | str | int | float, fields: set[str], windows: list[int]) -> None:
@@ -204,6 +235,8 @@ def field_window_prior(
         if mid and mid in blocked_mechs:
             continue
         detail = lesson.get("detail") if isinstance(lesson.get("detail"), dict) else {}
+        if detail.get("skip_prior"):
+            continue
         ic = _abs_ic(detail, prefer_oos)
         _add(lesson.get("expression"), ic, 0.4)
     return dict(field_w), dict(win_w)

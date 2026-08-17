@@ -23,6 +23,9 @@ class _Ops:
     def multifactor_inventory(self):
         return {"n_eligible": 0}
 
+    def export_quality_library(self, output=None):
+        return {"n_eligible": 0, "path": "quality_library.json"}
+
     def reconcile_state(self):
         return {"state": "consistent", "n_drift": 0}
 
@@ -61,6 +64,7 @@ def test_runtime_cycle_is_fail_closed_and_auditable(tmp_path: Path):
     assert result["actions"]["refresh_candidates"]["demoted_candidates"] == []
     assert result["actions"]["recheck_screened"]["state"] == "blocked"
     assert result["actions"]["trading_releases"]["n_active"] == 0
+    assert result["actions"]["quality_library"]["n_eligible"] == 0
     assert runtime.status_path.exists()
     assert "universe_not_pit" in runtime.events_path.read_text(encoding="utf-8")
 

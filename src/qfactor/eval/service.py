@@ -33,6 +33,30 @@ from qfactor.factor.transforms import (
 from qfactor.settings import ProjectConfig, get_project_config
 
 
+def panel_coverage(
+    panel: pd.DataFrame,
+    universe_mask: pd.DataFrame | None = None,
+) -> float:
+    """Fraction of valid factor values on the eligible PIT cross-section.
+
+    The processed panel keeps the union of members as columns. Non-members are
+    NaN after the universe mask; they must not count against research coverage.
+    """
+    if panel is None or panel.empty:
+        return 0.0
+    if universe_mask is None:
+        return float(panel.notna().mean().mean())
+    eligible = (
+        universe_mask.reindex(index=panel.index, columns=panel.columns)
+        .fillna(False)
+        .to_numpy(dtype=bool)
+    )
+    n = int(eligible.sum())
+    if n <= 0:
+        return 0.0
+    return float(panel.notna().to_numpy()[eligible].mean())
+
+
 class EvalService:
     def __init__(self, cfg: ProjectConfig | None = None):
         self.cfg = cfg or get_project_config()
@@ -128,20 +152,37 @@ class EvalService:
         statuses = statuses or KEEP_STATUSES
         others: dict[str, pd.DataFrame] = {}
         clean_names: set[str] | None = None
+        current_dv = None
+        data = getattr(self, "data", None)
+        if data is not None:
+            try:
+                current_dv = data.data_version()
+            except Exception:
+                current_dv = None
+        from qfactor.factor.cohort import classify_research_cohort, same_data_version
+
         if self.clean_experiment:
             clean_names = set()
             for row in self.registry.existing_summaries():
-                params = row.get("params") if isinstance(row.get("params"), dict) else {}
-                if row.get("source") == "seed" or (
-                    self.peer_experiment_id
-                    and str(params.get("experiment_id") or "") == self.peer_experiment_id
-                ):
+                cohort = classify_research_cohort(row)
+                if cohort.get("cohort") == "legacy_snapshot_research":
+                    continue
+                if not same_data_version(row, current_dv):
+                    continue
+                if cohort.get("cohort") in {
+                    "fixed_seed",
+                    "clean_discovery",
+                    "current_discovery",
+                    "verified_candidate",
+                }:
                     clean_names.add(str(row.get("name") or ""))
         for item in self.registry.list_factors():
             fname = item["name"]
             if fname == name or fname in exclude_names:
                 continue
             if item.get("status") not in statuses:
+                continue
+            if item.get("cohort") == "legacy_snapshot_research":
                 continue
             if clean_names is not None and fname not in clean_names:
                 continue
@@ -355,7 +396,12 @@ class EvalService:
         layered_h = layered_returns(signed, fwd, n_quantiles=n_q, min_obs=min_obs)
         layered_1d = layered_returns(signed, fwd_1d, n_quantiles=n_q, min_obs=min_obs)
 
-        coverage = float(signed.notna().mean().mean()) if not signed.empty else 0.0
+        universe_mask = None
+        try:
+            universe_mask = self._context().universe_mask
+        except Exception:
+            universe_mask = None
+        coverage = panel_coverage(signed, universe_mask)
         turnover = approx_daily_turnover(signed)
 
         min_abs = float(thresholds.get("min_abs_rank_ic_mean", 0.0))
@@ -387,17 +433,11 @@ class EvalService:
         else:
             others = {}
 
-        if thresholds.get("require_residual_ic", False):
-            resid_panel = residualize_on_peers(signed, others, min_obs=min_obs)
-            resid_ic = rank_ic(resid_panel, fwd, min_obs=min_obs)
-            resid_summary = summarize_ic(resid_ic, nw_lags=nw_lags)
-        else:
-            resid_summary = {
-                "rank_ic_mean": 0.0,
-                "icir": 0.0,
-                "icir_ann": 0.0,
-                "icir_nw": 0.0,
-            }
+        # Residual IC is always a diagnosis / parent-ranking signal. Production
+        # still applies resid bars only when require_residual_ic is on.
+        resid_panel = residualize_on_peers(signed, others, min_obs=min_obs)
+        resid_ic = rank_ic(resid_panel, fwd, min_obs=min_obs)
+        resid_summary = summarize_ic(resid_ic, nw_lags=nw_lags)
 
         cost_bps = float(ev.get("cost_bps", 10))
         cost_horizon = hold if hold > 1 else 1
@@ -534,6 +574,8 @@ class EvalService:
             "universe_mode": metrics.get("universe_mode"),
             "circ_mv_source": metrics.get("circ_mv_source"),
             "daily_basic_coverage": metrics.get("daily_basic_coverage", 0.0),
+            "data_version": metrics.get("data_version"),
+            "n_peers": metrics.get("n_peers"),
             "freeze_sign_ok": freeze_sign_ok,
             "horizon": horizon,
             "signal_hold_days": hold if hold > 1 else 0,

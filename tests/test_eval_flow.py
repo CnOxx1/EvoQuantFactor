@@ -1,9 +1,28 @@
 import numpy as np
 import pandas as pd
 
+from qfactor.eval.service import panel_coverage
 from qfactor.eval.ic import rank_ic, summarize_ic, yearly_ic_sign_consistency
 from qfactor.eval.oos import cost_layered, holdout_oos, walk_forward_after, walk_forward_ic
 from qfactor.eval.timing import apply_trade_lag, forward_close_returns, slice_eval_index
+
+
+def test_panel_coverage_uses_pit_members_not_union():
+    idx = ["20240102", "20240103"]
+    panel = pd.DataFrame(
+        [[1.0, np.nan, 2.0], [1.5, np.nan, 2.5]],
+        index=idx,
+        columns=["in_a", "out", "in_b"],
+    )
+    mask = pd.DataFrame(
+        [[True, False, True], [True, False, True]],
+        index=idx,
+        columns=["in_a", "out", "in_b"],
+    )
+    assert abs(float(panel.notna().mean().mean()) - 2.0 / 3.0) < 1e-9
+    assert panel_coverage(panel, mask) == 1.0
+    panel.iloc[0, 0] = np.nan
+    assert abs(panel_coverage(panel, mask) - 0.75) < 1e-9
 
 
 def test_apply_trade_lag_shifts_signal():

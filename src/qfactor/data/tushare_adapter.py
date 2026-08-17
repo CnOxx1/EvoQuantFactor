@@ -1,17 +1,133 @@
 from __future__ import annotations
 
+import os
+import re
 import time
-from typing import Any
+from typing import Any, Callable
 
 import pandas as pd
 
 from qfactor.data.base import DataAdapter
 from qfactor.settings import get_settings
 
+_AUTH_BUSY_RE = re.compile(r"等待\s*(\d+)\s*秒")
+
+
+def _auth_lock_wait(exc: BaseException) -> float | None:
+    msg = str(exc)
+    if "授权码正在被其他设备使用" in msg:
+        hit = _AUTH_BUSY_RE.search(msg)
+        return float(int(hit.group(1)) + 5) if hit else 65.0
+    if "超时" in msg or "timeout" in msg.lower():
+        return 8.0
+    return None
+
+
+def _call_with_auth_retry(fn: Callable[[], Any], *, retries: int = 6) -> Any:
+    last: BaseException | None = None
+    for attempt in range(1, retries + 1):
+        try:
+            return fn()
+        except Exception as e:
+            last = e
+            wait = _auth_lock_wait(e)
+            if wait is None:
+                raise
+            print(
+                f"[tinyshare] auth lock (attempt {attempt}/{retries}), sleep {wait:.0f}s",
+                flush=True,
+            )
+            time.sleep(wait)
+    assert last is not None
+    raise last
+
+# CSI100 also lists as 399903.SZ. Some Tushare-compatible proxies return a
+# one-row first page for 000903.SH on 2024+ months; 399903.SZ is often complete.
+CSI100_INDEX_CODES = ("000903.SH", "399903.SZ")
+
 
 def _permission_denied(exc: BaseException) -> bool:
     msg = str(exc)
     return "没有接口" in msg or "访问权限" in msg
+
+
+def resolve_ts_token(token: str | None = None) -> str:
+    return (
+        token
+        or os.environ.get("TINYSHARE_TOKEN", "").strip()
+        or get_settings().tushare_token
+    )
+
+
+def import_ts_client():
+    """Official tushare, or tinyshare when requested / the only installed client."""
+    backend = os.environ.get("QFACTOR_TS_CLIENT", "").strip().lower()
+    use_tiny = backend == "tinyshare" or bool(os.environ.get("TINYSHARE_TOKEN", "").strip())
+    if use_tiny:
+        import tinyshare as ts
+
+        return ts
+    try:
+        import tushare as ts
+    except ImportError:
+        import tinyshare as ts  # type: ignore[no-redef]
+    return ts
+
+
+def fetch_index_weight_pages(
+    pro: Any,
+    *,
+    index_code: str,
+    start_date: str | None = None,
+    end_date: str | None = None,
+    trade_date: str | None = None,
+    page_size: int = 100,
+    sleep_fn: Any | None = None,
+    max_rows: int = 20000,
+) -> pd.DataFrame:
+    """Page `index_weight`. Some proxies return only the first row until offset>0."""
+    frames: list[pd.DataFrame] = []
+    seen: set[tuple[str, str]] = set()
+    offset = 0
+    while offset < max_rows:
+        kwargs: dict[str, Any] = {
+            "index_code": index_code,
+            "offset": offset,
+            "limit": page_size,
+        }
+        if trade_date:
+            kwargs["trade_date"] = trade_date
+        else:
+            if start_date:
+                kwargs["start_date"] = start_date
+            if end_date:
+                kwargs["end_date"] = end_date
+        df = _call_with_auth_retry(lambda: pro.index_weight(**kwargs))
+        if df is None or getattr(df, "empty", True):
+            break
+        code_col = "con_code" if "con_code" in df.columns else "ts_code"
+        date_col = "trade_date" if "trade_date" in df.columns else None
+        if code_col not in df.columns:
+            break
+        new_rows = []
+        for _, row in df.iterrows():
+            key = (
+                str(row[date_col]) if date_col else "",
+                str(row[code_col]),
+            )
+            if key in seen:
+                continue
+            seen.add(key)
+            new_rows.append(row)
+        if not new_rows:
+            break
+        frames.append(pd.DataFrame(new_rows))
+        offset += int(len(df))
+        if sleep_fn:
+            sleep_fn()
+    if not frames:
+        return pd.DataFrame(columns=["index_code", "con_code", "trade_date", "weight"])
+    return pd.concat(frames, ignore_index=True)
 
 
 class TushareAdapter(DataAdapter):
@@ -23,14 +139,18 @@ class TushareAdapter(DataAdapter):
         index_code: str = "000903.SH",
         sleep_seconds: float = 0.35,
     ):
-        self.token = token or get_settings().tushare_token
+        self.token = resolve_ts_token(token)
         if not self.token:
             raise RuntimeError(
                 "TUSHARE_TOKEN is empty. Set it in .env or use --source akshare."
             )
-        import tushare as ts
-
-        self.pro = ts.pro_api(self.token)
+        ts = import_ts_client()
+        if hasattr(ts, "set_token"):
+            ts.set_token(self.token)
+        try:
+            self.pro = ts.pro_api(self.token)
+        except TypeError:
+            self.pro = ts.pro_api()
         self.index_code = index_code
         self.sleep_seconds = sleep_seconds
 
@@ -44,15 +164,26 @@ class TushareAdapter(DataAdapter):
 
         return BaostockAdapter().fetch_trade_calendar(start, end)
 
+    def _index_weight(self, **kwargs: Any) -> pd.DataFrame:
+        return fetch_index_weight_pages(self.pro, sleep_fn=self._sleep, **kwargs)
+
     def fetch_index_members(self, trade_date: str) -> pd.DataFrame:
-        self._sleep()
-        df = self.pro.index_weight(index_code=self.index_code, trade_date=trade_date)
-        if df is None or df.empty:
-            return pd.DataFrame(columns=["trade_date", "ts_code", "weight"])
-        out = df.rename(columns={"con_code": "ts_code"})[
-            ["trade_date", "ts_code", "weight"]
-        ]
-        return out
+        from qfactor.data.universe import normalize_members
+
+        df = self._index_weight(index_code=self.index_code, trade_date=trade_date)
+        out = normalize_members(df)
+        if len(out) >= 80:
+            return out
+        if self.index_code in CSI100_INDEX_CODES:
+            for alt in CSI100_INDEX_CODES:
+                if alt == self.index_code:
+                    continue
+                extra = normalize_members(
+                    self._index_weight(index_code=alt, trade_date=trade_date)
+                )
+                if len(extra) > len(out):
+                    out = extra
+        return out if not out.empty else pd.DataFrame(columns=["trade_date", "ts_code", "weight"])
 
     def fetch_index_members_history(self, start: str, end: str) -> pd.DataFrame:
         """CSI reconstitutions: prefer in/out roster, else monthly index_weight."""
@@ -99,9 +230,8 @@ class TushareAdapter(DataAdapter):
     def _fetch_index_weight_range(self, start: str, end: str) -> pd.DataFrame:
         from qfactor.data.universe import normalize_members
 
-        self._sleep()
         try:
-            df = self.pro.index_weight(
+            df = self._index_weight(
                 index_code=self.index_code, start_date=start, end_date=end
             )
         except Exception as e:
@@ -120,7 +250,14 @@ class TushareAdapter(DataAdapter):
             ).days
             // 28,
         )
-        if not out.empty and out["trade_date"].nunique() >= max(2, expected_months // 3):
+        per_date = (
+            out.groupby("trade_date")["ts_code"].nunique() if not out.empty else pd.Series(dtype=float)
+        )
+        if (
+            not out.empty
+            and out["trade_date"].nunique() >= max(2, expected_months // 3)
+            and float(per_date.median()) >= 80
+        ):
             return out
         frames = [] if out.empty else [out]
         cursor = pd.Timestamp(start[:4] + "-" + start[4:6] + "-01")
@@ -132,9 +269,8 @@ class TushareAdapter(DataAdapter):
             if m_end < start:
                 cursor = cursor + pd.offsets.MonthBegin(1)
                 continue
-            self._sleep()
             try:
-                chunk = self.pro.index_weight(
+                chunk = self._index_weight(
                     index_code=self.index_code, start_date=m_start, end_date=min(m_end, end)
                 )
             except Exception as e:
@@ -157,7 +293,9 @@ class TushareAdapter(DataAdapter):
 
     def fetch_daily_bars(self, ts_code: str, start: str, end: str) -> pd.DataFrame:
         self._sleep()
-        df = self.pro.daily(ts_code=ts_code, start_date=start, end_date=end)
+        df = _call_with_auth_retry(
+            lambda: self.pro.daily(ts_code=ts_code, start_date=start, end_date=end)
+        )
         if df is None or df.empty:
             return pd.DataFrame(
                 columns=[

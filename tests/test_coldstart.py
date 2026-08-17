@@ -4,7 +4,7 @@ from qfactor.agent.coldstart import (
     is_cold_start,
     parent_count,
 )
-from qfactor.agent.diversity import active_skeleton_bans
+from qfactor.agent.diversity import active_skeleton_bans, keep_mechanism_coverage
 from qfactor.agent.generator import (
     CandidateGenerator,
     _COMPOSE_UNARY,
@@ -23,15 +23,62 @@ def test_graph_rounds_for_budget():
     assert graph_rounds_for_budget(50) == 1
 
 
+def _eligible_parent(status: str, **extra):
+    row = {
+        "status": status,
+        "source": "llm",
+        "params": {"research_cohort": "clean_discovery"},
+        "summary": {
+            "universe_mode": "pit",
+            "circ_mv_source": "archive_daily_basic",
+            "data_version": "live",
+        },
+    }
+    row.update(extra)
+    return row
+
+
 def test_is_cold_start_threshold():
-    seven = [{"status": "screened"}] * 7
-    eight = [{"status": "screened"}] * 8
-    mixed = [{"status": "draft"}] * 20 + [{"status": "candidate"}] * 4
+    seven = [_eligible_parent("screened")] * 7
+    eight = [_eligible_parent("screened")] * 8
+    mixed = [{"status": "draft"}] * 20 + [_eligible_parent("candidate")] * 4
+    legacy = [
+        {
+            "status": "screened",
+            "summary": {"universe_mode": "snapshot", "circ_mv_source": "estimated"},
+        }
+    ] * 137
     assert parent_count(seven) == 7
     assert is_cold_start(seven) is True
     assert is_cold_start(eight) is False
     assert is_cold_start(mixed) is True
     assert is_cold_start([]) is True
+    assert parent_count(legacy) == 0
+    assert is_cold_start(legacy) is True
+    assert parent_count([{"status": "screened"}] * 20) == 0
+
+
+def test_parent_count_collapses_window_shopped_skeletons():
+    clones = [
+        _eligible_parent("screened", expression="ma(amplitude,20)")
+        for _ in range(8)
+    ]
+    assert parent_count(clones) == 1
+    assert is_cold_start(clones) is True
+    mixed_exprs = [
+        "neg(roc(close_adj,5))",
+        "ma(overnight,20)",
+        "ma(div(abs(ret_1d),amount),20)",
+        "std(ret_1d,20)",
+        "ma(turnover_rate,20)",
+        "ma(lower_shadow,20)",
+        "div(vol,ma(vol,20))",
+    ]
+    mixed = clones[:1] + [
+        _eligible_parent("screened", expression=expr) for expr in mixed_exprs
+    ]
+    assert parent_count(mixed) == 8
+    assert is_cold_start(mixed) is False
 
 
 def test_llm_slot_plan_cold_keeps_fresh_when_catalog_thick():
@@ -65,7 +112,7 @@ def test_llm_slot_plan_hot_thin_catalog_splits_fresh_and_mutate():
     assert plan["n_fresh"] + plan["n_mutate"] + plan["n_crossover"] + plan["n_template"] == 8
 
 
-def test_active_skeleton_bans_empty_when_cold(monkeypatch):
+def test_active_skeleton_bans_cold_skips_library_fsa_keeps_eligible_cap(monkeypatch):
     monkeypatch.setattr(
         "qfactor.agent.diversity.skeleton_keep_counts",
         lambda cfg=None: {"std(ret_1d,N)": 2},
@@ -74,7 +121,68 @@ def test_active_skeleton_bans_empty_when_cold(monkeypatch):
         "qfactor.agent.diversity.library_diversity_index",
         lambda cfg=None: {"banned_skeletons": ["high_corr_skel"]},
     )
-    assert active_skeleton_bans(max_per=2, extra=["extra_sk"], cold_start=True) == set()
+    assert active_skeleton_bans(max_per=2, extra=["extra_sk"], cold_start=True) == {
+        "extra_sk"
+    }
+    existing = [
+        _eligible_parent(
+            "screened",
+            expression="ma(amplitude,20)",
+        )
+        for _ in range(2)
+    ]
+    banned = active_skeleton_bans(
+        max_per=2, extra=["extra_sk"], cold_start=True, existing=existing
+    )
+    assert "high_corr_skel" not in banned
+    assert "extra_sk" in banned
+    from qfactor.agent.diversity import expression_fingerprint
+
+    assert expression_fingerprint("ma(amplitude,20)")["skeleton"] in banned
+
+
+def test_decide_theme_cold_start_does_not_ban_high_keep_family():
+    gen = CandidateGenerator(llm=LLMClient(api_key="x"))
+    gen.llm_cfg["llm_decide_theme"] = False
+    existing = [
+        _eligible_parent(
+            "screened",
+            mechanism="amplitude",
+            expression="ma(amplitude,20)",
+            summary={
+                "universe_mode": "pit",
+                "circ_mv_source": "archive_daily_basic",
+                "data_version": "live",
+                "rank_ic_mean": 0.016,
+            },
+        )
+        for _ in range(3)
+    ]
+    assert is_cold_start(existing) is True
+    coverage = keep_mechanism_coverage(existing)
+    assert coverage["amplitude"] == 3
+    theme = gen.decide_theme(coverage, existing, recent_themes=[])
+    assert theme == "amplitude"
+
+
+def test_cold_field_prior_keeps_winning_family_fields():
+    gen = CandidateGenerator(llm=LLMClient(api_key="x"))
+    existing = [
+        _eligible_parent(
+            "screened",
+            mechanism="amplitude",
+            expression="ma(amplitude,20)",
+            summary={
+                "universe_mode": "pit",
+                "circ_mv_source": "archive_daily_basic",
+                "data_version": "live",
+                "rank_ic_mean": 0.016,
+            },
+        )
+        for _ in range(3)
+    ]
+    assert gen._refresh_field_window_prior([], existing, cold=True, round_idx=0, every=20)
+    assert gen._field_prior.get("amplitude", 0) > 0
 
 
 def test_field_window_prior_weights_overnight():
@@ -99,6 +207,27 @@ def test_field_window_prior_weights_overnight():
     field_w, win_w = field_window_prior(lessons, existing)
     assert field_w["overnight"] > field_w.get("close_adj", 0)
     assert win_w.get(20, 0) > 0
+
+
+def test_field_window_prior_skips_asi_replay_traces():
+    existing = [
+        {
+            "expression": "ma(overnight,20)",
+            "status": "candidate",
+            "summary": {"rank_ic_mean": 0.04},
+        }
+    ]
+    replay = [
+        {
+            "expression": "ma(amplitude,20)",
+            "mechanism": "amplitude",
+            "reason": "weak_ic",
+            "detail": {"rank_ic_mean": 0.03, "skip_prior": True, "skeleton": "ma(amplitude,N)"},
+        }
+    ]
+    field_w, _ = field_window_prior(replay, existing)
+    assert "amplitude" not in field_w
+    assert field_w["overnight"] > 0
 
 
 def test_field_window_prior_hot_skips_blocked_and_prefers_resid():
@@ -280,51 +409,87 @@ def test_hot_parent_pool_keeps_eligible_mechs_not_global_ic(monkeypatch):
 
     monkeypatch.setattr("qfactor.factor.registry.FactorRegistry", lambda cfg=None: _Reg())
     existing = [
-        {
-            "name": "amp_c",
-            "expression": "ma(amplitude,20)",
-            "mechanism": "amplitude",
-            "status": "candidate",
-            "summary": {"rank_ic_mean": 0.05, "resid_ic_mean": 0.04},
-        },
-        {
-            "name": "liq_c",
-            "expression": "ma(turnover_rate,20)",
-            "mechanism": "liquidity",
-            "status": "candidate",
-            "summary": {"rank_ic_mean": 0.04, "resid_ic_mean": 0.03},
-        },
+        _eligible_parent(
+            "candidate",
+            name="amp_c",
+            expression="ma(amplitude,20)",
+            mechanism="amplitude",
+            summary={
+                "universe_mode": "pit",
+                "circ_mv_source": "archive_daily_basic",
+                "data_version": "live",
+                "rank_ic_mean": 0.05,
+                "resid_ic_mean": 0.04,
+            },
+        ),
+        _eligible_parent(
+            "candidate",
+            name="liq_c",
+            expression="ma(turnover_rate,20)",
+            mechanism="liquidity",
+            summary={
+                "universe_mode": "pit",
+                "circ_mv_source": "archive_daily_basic",
+                "data_version": "live",
+                "rank_ic_mean": 0.04,
+                "resid_ic_mean": 0.03,
+            },
+        ),
     ] + [
-        {
-            "name": f"amp_s{i}",
-            "expression": f"std(amplitude,{5 + i})",
-            "mechanism": "amplitude",
-            "status": "screened",
-            "summary": {"rank_ic_mean": 0.03, "resid_ic_mean": 0.02},
-        }
+        _eligible_parent(
+            "screened",
+            name=f"amp_s{i}",
+            expression=f"std(amplitude,{5 + i})",
+            mechanism="amplitude",
+            summary={
+                "universe_mode": "pit",
+                "circ_mv_source": "archive_daily_basic",
+                "data_version": "live",
+                "rank_ic_mean": 0.03,
+                "resid_ic_mean": 0.02,
+            },
+        )
         for i in range(12)
     ] + [
-        {
-            "name": "rev_s",
-            "expression": "neg(roc(close_adj,5))",
-            "mechanism": "reversal",
-            "status": "screened",
-            "summary": {"rank_ic_mean": 0.012, "resid_ic_mean": 0.01},
-        },
-        {
-            "name": "sh_s",
-            "expression": "ma(upper_shadow,10)",
-            "mechanism": "shadow",
-            "status": "screened",
-            "summary": {"rank_ic_mean": 0.011, "resid_ic_mean": 0.01},
-        },
-        {
-            "name": "mom_amp_field",
-            "expression": "ma(amplitude,20)",
-            "mechanism": "momentum",
-            "status": "screened",
-            "summary": {"rank_ic_mean": 0.02, "resid_ic_mean": 0.02},
-        },
+        _eligible_parent(
+            "screened",
+            name="rev_s",
+            expression="neg(roc(close_adj,5))",
+            mechanism="reversal",
+            summary={
+                "universe_mode": "pit",
+                "circ_mv_source": "archive_daily_basic",
+                "data_version": "live",
+                "rank_ic_mean": 0.012,
+                "resid_ic_mean": 0.01,
+            },
+        ),
+        _eligible_parent(
+            "screened",
+            name="sh_s",
+            expression="ma(upper_shadow,10)",
+            mechanism="shadow",
+            summary={
+                "universe_mode": "pit",
+                "circ_mv_source": "archive_daily_basic",
+                "data_version": "live",
+                "rank_ic_mean": 0.011,
+                "resid_ic_mean": 0.01,
+            },
+        ),
+        _eligible_parent(
+            "screened",
+            name="mom_amp_field",
+            expression="ma(amplitude,20)",
+            mechanism="momentum",
+            summary={
+                "universe_mode": "pit",
+                "circ_mv_source": "archive_daily_basic",
+                "data_version": "live",
+                "rank_ic_mean": 0.02,
+                "resid_ic_mean": 0.02,
+            },
+        ),
     ]
     pool = gen._parent_pool(existing)
     mechs = {str(p.get("mechanism")) for p in pool if p.get("status") == "screened"}
@@ -332,3 +497,42 @@ def test_hot_parent_pool_keeps_eligible_mechs_not_global_ic(monkeypatch):
     assert "shadow" in mechs
     assert "amplitude" not in mechs
     assert not any(p.get("name") == "mom_amp_field" for p in pool)
+
+
+def test_parent_pool_drops_legacy_snapshot_rows(monkeypatch):
+    gen = CandidateGenerator(llm=LLMClient(api_key="x"))
+    monkeypatch.setattr(
+        "qfactor.agent.generator.is_cold_start",
+        lambda existing, cfg=None: True,
+    )
+
+    class _Reg:
+        def list_factors(self):
+            return []
+
+        def load_spec(self, name):
+            raise KeyError(name)
+
+    monkeypatch.setattr("qfactor.factor.registry.FactorRegistry", lambda cfg=None: _Reg())
+    existing = [
+        {
+            "name": "legacy_amp",
+            "expression": "ma(amplitude,20)",
+            "mechanism": "amplitude",
+            "status": "screened",
+            "source": "compose",
+            "summary": {"universe_mode": "snapshot", "circ_mv_source": "estimated"},
+        },
+        _eligible_parent(
+            "screened",
+            name="clean_rev",
+            expression="neg(roc(close_adj,5))",
+            mechanism="reversal",
+        ),
+    ]
+    pool = gen._parent_pool(existing)
+    names = {p["name"] for p in pool}
+    assert "legacy_amp" not in names
+    assert "clean_rev" in names
+    assert parent_count(existing) == 1
+    assert is_cold_start(existing) is True

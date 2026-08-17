@@ -1,8 +1,8 @@
 # EvoQuantFactor 生产数据合同与归档导入清单
 
-**适用范围：** 中证 100、日频、量价因子工厂。研究发现、统计 candidate
-与可交易 release 使用分层合同：研究层只保留假说，candidate 要求 PIT 与选择
-区间统计证据，active release 再要求完整执行/风险证据。
+**适用范围：** 中证 100、日频、量价因子挖矿工厂。研究发现、统计 candidate
+与可交易 release 使用分层合同：研究层输出高质量价量因子库，candidate 要求 PIT 与选择
+区间统计证据，active release 再要求完整执行/风险证据。当前 PIT 归档已经足够继续量价挖矿。
 
 > **发布原则：** 只有在当前数据版本同时具备 PIT 成分、供应商日频流通市值、证券状态、涨跌停价、ADV、公司行动、点时行业和风险暴露，且通过密封验收及订单账本时，因子才可能成为 `active release`。缺少执行数据不阻止 research，但仍阻止交易 release。
 
@@ -78,7 +78,7 @@
 
 ## 4. 导入与验收顺序
 
-中证官方最新成分和调样附件可用 `qfactor fetch-archive-universe` 下载；缺失的半年定期调样工作簿会停止回溯，不会把旧调入调出接到后来的快照上。Wind / Choice / RQData 导出以及补齐的中证历史文件用 `qfactor ingest-archive --role <role> --source <file>` 归一到合同列（`trade_date` + `ts_code`），再用 `qfactor validate-archive --strict` 检查六类文件是否齐全。入库命令不从行情推断 ST、停牌、涨跌停、行业或流通市值。随后执行 `qfactor sync-data`（行情源可以是 BaoStock / AkShare；PIT 证据走 archive），检查生成的 `data/processed/data_version.json` 与 `data/quality_reports/`。覆盖率、来源和限制会写入不可变数据版本元数据。无 Tushare token 时，`providers.*.auto` 会在对应归档文件存在时解析为 `archive`。
+中证官方最新成分和调样附件可用 `qfactor fetch-archive-universe` 下载；缺失的半年定期调样工作簿会停止回溯，不会把旧调入调出接到后来的快照上。Tushare 兼容代理（含 tinyshare）用 `qfactor fetch-vendor-archive` 拉 PIT 成分、厂商 `daily_basic` 和申万点时行业；`index_weight` 必须翻页，部分代理对 `000903.SH` 的 2024 年第一页只返回 1 行。行业展开必须覆盖请求窗口的交易日；本地只有 2024–2026 研究日历时要回拉完整日历，不能把 2019–2023 静默裁掉。`--roles industry` 可在成分已入库后单独重展行业。Wind / Choice / RQData 导出以及补齐的中证历史文件用 `qfactor ingest-archive --role <role> --source <file>` 归一到合同列（`trade_date` + `ts_code`），再用 `qfactor validate-archive --strict` 检查六类文件是否齐全。入库命令不从行情推断 ST、停牌、涨跌停、行业或流通市值。随后执行 `qfactor sync-data`（行情源可以是 BaoStock / AkShare；PIT 证据走 archive），检查生成的 `data/processed/data_version.json` 与 `data/quality_reports/`。覆盖率、来源和限制会写入不可变数据版本元数据。无 Tushare token 时，`providers.*.auto` 会在对应归档文件存在时解析为 `archive`。
 
 免费研究行情可由 BaoStock 拉长，但必须先准备并审计历史成分并集，避免只对今天的
 100只成分回填历史造成幸存者偏差：
@@ -97,8 +97,8 @@ qfactor sync-data --start 20200101 --end YYYYMMDD --source baostock --allow-snap
 ```
 
 已有 2024–2026 切片不会被当成 2020 年起的完整覆盖；缺前缀的代码会重新下载。
-新数据版本写入后，才能把 discovery 分区扩到 `20200102–20251231`。2026 行情入库，
-但不进入 discovery。
+新数据版本写入后，才能把 discovery 分区扩到 `20160102–20260630`。discovery 可以
+使用已经入库的 2026 行情，但不能把 `discovery_end` 设到数据结束日之后。
 
 BaoStock 适配器保留逐日 `isST` 与 `tradestatus`；这些属于公开来源证据，但不会
 把估算流通市值升级为 candidate 可用的供应商市值。
@@ -106,10 +106,11 @@ BaoStock 适配器保留逐日 `isST` 与 `tradestatus`；这些属于公开来�
 接着运行研究发现或评估流程。LLM 调用前只验证行情与 discovery 分区；
 screened→candidate 验证 PIT 成分、供应商流通市值、PIT 行业和 selection 分区；
 密封验收只读取 sealed 分区；tradability/release 再验证完整执行与风险合同。
-`qfactor library-export-candidates` 仅向非交易多因子研究提供 `tradable=false` 的
-统计候选；交易模块只能读取 `qfactor export-trading-releases` 的 active release。
+`qfactor library-export-quality` 向后续价量研究模块提供当前面板上的 PIT KEEP 质量库（`tradable=false`）。
+`qfactor library-export-candidates` 仅在冻结 selection 后向非交易多因子研究提供统计候选；
+交易模块只能读取 `qfactor export-trading-releases` 的 active release。
 
-> **当前仓库状态：** 内置行情和现有快照数据未满足本合同。因此 `qfactor export-trading-releases` 与 `qfactor library-export-multifactor` 应继续输出零个可用因子。这是预期的 fail-closed 结果，不是可通过调低阈值解决的问题。
+> **当前仓库状态：** PIT 成分、供应商 `circ_mv` 和 discovery 窗口已够继续量价挖矿。`library-export-quality` 是挖矿交付物。`export-trading-releases` 与 `library-export-multifactor` 仍应输出零个可用因子，因为 selection 未冻结、执行/风险合同未过。这是预期的 fail-closed 结果，不是可通过调低阈值或编造 selection 日期解决的问题。
 
 ## 5. 不允许的替代做法
 

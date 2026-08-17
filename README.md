@@ -1,14 +1,12 @@
 # qfactor
 
-中证100（中证A100 / `000903.SH`）日频量价因子工厂。用 DSL 表达式生成因子，经研究闸 / 生产闸评估入库；LLM 只负责提案，过闸由解析器与数值闸门决定。
+中证100（中证A100 / `000903.SH`）日频量价因子挖矿工厂。职责是持续输出**高质量价量因子库**，不是实盘交易。LLM 只负责提案，过闸由解析器与数值闸门决定。
 
-目标是维护**高质量价量因子库**，供后续多因子模块使用。
+当前 PIT 面板（点时成分、供应商流通市值、discovery `20160102–20260630`）已经足够继续量价挖矿。挖矿 KPI 是 `library-export-quality`，不是 `candidate` 计数。
 
-- `screened`：研究假说，可以当干净实验的父本，不能当生产库存。
-- `candidate`：统计上可靠的生产因子。需要 PIT 成分、供应商流通市值、PIT 行业、selection 分区和选择偏差审计。
-- `active release`：可交易发布。还要密封 OOS、订单级可交易性和完整执行/风险数据。
-
-`candidate` 不是实盘许可。快照宇宙或估算市值上过研究闸，也不能升级成 candidate。
+- 挖矿交付物：live `data_version` 上过研究闸的 PIT KEEP 因子（`tradable=false`，`layer=mining_quality`）。后续研究模块读这一层。
+- `candidate`：统计上可靠的生产因子。还要冻结 selection 分区和选择偏差审计。**不要编造 selection 日期。** `candidate=0` 不是挖矿失败。
+- `active release`：可交易发布，仍不在本工厂范围内。
 
 | 项 | 值 |
 |---|---|
@@ -77,7 +75,7 @@ flowchart LR
 | 状态 | 含义 | 用途 |
 |---|---|---|
 | `draft` | 刚生成或未过研究闸 | 不进 KEEP |
-| `screened` | 过研究闸 | 研究堆；干净实验父本；**禁止当生产库存** |
+| `screened` | 过研究闸 | 研究堆；干净实验父本；写入质量库；**禁止当生产库存** |
 | `candidate` | 过生产闸，且满足 candidate 数据合同 | 多因子研究输入（`tradable=false`） |
 | `approved` | 人工确认后的 candidate | 当前库为 0 |
 | `active release` | 密封 OOS + 可交易性 + 执行合同 | 唯一可供交易模块读取的输出 |
@@ -139,7 +137,7 @@ flowchart TB
 
     subgraph CAND["3. 生产晋升"]
         onlys --> ccon{candidate 合同<br/>PIT + 供应商 circ_mv + PIT 行业 + selection?}
-        ccon -->|否 当前快照数据走这里| keep[保持 screened<br/>candidate 仍为 0]
+        ccon -->|否 缺 selection 分区走这里| keep[保持 screened<br/>写入质量库；candidate 仍为 0]
         ccon -->|是| pgate[production 闸]
         pgate -->|过| cand[candidate]
         pgate -->|不过| keep
@@ -155,7 +153,7 @@ flowchart TB
     end
 ```
 
-当前快照成分 + 估算市值只能走到第 2 段的 `screened`。第 3、4 段保持为 0 是预期的 fail-closed，不是故障。
+当前面板是 PIT 成分 + 供应商 `circ_mv`，research 合同已通过，可以继续量价挖矿。缺的是冻结 selection 分区，所以第 3、4 段保持为 0。这是预期的 fail-closed，不是挖矿失败，也不要通过编造日期或降门槛来“挖出” candidate。
 
 ### 数据准备在检查什么
 
@@ -183,7 +181,7 @@ flowchart TD
     M --> Q[candidate / release 只报告, 不解锁挖掘]
 ```
 
-直接 `loop`（不加 `--prepare-data`）仍可能用仓库里的两年切片开挖，因为当前 discovery 窗口就在 `20240102–20251231`。服务器上一键启动：
+直接 `loop`（不加 `--prepare-data`）仍可能用仓库里已覆盖的切片开挖，因为当前 discovery 窗口是 `20160102–20260630`。服务器上一键启动：
 
 ```bash
 scripts/start_factory.sh              # pull main → prepare-data → 后台 supervisor
@@ -224,7 +222,8 @@ flowchart TD
     G --> J
     H --> J
     I --> J
-    J --> K[library-export-candidates]
+    J --> Q[library-export-quality]
+    Q --> K[library-export-candidates]
     K --> L[library-reconcile]
     L --> M[写 status.json / events.jsonl]
 ```
@@ -262,18 +261,19 @@ flowchart LR
 
 | 层 | 最低要求 | 通过后可以做什么 |
 |---|---|---|
-| research | 日行情 + 已配置 discovery 分区 | 生成 / 评估 `screened` |
+| research | 日行情 + 已配置 discovery 分区 | 生成 / 评估 `screened`；导出 `library-export-quality` |
 | candidate | PIT 成分、供应商 `circ_mv`、PIT 行业、selection 分区、选择偏差审计、独立观测 ≥ 60、至少 3 年同号 | 导出给非交易多因子模块 |
 | release | ST / 停牌 / 涨跌停 / ADV / 公司行动 / 风险暴露覆盖达标，且密封 OOS + 可交易性通过 | `export-trading-releases` |
 
 ```bash
 qfactor data-contract-readiness
 qfactor library-cohorts
+qfactor library-export-quality
 qfactor library-export-candidates
 qfactor export-trading-releases
 ```
 
-当前仓库默认是**快照成分 + 估算流通市值**。这只够 research。`candidate = 0` 和 `n_active = 0` 是预期的 fail-closed 结果。
+当前仓库已有 PIT 成分、供应商 `circ_mv` 和 `20160102–20260630` discovery 窗口，**足够继续量价挖矿**。挖矿 KPI 看质量库。`candidate = 0` 是因为 selection 分区仍空，不要编造日期；`n_active = 0` 是因为交易 release 仍缺执行/风险合同。
 
 ---
 
@@ -313,7 +313,7 @@ qfactor data-contract-readiness
 qfactor prepare-data
 ```
 
-已有 2024–2026 切片不会被当成 2020 年起的完整覆盖；缺前缀的代码会重新下载。新数据版本写入后，才能把 discovery 扩到 `20200102–20251231`。2026 行情可以入库，但不进入 discovery。
+已有 2024–2026 切片不会被当成 2016 年起的完整覆盖；缺前缀的代码会重新下载。新数据版本写入后，才能把 discovery 扩到 `20160102–20260630`。已经入库的 2026 行情可以进入 discovery，但不能把窗口设到数据结束日之后。
 
 表：行情 `daily_bars`、成分 `universe_members`、行业 `industry_map`、因子 `factors` / `factor_reports`、任务 `jobs`、checkpoint `loop_checkpoints`、实验账本。
 
@@ -321,7 +321,7 @@ qfactor prepare-data
 
 ## 评估闸
 
-配置：`configs/eval_thresholds.yaml`。交易滞后 1 日、前瞻 5 日、分层 5 档、成本 10bp。研究默认 discovery 窗口 `20240102–20251231`；生产闸还要求 selection 分区，密封验收只读 sealed 分区。
+配置：`configs/eval_thresholds.yaml`。交易滞后 1 日、前瞻 5 日、分层 5 档、成本 10bp。研究默认 discovery 窗口 `20160102–20260630`；生产闸还要求 selection 分区，密封验收只读 sealed 分区。
 
 **不要放松 production / release 闸。** 不要加大 `llm_ratio` / `llm_batch_size`，不要把冷启动阈值开到 KEEP 接近全库。
 
@@ -349,10 +349,11 @@ qfactor prepare-data
 - ADV 20 日 / 公司行动 / PIT 行业 / 风险暴露达到合同阈值
 - 定义已冻结，密封 OOS 通过，订单账本可交易性通过
 
-后续非交易多因子研究只能读取 `library-export-candidates`，且 `tradable=false`。交易模块只能读取 `export-trading-releases` 的 `active` release。
+后续价量研究模块读取 `library-export-quality`（`tradable=false`）。非交易多因子优化仍只读 `library-export-candidates`；在 selection 冻结前该库存为空。交易模块只能读取 `export-trading-releases` 的 `active` release。
 
 ```bash
 python -m qfactor.cli eval-factor NAME --gate research
+python -m qfactor.cli library-export-quality
 python -m qfactor.cli library-reeval-screened
 python -m qfactor.cli library-refresh-production
 python -m qfactor.cli library-promote NAME --gate production
@@ -414,7 +415,8 @@ python -m qfactor.agent.supervisor run-forever --start-cycle 12
 | `library-reeval-screened` | screened 上生产闸（仍受 candidate 合同约束） |
 | `library-refresh-production` | 重打 candidate |
 | `library-promote` / `library-demote` / `library-reconcile` | 升降级与一致性检查 |
-| `library-export-candidates` | 导出 `tradable=false` 的统计候选 |
+| `library-export-quality` | 导出挖矿质量库（PIT KEEP，`tradable=false`） |
+| `library-export-candidates` | 导出 `tradable=false` 的统计候选（需冻结 selection） |
 | `freeze-factor` / `sealed-accept` / `simulate-tradability` / `publish-release` | 验收与发布 |
 | `export-trading-releases` | 导出 `active` release |
 | `db-init` / `db-import` / `db-status` | SQLite |
@@ -437,7 +439,7 @@ python -m qfactor.agent.supervisor run-forever --start-cycle 12
 
 `configs/data_sources.yaml`：指数代码 `000903`；`providers.*.auto` 在无 Tushare token 且 archive 文件存在时解析为 `archive`。
 
-`configs/eval_thresholds.yaml`：研究 discovery 默认 `20240102–20251231`；selection / sealed 未配置。生产要求 3 年稳定。
+`configs/eval_thresholds.yaml`：研究 discovery 默认 `20160102–20260630`；selection / sealed 未配置。生产要求 3 年稳定。
 
 ---
 

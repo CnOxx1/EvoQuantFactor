@@ -36,8 +36,41 @@ class FactorRegistry:
     def factor_dir(self, name: str) -> Path:
         return self.root / "factors" / name
 
+    def _live_data_version(self) -> str | None:
+        try:
+            from qfactor.data.dataset import DataService
+
+            return DataService(self.cfg).data_version()
+        except Exception:
+            return None
+
     def list_factors(self) -> list[dict[str, Any]]:
-        return list(self._read_catalog().get("factors", []))
+        from qfactor.factor.cohort import apply_parent_eligibility, evidence_from_latest_report
+
+        current_dv = self._live_data_version()
+        rows: list[dict[str, Any]] = []
+        for raw in self._read_catalog().get("factors", []):
+            row = dict(raw)
+            params = row.get("params") if isinstance(row.get("params"), dict) else {}
+            if not params.get("research_cohort"):
+                try:
+                    spec = self.load_spec(str(row.get("name") or ""))
+                    row["params"] = spec.params if isinstance(spec.params, dict) else {}
+                    if spec.expression:
+                        row.setdefault("expression", spec.expression)
+                except Exception:
+                    row.setdefault("params", params)
+            summary = row.get("summary") if isinstance(row.get("summary"), dict) else {}
+            if not summary.get("data_version"):
+                latest_path = self.factor_dir(str(row.get("name") or "")) / "reports" / "latest.json"
+                try:
+                    latest = json.loads(latest_path.read_text(encoding="utf-8"))
+                    row["summary"] = evidence_from_latest_report(summary, latest)
+                except Exception:
+                    pass
+            row.update(apply_parent_eligibility(row, current_dv))
+            rows.append(row)
+        return rows
 
     def save_factor_files(
         self,
@@ -86,6 +119,12 @@ class FactorRegistry:
 
         catalog = self._read_catalog()
         factors = catalog.get("factors", [])
+        spec_params = spec.params if isinstance(spec.params, dict) else {}
+        catalog_params = {
+            key: spec_params[key]
+            for key in ("experiment_id", "research_cohort")
+            if spec_params.get(key)
+        }
         entry = {
             "name": spec.name,
             "version": spec.version,
@@ -95,6 +134,7 @@ class FactorRegistry:
             "source": source,
             "path": str(fdir.relative_to(self.cfg.root)).replace("\\", "/"),
             "summary": summary,
+            "params": catalog_params,
         }
         factors = [f for f in factors if f.get("name") != spec.name]
         factors.append(entry)
@@ -169,8 +209,9 @@ class FactorRegistry:
             pass
 
     def existing_summaries(self) -> list[dict[str, Any]]:
-        from qfactor.factor.cohort import classify_research_cohort
+        from qfactor.factor.cohort import apply_parent_eligibility
 
+        current_dv = self._live_data_version()
         rows: list[dict[str, Any]] = []
         for f in self.list_factors():
             row: dict[str, Any] = {
@@ -179,6 +220,7 @@ class FactorRegistry:
                 "status": f.get("status"),
                 "summary": f.get("summary", {}),
                 "source": f.get("source"),
+                "params": f.get("params") if isinstance(f.get("params"), dict) else {},
             }
             try:
                 spec = self.load_spec(str(f["name"]))
@@ -188,7 +230,7 @@ class FactorRegistry:
                 row["params"] = spec.params
             except Exception:
                 pass
-            row.update(classify_research_cohort(row))
+            row.update(apply_parent_eligibility(row, current_dv))
             rows.append(row)
         return rows
 

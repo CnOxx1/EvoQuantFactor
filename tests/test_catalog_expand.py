@@ -208,11 +208,17 @@ def test_decide_node_uses_keep_inventory_not_hits(monkeypatch):
 
     class _Reg:
         def existing_summaries(self):
+            pit = {
+                "universe_mode": "pit",
+                "circ_mv_source": "archive_daily_basic",
+                "data_version": "live",
+            }
+            params = {"research_cohort": "clean_discovery"}
             return [
-                {"mechanism": "liquidity", "status": "screened"},
-                {"mechanism": "liquidity", "status": "screened"},
-                {"mechanism": "amplitude", "status": "candidate"},
-                {"mechanism": "reversal", "status": "draft"},
+                {"mechanism": "liquidity", "status": "screened", "source": "llm", "params": params, "summary": pit},
+                {"mechanism": "liquidity", "status": "screened", "source": "llm", "params": params, "summary": pit},
+                {"mechanism": "amplitude", "status": "candidate", "source": "llm", "params": params, "summary": pit},
+                {"mechanism": "reversal", "status": "draft", "source": "llm", "params": params, "summary": pit},
             ]
 
     class _Cfg:
@@ -261,10 +267,16 @@ def test_generate_node_passes_keep_coverage_and_round_idx(monkeypatch):
 
     class _Reg:
         def existing_summaries(self):
+            pit = {
+                "universe_mode": "pit",
+                "circ_mv_source": "archive_daily_basic",
+                "data_version": "live",
+            }
+            params = {"research_cohort": "clean_discovery"}
             return [
-                {"mechanism": "liquidity", "status": "screened"},
-                {"mechanism": "liquidity", "status": "screened"},
-                {"mechanism": "amplitude", "status": "candidate"},
+                {"mechanism": "liquidity", "status": "screened", "source": "llm", "params": params, "summary": pit},
+                {"mechanism": "liquidity", "status": "screened", "source": "llm", "params": params, "summary": pit},
+                {"mechanism": "amplitude", "status": "candidate", "source": "llm", "params": params, "summary": pit},
             ]
 
     class _Ctx:

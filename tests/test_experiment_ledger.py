@@ -51,7 +51,12 @@ def test_experiment_ledger_is_append_only_and_budgeted(tmp_path):
         search_config={"llm_ratio": 0.5},
         date_partitions={"discovery_end": "20251231"},
     )
-    candidate = {"name": "f1", "expression": "ma(ret_1d,5)", "source": "llm_fresh"}
+    candidate = {
+        "name": "f1",
+        "expression": "ma(ret_1d,5)",
+        "source": "llm_fresh",
+        "research_cohort": "clean_discovery",
+    }
     ledger.record_trial(
         trial_id="exp_test:r1:1",
         stage="generated",
@@ -72,6 +77,7 @@ def test_experiment_ledger_is_append_only_and_budgeted(tmp_path):
     assert closed["state"] == "completed"
     assert len(db.events) == 2
     assert '"stage": "generated"' in ledger.trials_path.read_text(encoding="utf-8")
+    assert db.events[0][1]["research_cohort"] == "clean_discovery"
 
 
 def test_experiment_ledger_rejects_generated_trials_above_budget(tmp_path):

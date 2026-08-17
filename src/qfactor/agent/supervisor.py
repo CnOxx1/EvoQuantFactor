@@ -7,7 +7,8 @@ acceptance, and trading release as separate lifecycle gates. A failed data
 contract is an auditable idle state, never a reason to relax criteria or create
 synthetic production factors. Research mining is gated by DataPrepareService:
 inspect the configured bar window, sync only if incomplete, then require the
-research contract. Candidate / release evidence stays fail-closed.
+research contract. The mining KPI is the PIT quality library, not candidate
+count. Candidate / release evidence stays fail-closed.
 """
 
 import argparse
@@ -67,6 +68,7 @@ class FactoryRuntime:
         self.screened_every = max(1, int(screened_every))
         production = (self.cfg.project.get("production") or {}).get("llm") or {}
         self.llm_ratio = float(production.get("llm_ratio", 0.0) if llm_ratio is None else llm_ratio)
+        self.llm_batch_size = max(1, int(production.get("llm_batch_size") or 4))
         experiment = self.cfg.project.get("experiment") or {}
         self.clean_experiment = bool(experiment.get("clean_discovery_default", True))
         self.registry = FactorRegistry(self.cfg)
@@ -181,7 +183,7 @@ class FactoryRuntime:
             try:
                 result["actions"]["research_discovery"] = FactorLoop(self.cfg).run(
                     rounds=1,
-                    batch_size=2,
+                    batch_size=int(getattr(self, "llm_batch_size", 4)),
                     gate_name="research",
                     llm_ratio=self.llm_ratio,
                     llm_review_ratio=0.0,
@@ -224,6 +226,11 @@ class FactoryRuntime:
         else:
             result["actions"]["recheck_screened"] = {"state": "skipped", "reason": "cadence"}
 
+        try:
+            result["actions"]["quality_library"] = self.ops.export_quality_library()
+        except Exception as exc:
+            result["actions"]["quality_library"] = {"state": "error", "error": str(exc)}
+            result["errors"].append({"stage": "quality_library", "error": str(exc)})
         try:
             result["actions"]["trading_releases"] = self.release.export_active()
             result["actions"]["multifactor_inventory"] = self.ops.multifactor_inventory()

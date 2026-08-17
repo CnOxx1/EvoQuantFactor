@@ -26,10 +26,12 @@ from qfactor.agent.diversity import (
     merge_bans,
     keep_mechanism_coverage,
     pick_theme_with_lessons,
+    saturated_keep_skeletons,
     unique_factor_name,
     usable_mechanism_coverage,
     weak_mechanisms,
 )
+from qfactor.agent.search_memory import compact_reject_trace, pareto_select_parents
 from qfactor.agent.llm import LLMClient
 from qfactor.dsl.parser import (
     Expr,
@@ -647,7 +649,9 @@ class CandidateGenerator:
         self.llm_cfg = _production_llm_cfg(self.cfg)
 
     @staticmethod
-    def diversity_index(existing: list[dict[str, Any]]) -> dict[str, Any]:
+    def diversity_index(
+        existing: list[dict[str, Any]], max_per_skeleton: int = 2
+    ) -> dict[str, Any]:
         """Build bans only from the explicitly eligible research cohort."""
         hashes: set[str] = set()
         expressions: list[str] = []
@@ -662,13 +666,15 @@ class CandidateGenerator:
                 continue
             hashes.add(fp["expr_hash"])
             expressions.append(fp["canonical"])
-            if str(item.get("status") or "") in USABLE_STATUSES:
+            if str(item.get("status") or "") in KEEP_STATUSES:
                 skeletons.append(fp["skeleton"])
         return {
             "expr_hashes": sorted(hashes),
             "expressions": expressions,
             "skeletons": skeletons,
-            "banned_skeletons": [],
+            "banned_skeletons": sorted(
+                saturated_keep_skeletons(existing, max_per_skeleton)
+            ),
         }
 
     def _pick_mechanism(self, theme: str | None, coverage: dict[str, int]) -> dict[str, Any]:
@@ -692,20 +698,16 @@ class CandidateGenerator:
         self.llm.require_enabled()
         lessons = lessons or []
         if is_cold_start(existing, self.cfg):
-            field_w, _ = field_window_prior(lessons, existing)
-            if field_w:
-                top_field = max(field_w, key=lambda k: field_w[k])
-                mapped = _FIELD_MECH.get(str(top_field))
-                if mapped:
-                    return mapped
+            # Keep inventory must not ban a working family. Clones are stopped
+            # by skeleton/corr caps, not by refusing to mine amplitude.
             return pick_theme_with_lessons(
                 self.mechanisms,
-                coverage,
+                {},
                 lessons,
                 forced=forced_theme,
                 soft_switch_after=int(self.llm_cfg.get("soft_switch_after", 3)),
                 recent_themes=recent_themes,
-                hard_rotate=False,
+                hard_rotate=bool(self.llm_cfg.get("hard_rotate", True)),
                 usable_coverage={},
             )
         usable_cov = usable_mechanism_coverage(existing)
@@ -899,8 +901,12 @@ class CandidateGenerator:
         exclude: set[str],
         limit: int = 12,
     ) -> list[dict[str, Any]]:
-        """Eligible parents for crossover/mutate: skip blocked mechs and fields."""
-        out: list[dict[str, Any]] = []
+        """Eligible parents for crossover/mutate: skip blocked mechs and fields.
+
+        Selection is a Pareto archive on IC / residual IC / uniqueness / year
+        coverage, not a family quota and not "take the first 12 by raw IC".
+        """
+        pool: list[dict[str, Any]] = []
         for p in parents:
             mid = str(p.get("mechanism") or p.get("category") or "").strip()
             expr = str(p.get("expression") or "")
@@ -908,10 +914,8 @@ class CandidateGenerator:
                 continue
             if self._expr_has_blocked_fields(expr):
                 continue
-            out.append(p)
-            if len(out) >= limit:
-                break
-        return out
+            pool.append(p)
+        return pareto_select_parents(pool, limit=limit)
 
     def _expr_has_blocked_fields(self, expr: str) -> bool:
         skip = self._blocked_field_set()
@@ -1368,7 +1372,6 @@ class CandidateGenerator:
         bans: dict[str, set[str]],
         lessons: list[dict[str, Any]],
     ) -> list[dict[str, Any]]:
-        del lessons
         blocked = getattr(self, "_blocked_mechs", set()) or set()
         cards: list[dict[str, Any]] = []
         seen_sk: set[str] = set()
@@ -1416,7 +1419,10 @@ class CandidateGenerator:
             "do not reuse catalog_skeletons or candidate skeletons",
             f"fields must be subset of {allowed}",
         ]
-        ideas = self._llm_idea_batch(mech, cards, n, modes)
+        for note in self._search_failure_modes(cards, lessons):
+            if note not in modes:
+                modes.append(note)
+        ideas = self._llm_idea_batch(mech, cards, n, modes[:12])
         self._last_idea_n = len(ideas)
         if not ideas:
             return []
@@ -1452,8 +1458,12 @@ class CandidateGenerator:
                 card["max_corr"] = summary.get("max_corr")
         return card
 
-    def _mutate_failure_modes(self, parents: list[dict[str, Any]]) -> list[str]:
-        """5–8 live failure notes from this library, not generic overnight lore."""
+    def _search_failure_modes(
+        self,
+        parents: list[dict[str, Any]],
+        lessons: list[dict[str, Any]] | None = None,
+    ) -> list[str]:
+        """Structured reject traces (ASI) plus live library notes. No holdout numbers."""
         modes: list[str] = []
         seen: set[str] = set()
 
@@ -1461,6 +1471,13 @@ class CandidateGenerator:
             if msg and msg not in seen and len(modes) < 8:
                 seen.add(msg)
                 modes.append(msg)
+
+        for lesson in reversed(list(lessons or [])):
+            note = compact_reject_trace(lesson)
+            if note:
+                _add(note)
+            if len(modes) >= 8:
+                return modes[:8]
 
         parent_skels = {
             str(p.get("skeleton")) for p in parents if p.get("skeleton")
@@ -1492,6 +1509,13 @@ class CandidateGenerator:
             _add("child skeleton must differ from parents and banned_skeletons")
             _add("avoid near-duplicates of an existing candidate mechanism")
         return modes[:8]
+
+    def _mutate_failure_modes(
+        self,
+        parents: list[dict[str, Any]],
+        lessons: list[dict[str, Any]] | None = None,
+    ) -> list[str]:
+        return self._search_failure_modes(parents, lessons)
 
     def _validate_idea(self, raw: dict[str, Any], mech: dict[str, Any]) -> dict[str, Any] | None:
         if not isinstance(raw, dict):
@@ -1648,7 +1672,6 @@ class CandidateGenerator:
         bans: dict[str, set[str]],
         lessons: list[dict[str, Any]],
     ) -> list[dict[str, Any]]:
-        del lessons  # ideas use live library cards / failure modes, not lesson tails
         enriched = []
         for p in parents[:12]:
             card = self._factor_card(p)
@@ -1656,7 +1679,7 @@ class CandidateGenerator:
                 enriched.append(card)
         if not enriched:
             return []
-        modes = self._mutate_failure_modes(enriched)
+        modes = self._mutate_failure_modes(enriched, lessons)
         ideas = self._llm_idea_batch(mech, enriched, n, modes)
         self._last_idea_n = len(ideas)
         if not ideas:
@@ -1665,6 +1688,16 @@ class CandidateGenerator:
 
     def _parent_pool(self, existing: list[dict[str, Any]]) -> list[dict[str, Any]]:
         """Prefer candidate/approved parents; demote high-corr rejects."""
+        from qfactor.factor.cohort import apply_parent_eligibility
+
+        def _keep_parent(item: dict[str, Any]) -> bool:
+            if str(item.get("source") or "") == "seed":
+                return True
+            name = str(item.get("name") or "")
+            if str(item.get("status") or "") == "draft" and name.startswith("seed_"):
+                return True
+            return bool(apply_parent_eligibility(item).get("parent_eligible"))
+
         pool: list[dict[str, Any]] = []
         for item in existing:
             expr = item.get("expression")
@@ -1680,32 +1713,43 @@ class CandidateGenerator:
             row = dict(item)
             row["expression"] = expr
             row["status"] = status
+            if not _keep_parent(row):
+                continue
             pool.append(row)
-        try:
-            from qfactor.factor.registry import FactorRegistry
+        # When the caller already passed an eligible library, do not re-import
+        # the whole catalog (legacy snapshot screened would reheat the pool).
+        if not existing:
+            try:
+                from qfactor.factor.registry import FactorRegistry
 
-            reg = FactorRegistry(self.cfg)
-            for f in reg.list_factors():
-                status = str(f.get("status") or "draft")
-                if status in {"deprecated"}:
-                    continue
-                try:
-                    spec = reg.load_spec(f["name"])
-                    if spec.expression:
-                        pool.append(
-                            {
-                                "name": spec.name,
-                                "expression": spec.expression,
-                                "mechanism": spec.mechanism or spec.category,
-                                "hypothesis": spec.hypothesis,
-                                "status": status or spec.status,
-                                "summary": f.get("summary") or {},
-                            }
-                        )
-                except Exception:
-                    continue
-        except Exception:
-            pass
+                reg = FactorRegistry(self.cfg)
+                have = {str(p.get("name") or "") for p in pool}
+                for f in reg.list_factors():
+                    status = str(f.get("status") or "draft")
+                    if status in {"deprecated"}:
+                        continue
+                    try:
+                        spec = reg.load_spec(f["name"])
+                        if not spec.expression:
+                            continue
+                        row = {
+                            "name": spec.name,
+                            "expression": spec.expression,
+                            "mechanism": spec.mechanism or spec.category,
+                            "hypothesis": spec.hypothesis,
+                            "status": status or spec.status,
+                            "summary": f.get("summary") or {},
+                            "source": f.get("source"),
+                            "params": f.get("params") or spec.params or {},
+                        }
+                        if str(row["name"]) in have or not _keep_parent(row):
+                            continue
+                        pool.append(row)
+                        have.add(str(row["name"]))
+                    except Exception:
+                        continue
+            except Exception:
+                pass
         seen: set[str] = set()
         uniq: list[dict[str, Any]] = []
         for p in pool:
@@ -1725,6 +1769,7 @@ class CandidateGenerator:
                     "mechanism": seed["mechanism"],
                     "hypothesis": seed["hypothesis"],
                     "status": "draft",
+                    "source": "seed",
                     "summary": {},
                 }
             )
@@ -1850,8 +1895,13 @@ class CandidateGenerator:
             self.cfg,
             extra=[] if clean_experiment else None,
         )
+        max_per_skel = int(
+            ((self.cfg.project.get("production") or {}).get("diversity") or {}).get(
+                "max_per_skeleton", 2
+            )
+        )
         index = (
-            self.diversity_index(existing)
+            self.diversity_index(existing, max_per_skel)
             if clean_experiment
             else library_diversity_index(self.cfg)
         )
@@ -1889,6 +1939,7 @@ class CandidateGenerator:
                 self.cfg,
                 extra=list(extra_banned_skeletons or []),
                 cold_start=bool(cs_cfg["disable_fsa"] and cold),
+                existing=existing,
             )
 
         unused_compose = self._unused_compose_count(bans)
@@ -1915,9 +1966,7 @@ class CandidateGenerator:
         thin = unused_compose < _CATALOG_SKIP_AT and not cold
         blocked_excl = set(self._blocked_mechs)
         xover_parents = self._search_parents(parents, exclude=blocked_excl, limit=12)
-        mutate_parents = self._search_parents(
-            parents, exclude=blocked_excl | {"amplitude"}, limit=12
-        )
+        mutate_parents = self._search_parents(parents, exclude=blocked_excl, limit=12)
         candidate_skels: set[str] = set()
         for p in usable:
             try:
@@ -1953,6 +2002,15 @@ class CandidateGenerator:
             "blocked_mechanisms": sorted(self._blocked_mechs),
             "keep_coverage": dict(coverage),
             "prior_refreshed": prior_refreshed,
+            "n_mutate_parents": len(mutate_parents),
+            "n_xover_parents": len(xover_parents),
+            "mutate_parent_mechs": sorted(
+                {
+                    str(p.get("mechanism") or p.get("category") or "")
+                    for p in mutate_parents
+                    if p.get("mechanism") or p.get("category")
+                }
+            ),
         }
 
         def _accept(cand: dict[str, Any] | None) -> bool:
@@ -1974,8 +2032,7 @@ class CandidateGenerator:
                     return False
             out.append(cand)
             bans["hashes"].add(fp["expr_hash"])
-            if not cold:
-                bans.setdefault("skeletons", set()).add(fp["skeleton"])
+            bans.setdefault("skeletons", set()).add(fp["skeleton"])
             mid = cand.get("mechanism", "unknown")
             coverage[mid] = coverage.get(mid, 0) + 1
             return True
